@@ -2,7 +2,7 @@
 
 PRISM brings study notes, chapter review, research reading, and daily planning into one local workspace. The macOS preview is free to download and includes everything needed to run the app.
 
-[Download PRISM 0.2.1 for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.1/PRISM-macOS-arm64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.1) · [PRISM website](https://sam-superlab.github.io/prism/)
+[Download PRISM 0.2.3 for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.3/PRISM-macOS-arm64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.3) · [PRISM website](https://sam-superlab.github.io/prism/)
 
 ## Install
 

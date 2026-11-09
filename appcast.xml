@@ -7,15 +7,15 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <description>PRISM for macOS updates.</description>
     <language>en</language>
     <item>
-      <title>PRISM 0.2.1</title>
-      <pubDate>Mon, 09 Nov 2026 13:55:51 GMT</pubDate>
-      <sparkle:version>0.2.1</sparkle:version>
-      <sparkle:shortVersionString>0.2.1</sparkle:shortVersionString>
+      <title>PRISM 0.2.3</title>
+      <pubDate>Mon, 09 Nov 2026 19:11:32 GMT</pubDate>
+      <sparkle:version>0.2.3</sparkle:version>
+      <sparkle:shortVersionString>0.2.3</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.5.0</sparkle:minimumSystemVersion>
-      <enclosure url="https://github.com/Sam-superlab/prism/releases/download/v0.2.1/PRISM-macOS-arm64.zip" sparkle:edSignature="X7Pd9Uk/yLwNyAEfaPyW/IudJ7whBabp7zu9UOPOR+1vdCJf7xDBvPDB0SjNIQIm/E+1wEYL+ZJCcV/fHry0AQ==" length="74529867" type="application/octet-stream"></enclosure>
+      <enclosure url="https://github.com/Sam-superlab/prism/releases/download/v0.2.3/PRISM-macOS-arm64.zip" sparkle:edSignature="rlt7Kbv1tsp6G+nnSsfI9/1oYwRe6ndpcFH029dbd/FFq8yW+jKZiLZjG6rODM44ic5E+d/OIKuKBOz+OHv+Ag==" length="74517858" type="application/octet-stream"></enclosure>
     </item>
   </channel>
 </rss><!-- sparkle-signatures:
-edSignature: mMmTcRg9kLl2hv/cpGNbOnCdRAufn5L8Ss4vUmNEe43zk/3FDBi7WXxa/xWsM59KWhKBYWUbmVnorsaCz7wgAQ==
+edSignature: +vUA4U4g+NKvjuUq0lFs2bY53MDKUF9w2FWF/Jwyu6EMvHtbB2YlpMuhpt7I8yDzlR9KE/esicZIPKtCIReHBQ==
 length: 1167
 -->
