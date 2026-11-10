@@ -40,3 +40,10 @@ jobs:
           $script = Join-Path $work 'windows-smoke.ps1'
           [IO.File]::WriteAllBytes($script, [Convert]::FromBase64String(($content -join '')))
           & $script -Archive $archive -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'prism-windows-smoke')
+      - name: Show startup diagnostics on failure
+        if: failure()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'prism-windows-smoke/test'
+          Get-ChildItem $root -Filter startup-error.txt -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName }
+          Get-ChildItem $root -Filter desktop.log -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 80 }
