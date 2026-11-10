@@ -12,7 +12,8 @@ on:
         required: true
 
 permissions:
-  contents: read
+  # GitHub requires write access to read unpublished release assets.
+  contents: write
 
 jobs:
   smoke:
