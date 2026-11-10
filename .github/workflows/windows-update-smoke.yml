@@ -1,0 +1,70 @@
+name: Verify Windows in-app update
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Draft release containing the updater fixtures
+        required: true
+        default: v0.2.6
+      base_sha256:
+        description: SHA-256 of PRISM-Windows-x64.zip
+        required: true
+      update_sha256:
+        description: SHA-256 of PRISM-Windows-update-test.zip
+        required: true
+      manifest_sha256:
+        description: SHA-256 of windows-update-test.json
+        required: true
+
+permissions:
+  # Draft release downloads require repository write access.
+  contents: write
+
+jobs:
+  update:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRISM_TEST_TAG: ${{ inputs.release_tag }}
+      PRISM_BASE_SHA: ${{ inputs.base_sha256 }}
+      PRISM_UPDATE_SHA: ${{ inputs.update_sha256 }}
+      PRISM_MANIFEST_SHA: ${{ inputs.manifest_sha256 }}
+    steps:
+      - name: Download and verify test inputs
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PRISM_TEST_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release tag' }
+          $work = Join-Path $env:RUNNER_TEMP 'prism-update-inputs'
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          $files = @{
+            'PRISM-Windows-x64.zip' = $env:PRISM_BASE_SHA
+            'PRISM-Windows-update-test.zip' = $env:PRISM_UPDATE_SHA
+            'windows-update-test.json' = $env:PRISM_MANIFEST_SHA
+          }
+          foreach ($file in $files.Keys) {
+            if ($files[$file] -notmatch '^[a-f0-9]{64}$') { throw 'Invalid checksum' }
+            gh release download $env:PRISM_TEST_TAG --repo $env:GITHUB_REPOSITORY --pattern $file --dir $work
+            if ($LASTEXITCODE -ne 0) { throw "Could not download $file" }
+            if ((Get-FileHash (Join-Path $work $file) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $files[$file]) { throw "Checksum mismatch for $file" }
+          }
+      - name: Test rejected updates and real in-app installation
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'prism-update-inputs'
+          $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/.github/scripts/windows-update-smoke.ps1?ref=$env:GITHUB_SHA" --jq .content
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read update test script' }
+          $script = Join-Path $work 'windows-update-smoke.ps1'
+          [IO.File]::WriteAllBytes($script, [Convert]::FromBase64String(($content -join '')))
+          & $script -BaseArchive (Join-Path $work 'PRISM-Windows-x64.zip') -UpdateArchive (Join-Path $work 'PRISM-Windows-update-test.zip') -Manifest (Join-Path $work 'windows-update-test.json') -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'prism-windows-update-smoke')
+      - name: Show failure diagnostics
+        if: failure()
+        shell: pwsh
+        run: |
+          $root = Join-Path $env:RUNNER_TEMP 'prism-windows-update-smoke'
+          foreach ($pattern in @('startup-error.txt','desktop.log','server-error.log','updater-state.json','update.log')) {
+            Get-ChildItem $root -Filter $pattern -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_.Name; Get-Content $_.FullName -Tail 100 }
+          }
