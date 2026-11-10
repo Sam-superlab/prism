@@ -1,25 +1,52 @@
-# PRISM for Mac
+# PRISM
 
-PRISM brings study notes, chapter review, research reading, and daily planning into one local workspace. The macOS preview is free to download and includes everything needed to run the app.
+PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download PRISM 0.2.4 for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.4/PRISM-macOS-arm64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.4) · [PRISM website](https://sam-superlab.github.io/prism/)
+[Download for Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.5/PRISM-macOS-arm64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.5/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.5) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
-You need an Apple silicon Mac running macOS 13.5 or later.
+### macOS
+
+Requires an Apple silicon Mac running macOS 13.5 or later.
 
 1. Download and unzip `PRISM-macOS-arm64.zip`.
 2. Move `PRISM.app` to **Applications**, then open it.
-3. If macOS blocks the first launch and you trust the download, open **System Settings → Privacy & Security** and select **Open Anyway** if macOS offers it. Confirm the prompt to open PRISM. [Apple's first-launch instructions](https://support.apple.com/en-us/102445)
+3. If macOS blocks the first launch and you trust the download, open **System Settings → Privacy & Security** and choose **Open Anyway** if offered. [Apple's first-launch instructions](https://support.apple.com/en-us/102445)
 
-The preview has an ad-hoc macOS signature and has not been notarized by Apple. macOS decides whether the first-launch option is available.
+This free preview uses an ad-hoc signature and is not notarized by Apple. macOS decides whether first-launch approval is available.
+
+### Windows
+
+Requires Windows 10 or 11 (64-bit x64).
+
+1. Download `PRISM-Windows-x64.zip`.
+2. Extract the entire ZIP into a folder you can keep, then open `PRISM.exe`.
+3. The preview is unsigned. If Windows shows a SmartScreen prompt, only continue if you trust this GitHub release. Your organization may restrict unsigned apps.
+
+Windows updates are installed by downloading a newer ZIP, closing PRISM, and replacing the program folder. Keep the entire extracted folder together.
 
 ## Getting started
 
-The first time you open an empty workspace, the welcome guide shows how to create a note, turn it into a review card, and finish your first review. You can skip the guide and open it again from **Settings → Getting Started**. The sample stays temporary until you choose **Keep this example**.
+New empty workspaces show an English welcome guide. The Today checklist walks through creating a note, making a review card, and completing the first review. Skip it any time and reopen it from **Settings → Getting Started**.
+
+The example stays temporary until you select **Keep this example**.
+
+## Study and planning
+
+- Write Markdown and LaTeX notes and organize them by subject and chapter.
+- Add review cards for definitions, statements, hypotheses, or proofs.
+- For Proof Recall, select **Proof** when editing a card and add ordered hints. Mark difficult steps during review to retain them in your review history.
+- Today shows plan progress, time capacity, and seven days of review activity.
+- Use the top navigation links to return to Today or the current section.
 
 ## Updates and local data
 
-Choose **PRISM → Check for Updates…** to look for newer builds. Sparkle verifies signatures on the update feed and ZIP. On a test Mac, the in-app upgrade from 0.2.0 to 0.2.1 relaunched PRISM and preserved a sample note, Dark appearance, and the daily review limit in an isolated workspace.
+On Mac, choose **PRISM → Check for Updates…**. Sparkle verifies signatures on the feed and download. Updating replaces the app bundle.
 
-PRISM creates its workspace at `~/Library/Application Support/PRISM Desktop` on your Mac. Replacing the app in Applications leaves that workspace in place.
+Workspaces are stored separately from the program. Notes, review history, and preferences remain on the same computer when you replace the app. Appearance settings stay in the app's local browser profile.
+
+- Mac workspace — `~/Library/Application Support/PRISM Desktop`.
+- Windows workspace — the PRISM Desktop folder in your Windows application-data directory.
+
+This public repository contains the download website, update feed, and release-verification tooling. Download packages start with a fresh workspace. Personal notes, databases, exports, and API keys are excluded.
