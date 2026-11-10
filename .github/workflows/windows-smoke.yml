@@ -1,0 +1,42 @@
+name: Verify Windows preview
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Release tag containing the Windows archive
+        required: true
+        default: v0.2.5
+      sha256:
+        description: Expected SHA-256 of PRISM-Windows-x64.zip
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    env:
+      GH_TOKEN: ${{ github.token }}
+      PRISM_SMOKE_TAG: ${{ inputs.release_tag }}
+      PRISM_SMOKE_SHA: ${{ inputs.sha256 }}
+    steps:
+      - name: Verify download and run isolated application test
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:PRISM_SMOKE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release tag' }
+          if ($env:PRISM_SMOKE_SHA -notmatch '^[a-f0-9]{64}$') { throw 'Invalid checksum' }
+          $work = Join-Path $env:RUNNER_TEMP 'prism-release-smoke'
+          New-Item -ItemType Directory -Path $work -Force | Out-Null
+          gh release download $env:PRISM_SMOKE_TAG --repo $env:GITHUB_REPOSITORY --pattern PRISM-Windows-x64.zip --dir $work
+          if ($LASTEXITCODE -ne 0) { throw 'Could not download Windows archive' }
+          $archive = Join-Path $work 'PRISM-Windows-x64.zip'
+          if ((Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $env:PRISM_SMOKE_SHA) { throw 'Archive checksum mismatch' }
+          $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/.github/scripts/windows-smoke.ps1?ref=$env:GITHUB_SHA" --jq .content
+          if ($LASTEXITCODE -ne 0) { throw 'Could not read test script' }
+          $script = Join-Path $work 'windows-smoke.ps1'
+          [IO.File]::WriteAllBytes($script, [Convert]::FromBase64String(($content -join '')))
+          & $script -Archive $archive -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'prism-windows-smoke')
