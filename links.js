@@ -16,8 +16,12 @@ if (repository) {
   const tag = document.querySelector('meta[name="prism-release-tag"]').content.trim();
   const version = /^[a-z0-9][\w.-]*$/i.test(tag) ? tag : null;
   const download = version ? `${releases}/download/${version}` : `${releases}/latest/download`;
+  const macTag = document.querySelector('meta[name="prism-macos-release-tag"]')?.content.trim();
+  const macDownload = /^v\d+\.\d+\.\d+$/.test(macTag ?? '')
+    ? `${releases}/download/${macTag}`
+    : download;
   const destinations = {
-    download: `${download}/PRISM-macOS-arm64.zip`,
+    download: `${macDownload}/PRISM-macOS-arm64.zip`,
     windows: `${download}/PRISM-Windows-x64.zip`,
     install: `${repository}/blob/main/README.md#install`,
     releases: version ? `${releases}/tag/${version}` : releases,
