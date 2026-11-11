@@ -56,6 +56,12 @@ function Write-Api([string]$Method,[string]$Path,[object]$Data,[string]$Version)
 }
 try {
   $initial = Start-Prism
+  $DailyFile = Join-Path $PrismProfile 'profile/updates/daily-check.json'
+  if ($env:PRISM_WINDOWS_DAILY_CHECK_TEST -eq '1') {
+    for ($i=0; $i -lt 30 -and -not (Test-Path $DailyFile); $i++) { Start-Sleep -Milliseconds 500 }
+    if (-not (Test-Path $DailyFile)) { throw 'Automatic update check did not run.' }
+    $firstDailyCheck = (Get-Content -Raw -LiteralPath $DailyFile | ConvertFrom-Json).lastAttemptAt
+  }
   $empty = Read-Api '/knowledge-items?limit=1'
   if ($empty.items.Count -ne 0) { throw 'The new installation included user notes.' }
   $noteId = [guid]::NewGuid().ToString()
@@ -72,6 +78,12 @@ try {
   if (-not $dark) { throw 'The native UI did not apply the test appearance.' }
   Stop-Prism
   $reopened = Start-Prism
+  if ($env:PRISM_WINDOWS_DAILY_CHECK_TEST -eq '1') {
+    Start-Sleep -Seconds 2
+    $secondDailyCheck = (Get-Content -Raw -LiteralPath $DailyFile | ConvertFrom-Json).lastAttemptAt
+    if ($firstDailyCheck -ne $secondDailyCheck) { throw 'Automatic checking repeated before 24 hours.' }
+    Write-Output 'Automatic daily update check ran once and stayed deduplicated after restart.'
+  }
   $restored = Read-Api "/knowledge-items/$noteId"
   $restoredPrefs = Read-Api '/me/preferences'
   $appearance = $reopened.appearance | ConvertFrom-Json

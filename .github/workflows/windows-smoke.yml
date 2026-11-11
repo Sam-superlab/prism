@@ -7,6 +7,10 @@ on:
         description: Release tag containing the Windows archive
         required: true
         default: v0.2.5
+      daily_checks:
+        description: Verify daily automatic checking
+        type: boolean
+        default: false
       sha256:
         description: Expected SHA-256 of PRISM-Windows-x64.zip
         required: true
@@ -22,6 +26,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PRISM_SMOKE_TAG: ${{ inputs.release_tag }}
+      PRISM_WINDOWS_DAILY_CHECK_TEST: ${{ inputs.daily_checks && '1' || '0' }}
       PRISM_SMOKE_SHA: ${{ inputs.sha256 }}
     steps:
       - name: Verify download and run isolated application test
