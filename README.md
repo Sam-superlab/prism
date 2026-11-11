@@ -2,7 +2,7 @@
 
 PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download for Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.5/PRISM-macOS-arm64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.6/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.6) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.5/PRISM-macOS-arm64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.7/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.7) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
@@ -24,7 +24,9 @@ Requires Windows 10 or 11 (64-bit x64).
 2. Extract the entire ZIP into a folder you can keep, then open `PRISM.exe`.
 3. The preview is unsigned. If Windows shows a SmartScreen prompt, only continue if you trust this GitHub release. Your organization may restrict unsigned apps.
 
-Windows 0.2.6 adds in-app updates. If you have 0.2.5, close PRISM and download/extract 0.2.6 once. Keep the AppData directory to retain your notes and settings.
+Windows 0.2.6 adds in-app updates. If you have 0.2.5, close PRISM and download/extract the current version once. Keep the AppData directory to retain your notes and settings.
+
+Windows 0.2.7 automatically checks once every 24 hours while running, and catches up after the next launch if the app was closed. Up-to-date results and network failures stay quiet. New versions require your confirmation to download and install.
 
 From 0.2.6 onward, choose **File → Check for Updates…**, download the available update, then select **Install and Restart**. PRISM verifies signed update information and the download before replacing the application. Save open edits before installing. Keep PRISM in its own writable folder with the extracted program files together.
 
