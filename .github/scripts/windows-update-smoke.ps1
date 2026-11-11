@@ -98,6 +98,8 @@ function Wait-Ready([string]$Version, [int]$PreviousPid = 0) {
     if ($PreviousPid -and $record.pid -eq $PreviousPid) { continue }
     Set-ApiSession $record
     $script:PrismProcess = Get-Process -Id $record.pid -ErrorAction Stop
+    # Retain the native process handle so ExitCode remains available after the app exits.
+    $null = $script:PrismProcess.Handle
     return $record
   }
   throw 'The expected native app did not become ready in 120 seconds.'
@@ -129,7 +131,7 @@ function Write-Api([string]$Method, [string]$Path, [object]$Data, [string]$Versi
 function Stop-Prism {
   New-Item -ItemType File -Path (Join-Path $PrismProfile 'stop') -Force | Out-Null
   if (-not $script:PrismProcess.WaitForExit(20000)) { throw 'PRISM did not close gracefully.' }
-  if ($script:PrismProcess.ExitCode -ne 0) { throw 'PRISM closed with an error.' }
+  if ($script:PrismProcess.ExitCode -ne 0) { throw "PRISM closed with exit code '$($script:PrismProcess.ExitCode)'." }
 }
 try {
   [IO.File]::WriteAllText($ActiveManifest, $SignedManifest, $Utf8)
