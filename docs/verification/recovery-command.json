@@ -1,0 +1,28 @@
+{
+  "executed_at": "2026-11-08T01:10:39.875Z",
+  "result": "passed",
+  "command": "tsx scripts/database.ts after-restore",
+  "execution": "separate Node process against the restored disposable PostgreSQL fixture",
+  "command_exit_code": 0,
+  "command_summary": {
+    "recovered": true,
+    "sync_stream_rotated": true,
+    "revision": "9",
+    "derived_exports_expired": 3,
+    "interrupted_jobs_released": 2
+  },
+  "checks": [
+    "All table counts and row hashes equal before recovery command",
+    "Only synchronization head and derived export/job metadata changed",
+    "Synchronization generation rotated without changing revision or business IDs",
+    "Pending, running and ready exports expired",
+    "Missing pre-restore export downloads return 410 rather than server errors",
+    "Abandoned export jobs dead with leases cleared and run tokens revoked",
+    "Retryable interrupted jobs released without resetting attempts",
+    "Exhausted jobs remain dead; succeeded job history unchanged",
+    "Unknown-account command fails and rolls back atomically",
+    "Old signed cursor and cached snapshot rejected; fresh snapshot/pull succeed",
+    "Export processor does not restart invalidated derived work"
+  ],
+  "privacy": "Only generated test data in uniquely named disposable databases; credentials passed through environment and omitted from this report"
+}

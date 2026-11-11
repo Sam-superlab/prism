@@ -1,0 +1,138 @@
+{
+  "executed_at": "2026-11-08T01:13:53.949777+00:00",
+  "result": "passed",
+  "delivery_scope": "Local working MVP and deployment-ready source/images; production and signed iOS release acceptance remain separate",
+  "source_identification": {
+    "method": "SHA-256 of sorted relative source/config/contract paths, NUL separator, bytes, NUL separator",
+    "files": 133,
+    "sha256": "703e1ec115125b23fe8f564a0ef2e5ae4dece3af933b12082e8e84ec1822af48",
+    "lockfile_sha256": "523b469a21a9e0b168f98fabe34616b6e64f02bcd9c9dc09e69514aedf622bbe",
+    "schema_sha256": "1a34f5b5f691bad7ae8908e6edb5a23c1681588e22bbcc6ff7b9d520712a5c17",
+    "openapi_sha256": "9d02aedd8002a14b29b7e18a7c4f3bfcb410b07e73482edcab2cd5166c340695"
+  },
+  "environment": {
+    "node": "24.22.1",
+    "pnpm": "11.25.0",
+    "postgres": "17-alpine, real non-owner RLS runtime role",
+    "redis": "7-alpine, real Redis delivery",
+    "browser": "Chromium via Playwright 1.65.0"
+  },
+  "checks": [
+    {
+      "command": "pnpm generate:types",
+      "result": "passed",
+      "details": "OpenAPI generated TypeScript contract refreshed"
+    },
+    {
+      "command": "pnpm typecheck",
+      "result": "passed",
+      "details": "All workspace applications and packages"
+    },
+    {
+      "command": "PRISM_TEST_REDIS_URL=<isolated-service> pnpm test",
+      "result": "passed",
+      "tests": 19,
+      "skipped": 0
+    },
+    {
+      "command": "pnpm test:api",
+      "result": "passed",
+      "tests": 21,
+      "skipped": 1,
+      "details": "Optional PostgreSQL case skipped here; full PostgreSQL suite executed separately below"
+    },
+    {
+      "command": "pnpm test:postgres",
+      "result": "passed",
+      "tests": 22,
+      "skipped": 0
+    },
+    {
+      "command": "pnpm test:mobile",
+      "result": "passed",
+      "tests": 27,
+      "skipped": 0,
+      "details": "Actual file SQLite adapter and API; native credential/OS components use controlled test adapters"
+    },
+    {
+      "command": "pnpm test:e2e",
+      "result": "passed",
+      "tests": 14,
+      "skipped": 0,
+      "evidence": "e2e-final.json"
+    },
+    {
+      "command": "pnpm build",
+      "result": "passed",
+      "details": "Web production build, server/package typechecks, Expo iOS Hermes export"
+    },
+    {
+      "command": "python tests/contracts/validate_contract.py",
+      "result": "passed",
+      "operations": 118,
+      "paths": 72,
+      "schemas": 129,
+      "resolved_refs": 683
+    },
+    {
+      "command": "node tests/contracts/schema_smoke.mjs",
+      "result": "passed",
+      "checks": 26,
+      "tables": 42
+    },
+    {
+      "command": "pnpm verify:restore",
+      "result": "passed",
+      "tables": 42,
+      "evidence": ["backup-restore.json", "recovery-command.json"],
+      "details": "Actual dump/restore, all row hashes, real after-restore operator CLI and stale client recovery"
+    },
+    {
+      "command": "docker build --target <api|worker|web>",
+      "result": "passed",
+      "details": "Production dependency graph and unprivileged node runtime"
+    },
+    {
+      "command": "pnpm verify:containers",
+      "result": "passed",
+      "evidence": "container-smoke.json"
+    },
+    {
+      "command": "prettier --check source/config/docs",
+      "result": "passed"
+    },
+    {
+      "command": "./start.command",
+      "result": "passed",
+      "details": "Started without manually injecting PATH; graceful shutdown stopped both child services; restart and Web/API HTTP 200 verified"
+    }
+  ],
+  "distinct_tests_in_final_suites": {
+    "total": 82,
+    "calculation": "19 core + 22 PostgreSQL/API + 27 mobile + 14 browser; memory/API rerun is not counted again; schema assertions are separate"
+  },
+  "ios_export": {
+    "file": "apps/mobile/dist/_expo/static/js/ios/index-4033d1ee0e8575642cc94c0feca7eab7.hbc",
+    "bytes": 4477741,
+    "sha256": "91e85a3744177c9705b96496fad4c947ba2fc98701f73a67557fec4c3c77de86",
+    "native_binary_signed": false
+  },
+  "additional_evidence": {
+    "live_arxiv": "arxiv-live.json",
+    "local_api_performance": "performance.json",
+    "containers": "container-smoke.json"
+  },
+  "local_preview": {
+    "web": "http://localhost:3000/today",
+    "api_health": "http://127.0.0.1:4000/health",
+    "data": "git-ignored .data directory",
+    "worker": "enabled in the local API process"
+  },
+  "limitations": [
+    "No public hosting, real OIDC-provider integration or production TLS configured",
+    "No remote GitHub CI execution; workflow is supplied for the same checks",
+    "No native iOS build/signing, device or simulator acceptance, APNs delivery or TestFlight distribution; full Xcode unavailable",
+    "Local restore and performance evidence do not establish managed-backup recovery, production latency or availability SLAs",
+    "Two consecutive weeks of daily beta use remain a release acceptance requirement"
+  ]
+}

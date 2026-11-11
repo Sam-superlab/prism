@@ -1,0 +1,33 @@
+{
+  "name": "@prism/api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/app.ts",
+    "./service": "./src/service.ts"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "start": "tsx src/server.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit",
+    "test": "vitest run ../../tests/api"
+  },
+  "dependencies": {
+    "fastify": "5.12.8",
+    "@fastify/cors": "11.4.1",
+    "@fastify/rate-limit": "11.2.2",
+    "pg": "8.23.1",
+    "jose": "6.2.15",
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "@prism/database": "workspace:*",
+    "@prism/worker": "workspace:*",
+    "@prism/core": "workspace:*",
+    "tsx": "4.23.15"
+  },
+  "devDependencies": {
+    "@types/pg": "8.23.1"
+  }
+}

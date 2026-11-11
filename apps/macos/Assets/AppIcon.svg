@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024"><defs><clipPath id="mask"><rect x="48" y="48" width="928" height="928" rx="208"/></clipPath><filter id="s"><feDropShadow dy="12" stdDeviation="12" flood-opacity=".16"/></filter></defs><rect x="48" y="48" width="928" height="928" rx="208" fill="#edf1f8" filter="url(#s)"/><g clip-path="url(#mask)"><svg x="48" y="48" width="928" height="928" viewBox="0 0 1024 1024">
+<defs>
+<linearGradient id="tile" x1="0" y1="0" x2="0.85" y2="1"><stop stop-color="#fdfefe"/><stop offset="1" stop-color="#e4eaf4"/></linearGradient>
+<linearGradient id="left" x1="250" y1="290" x2="550" y2="730" gradientUnits="userSpaceOnUse"><stop stop-color="#75c6ff"/><stop offset="0.5" stop-color="#238bfa"/><stop offset="1" stop-color="#1854cd"/></linearGradient>
+<linearGradient id="right" x1="510" y1="225" x2="780" y2="740" gradientUnits="userSpaceOnUse"><stop stop-color="#d1ecff"/><stop offset="0.48" stop-color="#89a9fc"/><stop offset="1" stop-color="#6973e6"/></linearGradient>
+<linearGradient id="base" x1="250" y1="710" x2="775" y2="710" gradientUnits="userSpaceOnUse"><stop stop-color="#224ed0"/><stop offset="0.6" stop-color="#5c56dd"/><stop offset="1" stop-color="#9e97f4"/></linearGradient>
+<filter id="shadow" x="-50%" y="-40%" width="200%" height="200%"><feDropShadow dx="0" dy="24" stdDeviation="22" flood-color="#2858aa" flood-opacity=".19"/></filter>
+</defs>
+<rect width="1024" height="1024" fill="url(#tile)"/>
+<ellipse cx="512" cy="815" rx="200" ry="22" fill="#8099c0" opacity=".08"/>
+<g filter="url(#shadow)" stroke-linejoin="round">
+<path d="M512 216 248 730 512 572Z" fill="url(#left)"/>
+<path d="M512 216 776 730 512 572Z" fill="url(#right)"/>
+<path d="M248 730 512 572 776 730Z" fill="url(#base)"/>
+<path d="M512 216 248 730 776 730Z" fill="none" stroke="#fff" stroke-opacity=".6" stroke-width="3"/>
+<path d="M512 216 512 572 776 730M512 572 248 730" fill="none" stroke="#fff" stroke-opacity=".45" stroke-width="2"/>
+</g>
+</svg></g></svg>

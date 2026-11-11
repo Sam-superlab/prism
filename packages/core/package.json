@@ -1,0 +1,24 @@
+{
+  "name": "@prism/core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./service": "./src/service.ts",
+    "./models": "./src/models.ts",
+    "./errors": "./src/errors.ts",
+    "./config": "./src/config.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prism/database": "workspace:*",
+    "@prism/fsrs": "workspace:*",
+    "@prism/planner": "workspace:*",
+    "@prism/shared-utils": "workspace:*",
+    "fflate": "0.8.3"
+  }
+}

@@ -1,0 +1,185 @@
+.localNotice {
+  margin-block: -0.4rem 1rem;
+}
+.headingActions,
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0.7rem;
+  margin-bottom: 1rem;
+}
+.filters > label {
+  flex: 1 1 10rem;
+  min-width: 0;
+  margin-bottom: 0;
+}
+.layout {
+  display: grid;
+  grid-template-columns: minmax(13rem, 1fr) minmax(0, 2.2fr);
+  align-items: start;
+  gap: 1rem;
+}
+.list {
+  display: grid;
+  gap: 0.5rem;
+  max-height: min(68vh, 54rem);
+  overflow: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.list button {
+  width: 100%;
+  display: grid;
+  gap: 0.2rem;
+  text-align: start;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.65rem;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: inherit;
+}
+.list button:hover {
+  background: var(--surface-secondary);
+}
+.list button[aria-current='true'] {
+  border-color: var(--accent);
+}
+.list small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.details,
+.importBody {
+  display: grid;
+  min-width: 0;
+  gap: 1rem;
+}
+.details h2,
+.details h3,
+.details p,
+.importBody p {
+  margin: 0;
+}
+.statement,
+.excerpt {
+  min-width: 0;
+  padding: 0.85rem;
+  border-radius: 0.65rem;
+  background: var(--surface-secondary);
+  overflow-wrap: anywhere;
+}
+.excerpt {
+  max-height: 16rem;
+  overflow: auto;
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  font: inherit;
+}
+.pageGrid,
+.comparison {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: start;
+  gap: 0.75rem;
+}
+.comparison > div {
+  min-width: 0;
+}
+.latexEditor,
+.work {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+.mathPreview {
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+  margin-block: 0.5rem;
+}
+.mathPreview .statement {
+  border: 1px solid var(--line);
+}
+.formulaReview {
+  padding: 0.7rem 0.85rem;
+  border-inline-start: 2px solid var(--warm);
+  border-radius: 0.45rem;
+  background: var(--surface-secondary);
+  overflow-wrap: anywhere;
+}
+.formulaReview ul {
+  margin: 0.35rem 0 0;
+  padding-inline-start: 1.15rem;
+}
+.formulaReview li + li {
+  margin-top: 0.3rem;
+}
+.formulaReview mark {
+  padding-inline: 0.2em;
+  border-radius: 0.2rem;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--warm) 23%, var(--surface-secondary));
+  white-space: pre-wrap;
+}
+.candidates {
+  display: grid;
+  gap: 0.85rem;
+}
+.candidate {
+  display: grid;
+  min-width: 0;
+  gap: 0.55rem;
+  padding: 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.65rem;
+}
+.candidateHeader {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  align-items: flex-start;
+  justify-content: space-between;
+}
+.include {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+.include input {
+  width: auto;
+}
+.history {
+  margin: 0.55rem 0 0;
+  padding-left: 1.15rem;
+}
+.history li + li {
+  margin-top: 0.4rem;
+}
+.history p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+@media (max-width: 850px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+  .list {
+    max-height: 15rem;
+  }
+}
+@media (max-width: 620px) {
+  .comparison {
+    grid-template-columns: 1fr;
+  }
+}
+
+.statement {
+  white-space: pre-wrap;
+  overflow: auto;
+}

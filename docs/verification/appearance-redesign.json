@@ -1,0 +1,114 @@
+{
+  "executed_at": "2026-11-08T12:59:56.903743+00:00",
+  "result": "passed",
+  "version": "0.2.0",
+  "scope": [
+    "English Web, iOS and Mac shell/system text",
+    "Vector prism icon with native ICNS family, opaque iOS PNG, Web icons and brand mark",
+    "Apple-inspired adaptive typography/surfaces, persistent appearance controls and restrained transitions",
+    "Updated locally installed Mac app"
+  ],
+  "appearance_checks": {
+    "persisted_options": {
+      "theme": "system",
+      "textSize": 15,
+      "density": "comfortable",
+      "accent": "teal",
+      "readingFont": "serif",
+      "reducedMotion": false,
+      "transparency": false,
+      "contrast": "increased"
+    },
+    "computed_checks": {
+      "theme": "system",
+      "accent": "teal",
+      "contrast": "increased",
+      "readingFont": "serif",
+      "transparency": "false",
+      "sidebarBlur": "none",
+      "readingCSS": "\"Iowan Old Style\", \"Palatino Linotype\", Georgia, serif"
+    },
+    "largest_text_narrow_layout": {
+      "viewport": 430,
+      "content": 430
+    },
+    "system_reduce_motion_animation_duration": "1e-05s",
+    "reset_restored_defaults": {
+      "prefs": {
+        "theme": "system",
+        "textSize": 15,
+        "density": "comfortable",
+        "accent": "blue",
+        "readingFont": "system",
+        "reducedMotion": false,
+        "transparency": true,
+        "contrast": "standard"
+      },
+      "theme": "system",
+      "scale": "1"
+    },
+    "reload_console_errors": []
+  },
+  "automated_tests": {
+    "core": {
+      "passed": 18,
+      "skipped": 1,
+      "skip_reason": "Optional real Redis fixture unavailable"
+    },
+    "api_memory": {
+      "passed": 21,
+      "skipped": 1,
+      "skip_reason": "Optional real PostgreSQL fixture unavailable"
+    },
+    "mobile": {
+      "passed": 29,
+      "skipped": 0
+    },
+    "browser": {
+      "passed": 14,
+      "skipped": 0,
+      "evidence": "e2e-final.json"
+    }
+  },
+  "builds": {
+    "web": "Production build passed using isolated .next-e2e output",
+    "mobile": "iOS Hermes export passed; 807 modules, 4.5 MB",
+    "macos": "Compiled, installed and ad-hoc signature verified; version 0.2.0"
+  },
+  "native_mac_observations": [
+    "Updated English startup, navigation and Settings viewed in the installed app",
+    "Light and automatic/dark themes visually verified, including titlebar changes",
+    "Route content remains visible when WebKit defers animations; explicit surface colors correct native theme repaints",
+    "App left open on Today with automatic appearance"
+  ],
+  "assets": {
+    "macos": "apps/macos/Assets/AppIcon.icns",
+    "ios": "apps/mobile/assets/icon.png",
+    "canonical": "assets/prism-icon.svg",
+    "installed_app": "~/Applications/PRISM.app"
+  },
+  "data_policy": "Existing profiles, notes, projects, historical text and offline operations were not rewritten; appearance values are device-local",
+  "limitations": [
+    "Native iPhone installation and VoiceOver/visual acceptance remain pending Apple/TestFlight setup",
+    "The Mac app remains the documented local build depending on this project/runtime",
+    "Production Redis/PostgreSQL checks were not rerun for this appearance update; optional fixture tests are explicitly skipped",
+    "The cosmetic development-indicator switch was production-built after the final E2E run; functional assertions and source coverage were retained"
+  ],
+  "source_sha256": {
+    "assets/prism-icon.svg": "f9618c456798692d88ad12951759316c45e01c789419c193ec6b63f111f1382f",
+    "assets/prism-mark.svg": "0bcb6a7af71ded4c45fd0445f9a2b2acca15070eafbf35277b3c83228ab72436",
+    "apps/web/app/globals.css": "80fd56b4d7ca35491801ade963ac3fde69358de3b3d42b6931cdf9154bf1f781",
+    "apps/web/app/appearance.css": "94404fbce19c1b8dfbc63f33ca4f4a98f68245aafdb869518fcb7d4efee739af",
+    "apps/web/app/layout.tsx": "84664302eeab9bda121c530309da9718a0944a0203a35c4ffa1646ac025b1861",
+    "apps/web/next.config.ts": "8fbdd50e4b6fb1e61edae6fc20f359f38747046da4a3a79116b4583e7fb758a6",
+    "apps/web/lib/appearance.ts": "cee6408d21dec44197d9c793fe125125a559b42cfff3a261ce45c28d55fbc8d1",
+    "apps/web/components/Appearance.tsx": "19fe32d501e804bf9e5925490c539859ce6dc89766dc87fe68f9a83800e6c39e",
+    "apps/web/components/pages/Today.tsx": "e76af9c014a22a9182c7f58d35940ee8abcfff137e9146b4041873278aae0e3b",
+    "apps/macos/PRISM.swift": "df28fbd01f51509a7a8e179d119d34413f3b7a801ff15fcff2498b7ea6963e6f",
+    "scripts/generate-icons.mjs": "148aadbb01759063404f37324ca5c86c8c628d1f8847c98e7e3e617b63166ac4",
+    "scripts/build-macos.mjs": "463f99f419cbca7d269316e5981fedf2a1634bb902fed45aff545f83d9254411",
+    "apps/mobile/src/services/appearance.ts": "2bd14a158bf14885d451e8a8112129a52e76e8f6f5461d1f8417ac40ad5538ab",
+    "apps/mobile/src/ui/theme.tsx": "ed34e057236e29e69eefb2a89250717ea43aff3345adb0aa25298a5205db49ca",
+    "apps/mobile/app.config.ts": "7539c217b988980c8b406b4bf2302615f99e75fd5e6f210bc4d59265d60f71d1"
+  }
+}

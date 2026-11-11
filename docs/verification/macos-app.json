@@ -1,0 +1,27 @@
+{
+  "executed_at": "2026-11-08T12:20:29.642029+00:00",
+  "result": "passed",
+  "installed_app": "~/Applications/PRISM.app",
+  "binary_format": "Mach-O arm64, macOS 13 minimum",
+  "signing": "Ad-hoc local signature verified; not notarized for distribution",
+  "checks": [
+    "Swift AppKit/WebKit native executable compiled",
+    "Native PRISM window loaded Today from verified local launcher",
+    "Quick Capture opened and Escape dismissed it, without saving records",
+    "Native menus, confirmation-sheet and download-destination handlers compiled",
+    "iPhone release-config guards reject missing backend and loopback IPv6, accept configured HTTPS syntax",
+    "Mobile TypeScript passed"
+  ],
+  "limitations": [
+    "Personal local desktop app requires the existing project directory, Node runtime and installed dependencies",
+    "Native confirmation and export save sheets have not received end-to-end data tests",
+    "iPhone signing, TestFlight upload and physical-device acceptance pending Apple/Expo accounts and deployed HTTPS identity/backend"
+  ],
+  "source_sha256": {
+    "apps/macos/PRISM.swift": "e588a731227e54fd05bce3ceb430faf26b1590cf92c4057b1e9fac0237f65752",
+    "scripts/build-macos.mjs": "8951cbc52bb4ce8220802256a2b3c78171fe7198b0916c460416da8a178997a3",
+    "apps/mobile/app.config.ts": "884fee0821960553e2f7e8f4db344da3c76b45630222c249fb12f1e13b15f488",
+    "apps/mobile/eas.json": "31dec026cf1ae866afe31fbd73804249adb424405081f4b71c5f8a54c878c804",
+    "scripts/dev.mjs": "3b4e6054c57995faed701ef533dddcfb0f0633cb5ac26a8de02656867cf4d1f6"
+  }
+}

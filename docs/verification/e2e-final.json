@@ -1,0 +1,80 @@
+{
+  "executed_at": "2026-11-08T12:57:04.667920Z",
+  "result": "passed",
+  "command": "pnpm test:e2e",
+  "summary": {
+    "total": 14,
+    "passed": 14,
+    "failed": 0,
+    "skipped": 0,
+    "duration_seconds": 38.5
+  },
+  "environment": {
+    "node": "24.22.1",
+    "playwright": "1.65.0",
+    "browser": "Chromium headless; desktop and 430px viewport",
+    "web": "http://127.0.0.1:3100",
+    "api": "http://127.0.0.1:4100",
+    "database": "isolated in-memory PGlite PostgreSQL engine"
+  },
+  "checks": [
+    "create theorem, two independent cards, reveal/rate and inspect immutable history",
+    "lost review response retries the exact same operation and commits once",
+    "project → conjecture → scoped evidence → task → audit timeline",
+    "exercise/template → real sets/cardio → complete → edit preserved workout history",
+    "category subscription → scheduled ingestion → save/read → reading task",
+    "capacity, pin, manual reorder, completion and overloaded schedule stay explicit",
+    "quick capture Inbox classification, preferences and private export download",
+    "430px navigation and keyboard modal remain operable without page overflow",
+    "BFF rejects a forged mutation Origin before it reaches product storage",
+    "BFF rejects oversized JSON before forwarding it to the API",
+    "chunked bodies are bounded even when Content-Length is absent or understated",
+    "unrelated task and project edits preserve exact deadline instants across a DST overlap",
+    "logout during a deferred token refresh cannot resurrect the old opaque session",
+    "BFF requires OIDC exp/iat/sub claims and accepts a valid signed ID token"
+  ],
+  "source_sha256": {
+    "tests/e2e/prism.spec.ts": "bc169cacc222d7af0879ed488d99cdb6db84c0b872b3e87f87aa7c592a637188",
+    "tests/e2e/security.spec.ts": "8a09bf0e6cf9bb02af5bbb2e1fe2bb7dcbee14aafa49fa5a0eeabee451b29a1f",
+    "playwright.config.ts": "56540ccacab067c9090ce4b1f4f569d1dd550022c23695ab5bef152a0aa243bd",
+    "apps/web/lib/server-auth.ts": "f11e9cac716f4674f13785446d463ef185afc889b556709a7c3fe7437b2f7670",
+    "apps/web/lib/request-body.ts": "d53b034ce929944d972a2d889e6fc99785bba639e44d6de2d999a5bb4834a1b9",
+    "apps/web/components/Workspace.tsx": "c2d9f46e9a82344c3b553584d1df01931640052bbf09b17e9db56f41c66cbd5d",
+    "apps/web/components/ui.tsx": "4c934076c0113a15a9f6720c6d07aa18d0d09967de490ed20a9a40938b1e2467",
+    "apps/web/components/pages/Today.tsx": "e76af9c014a22a9182c7f58d35940ee8abcfff137e9146b4041873278aae0e3b",
+    "apps/web/components/pages/Knowledge.tsx": "ece43b32215d333ac15c40b02bd5a2c501008de3b1000ca541110ee28a167ae7",
+    "apps/web/components/pages/Research.tsx": "bf06c152383edc0c3ec6b9dceb51f6a092d5568f0f5155b126b254b229500748",
+    "apps/web/components/pages/Fitness.tsx": "2c122ea918719eec8a89f3baff56eaf24cfb1d99859dbb443efaf99fb099c310",
+    "apps/web/components/pages/Discover.tsx": "d8b2cf9a989f17883442bf209157deedd253a37e105b80d7b08d124e705521cd",
+    "apps/web/components/pages/Settings.tsx": "01a8b047fa60c57127d8acbb0fb1d72a2be55df41b71121816f179c87ce1f2a6",
+    "apps/web/lib/api.ts": "bad8096dfd95139294018a471e917172bdd68651b92513074c810ad1735e45d6",
+    "apps/web/app/layout.tsx": "84664302eeab9bda121c530309da9718a0944a0203a35c4ffa1646ac025b1861",
+    "apps/web/app/auth/error/page.tsx": "8db3f2124d7339bf81998c0adc1e74e89a99a2b7a31a331f479fd37cbaedd4b2",
+    "apps/web/app/auth/signed-out/page.tsx": "98cec250c2a0e1e32a6cdcd1ab5c72559fe57de15ed58db3cf61f5640341f300",
+    "apps/web/app/auth/login/route.ts": "885a4464b0f83c26902205b6a27314416ff18ecf26a9272a341df01ecea8b600",
+    "apps/web/app/auth/callback/route.ts": "04751e712134c2a4fb2785e489818a30a2ece882907c0bc90f6c25af25a694e5",
+    "apps/web/app/api/v1/[...path]/route.ts": "ce8848d7345b7eefe7902bba26446c3ec3e6fad301e58ec994280a81f1858ba2",
+    "apps/web/app/globals.css": "80fd56b4d7ca35491801ade963ac3fde69358de3b3d42b6931cdf9154bf1f781",
+    "apps/web/app/appearance.css": "94404fbce19c1b8dfbc63f33ca4f4a98f68245aafdb869518fcb7d4efee739af",
+    "apps/web/lib/appearance.ts": "cee6408d21dec44197d9c793fe125125a559b42cfff3a261ce45c28d55fbc8d1",
+    "apps/web/components/Appearance.tsx": "19fe32d501e804bf9e5925490c539859ce6dc89766dc87fe68f9a83800e6c39e",
+    "apps/web/public/prism-mark.svg": "0bcb6a7af71ded4c45fd0445f9a2b2acca15070eafbf35277b3c83228ab72436"
+  },
+  "artifacts": {
+    "html_report": "output/playwright/report/index.html",
+    "test_sources": "tests/e2e"
+  },
+  "data_safety": "Product commands ran through the real Web BFF and API against a disposable SQL database. Only external arXiv Atom transport used explicit test metadata; no personal development database was used.",
+  "limitations": [
+    "Not a production deployment or live OIDC-provider acceptance test.",
+    "Does not validate native iOS binaries, Apple signing, TestFlight, APNs or real-device offline behavior.",
+    "Uses Chromium viewport checks, not Safari/VoiceOver or a physical iPhone.",
+    "Production PostgreSQL recovery and infrastructure checks are recorded separately.",
+    "This is the local working tree execution; source hashes identify the tested files."
+  ],
+  "ui_language": "English interface; user-entered Unicode notes and titles preserved.",
+  "additional_validation": {
+    "web_typecheck": "passed"
+  },
+  "ui_revision": "Final English interface, system fonts, persistent appearance controls, route entrance animation with WebKit-safe opacity and explicit surfaces, English greeting."
+}

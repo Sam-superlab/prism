@@ -1,0 +1,11 @@
+node_modules
+**/node_modules
+**/.next*
+**/dist
+**/.expo
+.data
+output
+.playwright-cli
+pnpm-lock.yaml
+packages/types/src/api.ts
+apps/mobile/src/ui/katex-css.ts

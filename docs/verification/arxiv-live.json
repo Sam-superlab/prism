@@ -1,0 +1,11 @@
+{
+  "executed_at": "2026-11-08T00:55:27.751Z",
+  "status": "available",
+  "source": "https://export.arxiv.org/api/query",
+  "category": "math.AC",
+  "papers_in_overlap_window": 51,
+  "quarantined": 0,
+  "elapsed_ms": 725,
+  "data_written": false,
+  "limitation": "Point-in-time public source connectivity; future ingestion depends on source availability and hosting network policy"
+}

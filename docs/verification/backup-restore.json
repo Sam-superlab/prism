@@ -1,0 +1,42 @@
+{
+  "executed_at": "2026-11-08T01:10:39.876Z",
+  "result": "passed",
+  "source": "disposable PostgreSQL 17 test fixture",
+  "restored_tables": 42,
+  "elapsed_ms": 864,
+  "populated_tables": [
+    "api_idempotency",
+    "automation_jobs",
+    "devices",
+    "exercises",
+    "exports",
+    "knowledge_items",
+    "outbox_events",
+    "research_events",
+    "research_objects",
+    "research_projects",
+    "review_cards",
+    "review_events",
+    "review_submissions",
+    "scheduler_configs",
+    "sync_change_batches",
+    "sync_snapshots",
+    "user_preferences",
+    "user_sync_state",
+    "users",
+    "workout_session_exercises",
+    "workout_sessions",
+    "workout_sets"
+  ],
+  "checks": [
+    "All table counts and row hashes equal",
+    "Immutable review history restored",
+    "FSRS state restored",
+    "Research audit restored",
+    "Generated weight columns restored",
+    "Old valid signed cursor rejected after generation reset",
+    "Old snapshot resume rejected after restore",
+    "Actual after-restore operator command executed and derived work invalidated"
+  ],
+  "limitation": "Local database restore only; production object storage, secret recovery and offsite encrypted backups require deployment configuration"
+}

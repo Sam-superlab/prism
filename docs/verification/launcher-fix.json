@@ -1,0 +1,29 @@
+{
+  "executed_at": "2026-11-08T01:31:40.890031+00:00",
+  "result": "passed",
+  "issue": "EADDRINUSE on port 3000 when launching PRISM again while its preview was already running",
+  "command": "pnpm test:launcher",
+  "node_test_counts": {
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0,
+    "note": "One parent integration test plus five child scenarios"
+  },
+  "checks": [
+    "Pre-existing legacy preview stayed healthy when port preflight rejected an unowned occupied pair",
+    "Unrelated port 3000 listener remains running; no API started",
+    "Unrelated port 4000 listener remains running; no Web started",
+    "Stale dead-owner record recovered and repeat launch reuses the same live owner",
+    "Simultaneous fresh launches create one owner",
+    "Simultaneous stale-owner recovery is serialized",
+    "Shutdown still closes both owned service groups when metadata writes fail",
+    "Shutdown releases both ports and removes only its own ownership record"
+  ],
+  "isolation": "Integration scenarios use an OS temporary PGlite directory, disabled background worker and no personal records; only processes spawned by the launcher are stopped",
+  "source_sha256": {
+    "scripts/dev.mjs": "ef1052f4ea965f9c602756484c191706e7944d5bf490fbac0bc9bcf208ddf6ce",
+    "start.command": "a867cc2bfa6bf4876c1f5d9882f7c6880a7cd996392875f73c6f185a97953b61",
+    "tests/launcher/launch.test.mjs": "907040666a4d0da7e313ca8b160ffe1caf541310128e00ffde248f4afdf6132d"
+  },
+  "validation_scope": "Targeted launcher regression; unchanged application domain suites are recorded separately in finalchecks.json"
+}

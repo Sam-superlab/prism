@@ -1,0 +1,72 @@
+{
+  "executed_at": "2026-11-08T01:44:11.189982+00:00",
+  "result": "passed",
+  "issue": "Dark Reader adds root and inline SVG attributes before React hydrates the server HTML",
+  "reproduction": {
+    "engine": "Official darkreader npm API 4.9.135",
+    "package_url": "https://registry.npmjs.org/darkreader/-/darkreader-4.9.135.tgz",
+    "integrity_sha512": "h/gmS/KzY8HgmsgOSFh7ssJnsC5ymuhIwZqxksPKCS1K400OUJyjDPZN1L2YIrzX+oezhVUNnCDZPfmPUvdJNA==",
+    "method": "Playwright CLI Chromium; enable official engine as head becomes available, delay application JavaScript by 500 ms to reproduce pre-hydration injection"
+  },
+  "before": {
+    "darkreader_mode": "dynamic",
+    "svg_nodes_with_injected_inline_attributes": 31,
+    "hydration_console_errors": 1,
+    "other_errors": 0
+  },
+  "after": {
+    "darkreader_mode": "dynamic",
+    "svg_nodes_with_injected_inline_attributes": 0,
+    "hydration_console_errors": 0,
+    "other_errors": 0,
+    "computed_icon_stroke_width": "1.6px",
+    "computed_logo_spectrum_stroke_width": "3px"
+  },
+  "change": [
+    "Move shared icons and brand SVG fill/stroke properties into stylesheets so Dark Reader can theme CSS without adding inline DOM attributes",
+    "Tolerate extension-controlled attributes on the html element only; no recursive page suppression, extension opt-out or runtime DOM stripping"
+  ],
+  "checks": [
+    {
+      "check": "Web route type generation and TypeScript",
+      "result": "passed"
+    },
+    {
+      "check": "Existing Playwright product/security suite",
+      "result": "passed",
+      "tests": 14,
+      "duration_seconds": 27.4
+    },
+    {
+      "check": "Next production build in isolated .next-e2e output directory",
+      "result": "passed"
+    },
+    {
+      "check": "Dark Reader quick capture modal opens and Escape closes it without saving records",
+      "result": "passed"
+    },
+    {
+      "check": "Clean browser without Dark Reader",
+      "result": "passed",
+      "hydration_console_errors": 0,
+      "other_errors": 0
+    }
+  ],
+  "source_sha256": {
+    "apps/web/app/layout.tsx": "91a8f9b65c4446c86a129a50d5eaf57822b1aceffee54e96236bd2bdc93f1b63",
+    "apps/web/components/ui.tsx": "3a338b4c3ed831295463f316310408951b80660cc159d31aae9ef5fd3d272296",
+    "apps/web/components/Workspace.tsx": "6ad619e44527c1fd09c8434df7df0df5c8e41f00e36dd7d6c5c37a577c8ce94c",
+    "apps/web/app/globals.css": "dc10723e487a0ac5d0cf8187529da5989cc6904b2ac9e6c71665240e36c7e7bd"
+  },
+  "sources": [
+    "https://nextjs.org/docs/messages/react-hydration-error",
+    "https://react.dev/reference/react-dom/client/hydrateRoot#suppressing-unavoidable-hydration-mismatch-errors",
+    "https://github.com/darkreader/darkreader/blob/main/src/inject/dynamic-theme/inline-style.ts"
+  ],
+  "limitations": [
+    "Uses the official Dark Reader dynamic engine API in Chromium, not the exact browser extension version installed by the user",
+    "Browser extension background/proxy injection is not emulated in full; the root attribute policy covers its reported data-darkreader markers",
+    "Docker daemon was unavailable; the updated source was production-built locally, without rebuilding the previously tagged deployment image"
+  ],
+  "data_safety": "No personal records created or edited during the extension compatibility check; the regular end-to-end suite uses its isolated database"
+}

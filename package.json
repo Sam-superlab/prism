@@ -1,0 +1,44 @@
+{
+  "name": "prism",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24.0.0 <25"
+  },
+  "scripts": {
+    "dev": "node scripts/dev.mjs",
+    "dev:api": "pnpm --filter @prism/api dev",
+    "dev:web": "pnpm --filter @prism/web dev",
+    "dev:mobile": "pnpm --filter @prism/mobile start",
+    "dev:worker": "pnpm --filter @prism/worker dev",
+    "build": "pnpm -r --if-present build",
+    "build:macos": "node scripts/build-macos.mjs",
+    "typecheck": "pnpm --filter @prism/web exec next typegen && pnpm -r --if-present typecheck",
+    "test": "vitest run",
+    "test:api": "pnpm --filter @prism/api test",
+    "test:mobile": "pnpm --filter @prism/mobile test",
+    "test:launcher": "node --test tests/launcher/launch.test.mjs",
+    "generate:types": "openapi-typescript docs/api/openapi.json -o packages/types/src/api.ts",
+    "check": "pnpm typecheck && pnpm test && pnpm test:api && pnpm test:mobile",
+    "test:e2e": "playwright test",
+    "test:postgres": "PRISM_API_TEST_POSTGRES=1 pnpm --filter @prism/api test",
+    "db:migrate": "tsx scripts/database.ts migrate",
+    "db:provision": "tsx scripts/database.ts provision",
+    "db:runtime-role": "tsx scripts/database.ts runtime-role",
+    "verify:restore": "tsx scripts/verify-restore.ts",
+    "verify:containers": "tsx scripts/verify-containers.ts",
+    "verify": "pnpm check && pnpm build && pnpm test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.65.0",
+    "@types/node": "^24.0.0",
+    "npm": "12.2.2",
+    "openapi-typescript": "7.13.0",
+    "prettier": "3.9.10",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.1.0"
+  }
+}

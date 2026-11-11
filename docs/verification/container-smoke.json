@@ -1,0 +1,22 @@
+{
+  "executed_at": "2026-11-08T01:08:58.133Z",
+  "result": "passed",
+  "images": {
+    "api": "sha256:4a806b7858f39c93c2943e05a268f3d65ac708789aa3035d7d49b41df20f4d68",
+    "worker": "sha256:ff40fd7556175c62341a99549f508585d7248f4a86705206703110256ca6128b",
+    "web": "sha256:53569180bf88cc400e1da95a10d1765f0dab944d926929c16553348f7a9727e1"
+  },
+  "checks": [
+    "Production-pruned API image starts as UID 1000 with writable PGlite data directory",
+    "Actual note write/read survives API container restart",
+    "API production configuration fails closed without identity and database credentials",
+    "Production Worker imports declared runtime graph and stays running against non-owner PostgreSQL plus Redis",
+    "Production Next image serves HTML and BFF returns 401 without a session"
+  ],
+  "isolation": "Disposable containers and PostgreSQL fixture; no host ports published; no personal data modified",
+  "limitations": [
+    "API write smoke uses explicit loopback development auth inside its container",
+    "Worker uses an inert issuer; real provider and production TLS are not tested here",
+    "Local Docker Desktop service reachability; not a managed deployment test"
+  ]
+}

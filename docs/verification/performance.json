@@ -1,0 +1,14 @@
+{
+  "executed_at": "2026-11-08T00:55:29.238Z",
+  "status": "passed",
+  "database": "PostgreSQL 17, non-owner RLS role",
+  "fixture_notes": 100,
+  "note_bytes_approx": 1080,
+  "response_records": 50,
+  "samples": 100,
+  "median_ms": 1.65,
+  "p95_ms": 2.79,
+  "max_ms": 3.77,
+  "target_p95_ms": 500,
+  "limitation": "Local Fastify injection includes authorization hooks, SQL, projection and serialization; excludes public TLS/network and production contention. Not an availability SLA."
+}
