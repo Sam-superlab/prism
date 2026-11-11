@@ -65,6 +65,6 @@ jobs:
         shell: pwsh
         run: |
           $root = Join-Path $env:RUNNER_TEMP 'prism-windows-update-smoke'
-          foreach ($pattern in @('startup-error.txt','desktop.log','server-error.log','updater-state.json','update.log')) {
+          foreach ($pattern in @('startup-error.txt','desktop.log','server-error.log','updater-state.json','update.log','install.log')) {
             Get-ChildItem $root -Filter $pattern -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_.Name; Get-Content $_.FullName -Tail 100 }
           }
