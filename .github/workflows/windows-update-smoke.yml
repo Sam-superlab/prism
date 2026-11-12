@@ -7,6 +7,10 @@ on:
         description: Draft release containing the updater fixtures
         required: true
         default: v0.2.6
+      base_tag:
+        description: Existing release containing the base archive (defaults to release_tag)
+        required: false
+        type: string
       base_sha256:
         description: SHA-256 of PRISM-Windows-x64.zip
         required: true
@@ -28,6 +32,7 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
       PRISM_TEST_TAG: ${{ inputs.release_tag }}
+      PRISM_BASE_TAG: ${{ inputs.base_tag || inputs.release_tag }}
       PRISM_BASE_SHA: ${{ inputs.base_sha256 }}
       PRISM_UPDATE_SHA: ${{ inputs.update_sha256 }}
       PRISM_MANIFEST_SHA: ${{ inputs.manifest_sha256 }}
@@ -37,6 +42,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           if ($env:PRISM_TEST_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid release tag' }
+          if ($env:PRISM_BASE_TAG -notmatch '^v\d+\.\d+\.\d+$') { throw 'Invalid base release tag' }
           $work = Join-Path $env:RUNNER_TEMP 'prism-update-inputs'
           New-Item -ItemType Directory -Path $work -Force | Out-Null
           $files = @{
@@ -46,7 +52,8 @@ jobs:
           }
           foreach ($file in $files.Keys) {
             if ($files[$file] -notmatch '^[a-f0-9]{64}$') { throw 'Invalid checksum' }
-            gh release download $env:PRISM_TEST_TAG --repo $env:GITHUB_REPOSITORY --pattern $file --dir $work
+            $tag = if ($file -eq 'PRISM-Windows-x64.zip') { $env:PRISM_BASE_TAG } else { $env:PRISM_TEST_TAG }
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $file --dir $work
             if ($LASTEXITCODE -ne 0) { throw "Could not download $file" }
             if ((Get-FileHash (Join-Path $work $file) -Algorithm SHA256).Hash.ToLowerInvariant() -ne $files[$file]) { throw "Checksum mismatch for $file" }
           }
