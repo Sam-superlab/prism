@@ -15,23 +15,31 @@ import { DiscoverPage } from './pages/Discover';
 import { SettingsPage } from './pages/Settings';
 import { PracticePage } from './pages/Practice';
 import { GettingStarted, useGettingStarted } from './GettingStarted';
+import { WorkspaceGraphPage } from './ConnectionGraph';
 
 const navigation = [
-  { path: 'today', label: 'Today', icon: 'today' },
+  { path: 'today', label: 'Dashboard', icon: 'today' },
   { path: 'knowledge', label: 'Knowledge', icon: 'knowledge' },
   { path: 'practice', label: 'Practice', icon: 'check' },
   { path: 'research', label: 'Research', icon: 'research' },
   { path: 'discover', label: 'Discover', icon: 'discover' },
+  { path: 'graph', label: 'Workspace Graph', icon: 'graph' },
 ];
 const sidebarPreference = 'prism.sidebar.pinned';
 export default function Workspace({
   route,
   studyScope,
   reviewCardId,
+  discoverView,
+  discoverRefresh,
+  researchObjectId,
 }: {
   route: string;
   studyScope: StudyScope;
   reviewCardId?: string;
+  discoverView?: 'for-you';
+  discoverRefresh?: string;
+  researchObjectId?: string;
 }) {
   const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
@@ -56,11 +64,18 @@ export default function Workspace({
     return () => window.removeEventListener('prism:open-focus', openFocus);
   }, [router]);
   const guide = useGettingStarted(me.data?.id, route === 'today');
+  function openInterests() {
+    guide.update({ ...guide.progress, status: 'welcome' });
+  }
+  function openFirstRound(jobId?: string) {
+    const query = new URLSearchParams({ view: 'for-you' });
+    if (jobId) query.set('refresh', jobId);
+    router.push(`/discover?${query}`);
+  }
   const projects = useResource<Page<Project>>('/research/projects?limit=5');
   const active = route === 'review/session' ? 'knowledge' : route.split('/')[0];
   const section = [
     ...navigation,
-    { path: 'planner', label: 'Planner', icon: 'planner' },
     { path: 'settings', label: 'Settings', icon: 'settings' },
   ].find((x) => x.path === active);
   useEffect(() => {
@@ -152,7 +167,7 @@ export default function Workspace({
             }
           }}
         >
-          <Link href="/today" className="brand" aria-label="PRISM Today">
+          <Link href="/today" className="brand" aria-label="PRISM Dashboard">
             <span className="prism-symbol">
               <img src="/prism-mark.svg" width={36} height={36} alt="" />
             </span>
@@ -175,10 +190,6 @@ export default function Workspace({
             ))}
           </nav>
           <div className="sidebar-divider" />
-          <Link className={`nav-link ${active === 'planner' ? 'active' : ''}`} href="/planner">
-            <Icon name="planner" />
-            <span>Planner</span>
-          </Link>
           <div className="sidebar-caption project-caption">
             ACTIVE PROJECTS
             <Link href="/research" aria-label="Manage research projects">
@@ -261,7 +272,7 @@ export default function Workspace({
             </nav>
           </div>
           <div className="topbar-actions">
-            {active !== 'today' && active !== 'planner' && <FocusTimerStatus timer={focusTimer} />}
+            {active !== 'today' && <FocusTimerStatus timer={focusTimer} />}
             <span className={`connection-status ${online ? '' : 'offline'}`}>
               <span />
               {online ? 'Connected' : 'Offline'}
@@ -303,14 +314,20 @@ export default function Workspace({
                     language={guide.language}
                     onLanguageChange={guide.changeLanguage}
                     onCardSaved={reloadToday}
+                    onDiscover={openFirstRound}
                   />
                 )
               }
             />
           )}
-          {active === 'planner' && <TodayPage planner focusTimer={focusTimer} />}
+          {active === 'graph' && <WorkspaceGraphPage />}
           {active === 'knowledge' && route !== 'review/session' && (
-            <KnowledgePage id={route.split('/')[1]} scope={studyScope} />
+            <KnowledgePage
+              id={route.split('/')[1]}
+              scope={studyScope}
+              guideUserId={me.data?.id}
+              guideLanguage={guide.language}
+            />
           )}
           {route === 'review/session' && (
             <ReviewPage
@@ -320,11 +337,39 @@ export default function Workspace({
             />
           )}
           {active === 'practice' && (
-            me.data ? <PracticePage key={me.data.id} userId={me.data.id} /> :
+            me.data ? <PracticePage key={me.data.id} userId={me.data.id} guideLanguage={guide.language} /> :
               me.error ? <ErrorState error={me.error} retry={me.reload} /> : <Loading />
           )}
-          {active === 'research' && <ResearchPage id={route.split('/')[1]} />}
-          {active === 'discover' && <DiscoverPage />}
+          {active === 'research' && (
+            <ResearchPage
+              id={route.split('/')[1]}
+              selectedObjectId={researchObjectId}
+              guideUserId={me.data?.id}
+              guideLanguage={guide.language}
+            />
+          )}
+          {active === 'discover' && (
+            <>
+              <DiscoverPage
+                key={discoverRefresh ?? discoverView ?? 'explore'}
+                initialView={discoverView}
+                initialRefreshJob={discoverRefresh}
+                onOpenInterests={me.data ? openInterests : undefined}
+                guideLanguage={guide.language}
+                userId={me.data?.id}
+              />
+              {guide.progress?.status === 'welcome' && (
+                <GettingStarted
+                  progress={guide.progress}
+                  update={guide.update}
+                  language={guide.language}
+                  onLanguageChange={guide.changeLanguage}
+                  onCardSaved={() => {}}
+                  onDiscover={openFirstRound}
+                />
+              )}
+            </>
+          )}
           {active === 'settings' && (
             <SettingsPage
               focusTimer={focusTimer}
@@ -344,7 +389,7 @@ export default function Workspace({
             <div className="empty-state">
               <h1>Page not found</h1>
               <Link href="/today" className="button primary">
-                Back to Today
+                Back to Dashboard
               </Link>
             </div>
           )}
@@ -499,7 +544,6 @@ function SearchModal({ onClose }: { onClose: () => void }) {
             ))
           : [
               ...navigation,
-              { path: 'planner', label: 'Planner', icon: 'planner' },
               { path: 'settings', label: 'Settings', icon: 'settings' },
             ].map((x) => (
               <Link key={x.path} href={`/${x.path}`} onClick={onClose}>

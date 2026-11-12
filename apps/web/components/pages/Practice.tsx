@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { memo, useEffect, useMemo, useState } from 'react';
 import { api, datetime, useAction, useResource, uuid } from '../../lib/api';
+import type { GuideLanguage } from '../../lib/getting-started-copy';
 import type { Card, Knowledge, Page, ReviewEvent } from '../../lib/types';
 import {
   extractTextbookExercises,
@@ -29,6 +30,8 @@ import {
   type PracticePdf,
 } from '../../lib/textbook-practice';
 import { Empty, ErrorState, Field, Loading, MathContent, Modal, Notice } from '../ui';
+import { ModuleGuide, ModuleGuideHint, useModuleGuide, type ModuleGuideState } from '../ModuleGuide';
+import { exampleExercisePdf } from '../../lib/practice-guide-sample';
 import styles from './Practice.module.css';
 
 function download(blob: Blob, name: string) {
@@ -106,7 +109,7 @@ function rankExercise(exercise: PracticeExercise, lastAttempt?: PracticeAttempt,
   return { score, reasons };
 }
 
-export function PracticePage({ userId }: { userId: string }) {
+export function PracticePage({ userId, guideLanguage }: { userId: string; guideLanguage?: GuideLanguage }) {
   const [library, setLibrary] = useState<PracticeLibrary | null>(null);
   const [loadError, setLoadError] = useState<Error | null>(null);
   const [importing, setImporting] = useState(false);
@@ -116,6 +119,7 @@ export function PracticePage({ userId }: { userId: string }) {
   const [chapter, setChapter] = useState('');
   const [topic, setTopic] = useState('');
   const [queue, setQueue] = useState<string[]>([]);
+  const guide = useModuleGuide('practice', userId, guideLanguage);
   const reviewGaps = useRecentReviewGaps(Boolean(library?.exercises.some((exercise) => exercise.note)));
 
   async function refresh() {
@@ -204,6 +208,7 @@ export function PracticePage({ userId }: { userId: string }) {
           </button>
         </div>
       </header>
+      <ModuleGuide guide={guide} action={() => setImporting(true)} actionDisabled={!library} />
       <p className={`muted small-text ${styles.localNotice}`}>
         Exercises, attempts, and PDFs stay in this browser or desktop profile. Export practice JSON for the
         text and history. Download PDFs separately.
@@ -356,8 +361,10 @@ export function PracticePage({ userId }: { userId: string }) {
       {importing && (
         <ImportExercises
           userId={userId}
+          guide={guide}
           onClose={() => setImporting(false)}
           onSaved={async ({ saved, skipped }) => {
+            if (saved || skipped) guide.finish();
             setImporting(false);
             setMessage(
               `Saved ${saved} exercise${saved === 1 ? '' : 's'}.${skipped ? ` Skipped ${skipped} already saved.` : ''}`,
@@ -648,10 +655,12 @@ type SourceFormat = 'pdf' | 'text' | 'html' | 'url';
 type Candidate = ExerciseCandidate & { include: boolean };
 function ImportExercises({
   userId,
+  guide,
   onClose,
   onSaved,
 }: {
   userId: string;
+  guide: ModuleGuideState;
   onClose: () => void;
   onSaved: (result: { saved: number; skipped: number }) => Promise<void>;
 }) {
@@ -662,6 +671,7 @@ function ImportExercises({
   const [topics, setTopics] = useState('');
   const [text, setText] = useState('');
   const [file, setFile] = useState<File | undefined>();
+  const [sample, setSample] = useState(false);
   const [pdf, setPdf] = useState<PracticePdf>();
   const [from, setFrom] = useState('1');
   const [to, setTo] = useState('1');
@@ -742,6 +752,9 @@ function ImportExercises({
 
   return (
     <Modal title="Import exercises" onClose={action.busy ? () => {} : onClose} wide>
+      <ModuleGuideHint guide={guide}>
+        {candidates ? guide.copy.review : guide.copy.editor.practice}
+      </ModuleGuideHint>
       <form
         className={styles.importBody}
         onSubmit={(event) => {
@@ -751,6 +764,27 @@ function ImportExercises({
       >
         {!candidates ? (
           <>
+            {guide.active && !file && (
+              <button
+                className="button small"
+                type="button"
+                lang={guide.language}
+                disabled={action.busy}
+                onClick={() => {
+                  setBook(guide.copy.sampleBook);
+                  setChapter(guide.copy.sampleChapter);
+                  setFormat('pdf');
+                  setUrl('');
+                  setFrom('1');
+                  setTo('1');
+                  setPdf(undefined);
+                  setFile(exampleExercisePdf());
+                  setSample(true);
+                }}
+              >
+                {guide.copy.sample}
+              </button>
+            )}
             <div className={styles.pageGrid}>
               <Field label="Book title">
                 <input
@@ -777,6 +811,7 @@ function ImportExercises({
                   setFormat(event.target.value as SourceFormat);
                   setFile(undefined);
                   setPdf(undefined);
+                  setSample(false);
                 }}
               >
                 <option value="pdf">Selectable-text PDF</option>
@@ -805,6 +840,7 @@ function ImportExercises({
                     onChange={(event) => {
                       setFile(event.target.files?.[0]);
                       setPdf(undefined);
+                      setSample(false);
                     }}
                   />
                 </Field>
@@ -985,12 +1021,15 @@ function ImportExercises({
           )}
           <button
             className="button primary"
+            lang={sample && candidates ? guide.language : undefined}
             disabled={action.busy || Boolean(candidates && !candidates.some((exercise) => exercise.include))}
           >
             {candidates
               ? action.busy
                 ? 'Saving…'
-                : 'Save selected exercises'
+                : sample
+                  ? guide.copy.keep
+                  : 'Save selected exercises'
               : action.busy
                 ? 'Reading section…'
                 : 'Preview exercises'}

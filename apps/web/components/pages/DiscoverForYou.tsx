@@ -31,12 +31,20 @@ const decisions: { action: Decision; label: string }[] = [
 ];
 const dateFormat = new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeZone: 'UTC' });
 
+const firstRoundTip = {
+  en: 'Interested helps me learn what you like. Save keeps the paper in Explore for later.',
+  'zh-CN': '点 Interested 告诉我你喜欢什么，点 Save 可以把论文留在 Explore 里以后读。',
+  ja: '「Interested」で興味を教えてね。「Save」を押すと、あとで Explore から論文を読めるよ。',
+};
+
 export function DiscoverForYou({
   onExplore,
   onLinkResearch,
+  firstRoundGuideLanguage,
 }: {
   onExplore: () => void;
   onLinkResearch: (paper: UserPaper) => void;
+  firstRoundGuideLanguage?: keyof typeof firstRoundTip;
 }) {
   const queue = useResource<DailyQueue>('/arxiv/for-you');
   const action = useAction();
@@ -154,6 +162,11 @@ export function DiscoverForYou({
                   <span className="eyebrow">WHY THIS PAPER</span>
                   <p>{current.reason}</p>
                 </div>
+                {firstRoundGuideLanguage && data.round === 1 && completed === 0 && (
+                  <p className="muted small-text" lang={firstRoundGuideLanguage}>
+                    {firstRoundTip[firstRoundGuideLanguage]}
+                  </p>
+                )}
                 <div className={styles.decisions} aria-label="Paper feedback" role="group">
                   {decisions.map(({ action: decision, label }) => (
                     <button

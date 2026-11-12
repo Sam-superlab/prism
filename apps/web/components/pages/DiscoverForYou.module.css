@@ -2,6 +2,12 @@
   display: none;
 }
 
+.folderTab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
 .queue,
 .keywords {
   min-width: 0;

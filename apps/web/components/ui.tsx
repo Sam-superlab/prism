@@ -44,6 +44,15 @@ const icons: Record<string, ReactNode> = {
       <path d="m16 8-3 5-5 3 3-5z" />
     </>
   ),
+  graph: (
+    <>
+      <path d="m8 6 7 3m-8 0-2 7m12-4 2 5m-9 2h6" />
+      <circle cx="7" cy="6" r="2.5" />
+      <circle cx="17" cy="10" r="2.5" />
+      <circle cx="6" cy="19" r="2.5" />
+      <circle cx="19" cy="19" r="2.5" />
+    </>
+  ),
   planner: (
     <>
       <rect x="3" y="4" width="18" height="17" rx="3" />
@@ -287,17 +296,34 @@ function Formula({ latex, display }: { latex: string; display: boolean }) {
 
 const sourceImagePath = /^\/knowledge-sources\/(?:[\w-]+\/)*[\w-]+\.(?:png|jpe?g|webp|gif|avif)$/i;
 
+type MarkdownNode = { type: string; value?: string; children?: MarkdownNode[] };
+function remarkCitations(citations: Record<string, string>) {
+  return (tree: MarkdownNode) => {
+    function visit(node: MarkdownNode) {
+      if (node.type === 'text' && node.value) {
+        node.value = node.value.replace(/\[@([a-z0-9./-]+)\]/gi, (token, key: string) =>
+          Object.hasOwn(citations, key) ? `(${citations[key]})` : token,
+        );
+      }
+      node.children?.forEach(visit);
+    }
+    visit(tree);
+  };
+}
+
 export const KnowledgeMarkdown = memo(function KnowledgeMarkdown({
   content,
   className = '',
+  citations,
 }: {
   content: string;
   className?: string;
+  citations?: Record<string, string>;
 }) {
   return (
     <div className={['math-content', markdownStyles.prose, className].filter(Boolean).join(' ')}>
       <Markdown
-        remarkPlugins={[remarkMath]}
+        remarkPlugins={citations ? [remarkMath, [remarkCitations, citations]] : [remarkMath]}
         components={{
           code({ className, children, node }) {
             const classes = className?.split(' ') || [];

@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, datetime, useAction, useResource } from '../../lib/api';
 import { guideCopy, type GuideLanguage } from '../../lib/getting-started-copy';
@@ -12,6 +13,7 @@ import {
 import { Badge, ErrorState, Field, Icon, Loading, Modal, Notice } from '../ui';
 import { AppearancePanel } from '../Appearance';
 import { GuideLanguageSelect } from '../GettingStarted';
+import { moduleGuideCopy } from '../ModuleGuide';
 import type { FocusTimerController } from './FocusTimer';
 import styles from './Settings.module.css';
 
@@ -147,6 +149,13 @@ export function SettingsPage({
               <button className="button" onClick={onOpenGuide} disabled={!onOpenGuide}>
                 {guide.settingsLink} <Icon name="arrow" size={16} />
               </button>
+            </div>
+            <div className="inline-actions">
+              {(['knowledge', 'practice', 'research'] as const).map((module) => (
+                <Link key={module} href={`/${module}?guide=1`} className="text-link">
+                  {moduleGuideCopy[guideLanguage].title[module]}
+                </Link>
+              ))}
             </div>
           </section>
           <section className="panel content-panel" aria-labelledby="data-export">
@@ -516,16 +525,16 @@ function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences
         />
       </Field>
       <div className="content-divider" />
-      <label className="check-label">
-        <input type="checkbox" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
-        Daily arXiv digest
+      <label className="appearance-row switch-row">
+        <span className="appearance-label">Daily arXiv digest</span>
+        <input type="checkbox" role="switch" checked={digest} onChange={(e) => setDigest(e.target.checked)} />
       </label>
       <Field label="Digest time (local time)">
         <input type="time" required value={digestTime} onChange={(e) => setDigestTime(e.target.value)} />
       </Field>
-      <label className="check-label">
-        <input type="checkbox" checked={push} onChange={(e) => setPush(e.target.checked)} />
-        Send push notifications to registered mobile devices
+      <label className="appearance-row switch-row">
+        <span className="appearance-label">Send push notifications to registered mobile devices</span>
+        <input type="checkbox" role="switch" checked={push} onChange={(e) => setPush(e.target.checked)} />
       </label>
       <div className="form-grid">
         <Field label="Quiet hours start">

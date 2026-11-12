@@ -27,6 +27,7 @@ import { activeArxivSubscriptions, arxivSubscriptionKey, enqueueArxivIngestion }
 import { buildArxivDeck } from './arxiv-for-you';
 import { arxivResearchContext } from './arxiv-research-context';
 import { DailyReviewDrafts } from './daily-review-drafts';
+import { workspaceGraph } from './workspace-graph';
 import type { ApiConfig } from './config';
 export interface Command {
   userId: string;
@@ -725,6 +726,25 @@ export class PrismService {
     if (table === 'research_knowledge_links' && Boolean(body.project_id) === Boolean(body.research_object_id))
       throw validation('Choose one research project or research object.');
     await this.validateRefs(ctx, body);
+    if (table === 'research_references') {
+      body.title = String(body.title ?? '').trim();
+      if (!body.title) throw validation('Enter a reference title.');
+      body.authors = (body.authors ?? []).map((author: string) => author.trim()).filter(Boolean);
+      if (body.doi) body.doi = body.doi.toLowerCase();
+      if (body.arxiv_id) body.arxiv_id = body.arxiv_id.toLowerCase();
+      if (body.url) {
+        let url: URL;
+        try {
+          url = new URL(body.url);
+        } catch {
+          throw validation('Enter a valid reference URL.');
+        }
+        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password)
+          throw validation('Use an HTTP or HTTPS URL without credentials.');
+        if (url.href.length > 2000) throw validation('Reference URLs must be at most 2,000 characters.');
+        body.url = url.href;
+      }
+    }
     if (table === 'arxiv_subscriptions' && body.subscription_type === 'category') {
       const category = normalizeArxivCategory(body.subscription_value);
       if (!category) throw validation('Enter an arXiv category such as math.AG');
@@ -784,7 +804,17 @@ export class PrismService {
       body.session_id = ex.session_id;
       body.exercise_id = ex.exercise_id;
     }
-    const row = await this.insert(ctx.sql, table, body, ctx.userId);
+    const row = await this.insert(ctx.sql, table, body, ctx.userId).catch((error) => {
+      if (
+        table === 'research_references' &&
+        error?.code === '23505' &&
+        ['research_references_doi', 'research_references_arxiv', 'research_references_zotero'].includes(
+          error.constraint,
+        )
+      )
+        throw new ApiError(409, 'VALIDATION_ERROR', 'This reference is already in the project.');
+      throw error;
+    });
     if (table === 'workout_templates' && Array.isArray(exercises)) {
       for (const ex of exercises) {
         await this.validateRefs(ctx, ex);
@@ -942,6 +972,7 @@ export class PrismService {
       research_projects: [
         ['research_objects', 'project_id'],
         ['research_paper_links', 'project_id'],
+        ['research_references', 'project_id'],
         ['research_knowledge_links', 'project_id'],
       ],
       research_objects: [['research_knowledge_links', 'research_object_id']],
@@ -1808,6 +1839,7 @@ export class PrismService {
         return this.serialize(sql, userId, table, row);
       }
       if (p === 'today') return this.today(sql, userId, query.date);
+      if (p === 'graph') return workspaceGraph(sql, userId, query);
       if (p === 'today/shutdown') return this.shutdown(sql, userId, query.date);
       if (p === 'knowledge-subjects') {
         const { rows } = await sql.query(
@@ -1893,6 +1925,28 @@ export class PrismService {
           return this.list(sql, userId, 'research_objects', query, { project_id: parts[2] });
         if (parts[3] === 'timeline')
           return this.list(sql, userId, 'research_events', query, { project_id: parts[2] });
+        if (parts[3] === 'bibliography') {
+          const args = [userId, parts[2]];
+          const saved = await sql.query(
+            `SELECT r.id,r.version::text,r.title,r.authors,r.year,r.doi,r.url,r.arxiv_id,r.zotero_key,
+                    'reference' AS kind
+             FROM research_references r
+             WHERE r.user_id=$1 AND r.project_id=$2 AND r.deleted_at IS NULL`,
+            args,
+          );
+          const linked = await sql.query(
+            `SELECT l.id,l.version::text,p.title,p.authors,EXTRACT(YEAR FROM p.published_at AT TIME ZONE 'UTC')::int AS year,
+                    NULL AS doi,p.arxiv_id,p.source_url AS url,NULL AS zotero_key,'arxiv' AS kind
+             FROM research_paper_links l JOIN arxiv_papers p ON p.id=l.paper_id
+             WHERE l.user_id=$1 AND l.project_id=$2 AND l.deleted_at IS NULL`,
+            args,
+          );
+          return {
+            items: [...saved.rows, ...linked.rows].sort(
+              (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
+            ),
+          };
+        }
       }
       if (p === 'fitness/progression') return this.progression(sql, userId, query);
       if (p === 'arxiv/feed') return this.feed(sql, userId, query);
@@ -2066,6 +2120,16 @@ export class PrismService {
       params.push(q.reaction);
       where += ` AND u.for_you_reaction=$${params.length}`;
     }
+    const search = typeof q.q === 'string' ? q.q.trim() || undefined : undefined;
+    if (search) {
+      params.push(search);
+      where += ` AND strpos(lower(concat_ws(' ',p.title,array_to_string(p.authors,' '),p.arxiv_id,p.abstract)),lower($${params.length}::text))>0`;
+    }
+    const ids = typeof q.ids === 'string' ? [...new Set(q.ids.toLowerCase().split(','))].sort() : undefined;
+    if (ids) {
+      params.push(ids);
+      where += ` AND u.id=ANY($${params.length}::uuid[])`;
+    }
     if (q.status === 'unread' && q.saved !== true && q.saved !== 'true') {
       const subscriptions = await activeArxivSubscriptions(sql, userId);
       subscriptionKey = arxivSubscriptionKey(subscriptions);
@@ -2080,7 +2144,7 @@ export class PrismService {
       score = 'active_matches.score';
       where += ` AND ${score}>0`;
     }
-    const bind = hash({ status: q.status, saved: q.saved, reaction: q.reaction, subscriptionKey });
+    const bind = hash({ status: q.status, saved: q.saved, reaction: q.reaction, subscriptionKey, search, ids });
     if (q.cursor) {
       const c = this.decode(q.cursor, userId, 'feed');
       if (c.binding !== bind) throw validation('Cursor filters changed');

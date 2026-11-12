@@ -13,12 +13,8 @@ export function normalizeGuideLanguage(value: unknown): GuideLanguage | undefine
 const english = {
   language: 'Tutorial language',
   welcome: 'Welcome to PRISM',
-  welcomeDetail:
-    'Keep your study notes, research, and reading in one place. The checklist also shows how to import PDF exercises and adjust the workspace appearance.',
   skip: 'Skip for now',
   tryExample: 'Try an example',
-  firstNote: 'Create your first note',
-  viewChecklist: 'View checklist',
   close: 'Close',
   gettingStarted: 'Getting started',
   firstReviewDone: 'You finished your first review',
@@ -76,12 +72,8 @@ export const guideCopy: Record<GuideLanguage, GuideCopy> = {
   'zh-CN': {
     language: '教程语言',
     welcome: '欢迎使用 PRISM',
-    welcomeDetail:
-      '把学习笔记、研究资料和阅读清单放在同一个工作区。入门清单也会介绍如何从 PDF 导入习题，以及如何调整工作区外观。',
     skip: '暂时跳过',
     tryExample: '试用示例',
-    firstNote: '创建第一条笔记',
-    viewChecklist: '查看入门清单',
     close: '关闭',
     gettingStarted: '入门指南',
     firstReviewDone: '已完成第一次复习',
@@ -133,12 +125,8 @@ export const guideCopy: Record<GuideLanguage, GuideCopy> = {
   ja: {
     language: 'ガイドの言語',
     welcome: 'PRISM へようこそ',
-    welcomeDetail:
-      '学習ノート、研究資料、読みたい文献をひとつのワークスペースで管理できます。チェックリストでは、PDF から練習問題を取り込む方法や外観の設定も紹介します。',
     skip: '今はスキップ',
     tryExample: 'サンプルを試す',
-    firstNote: '最初のノートを作成',
-    viewChecklist: 'チェックリストを見る',
     close: '閉じる',
     gettingStarted: 'はじめてのガイド',
     firstReviewDone: '最初の復習が完了しました',

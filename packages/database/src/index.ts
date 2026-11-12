@@ -158,6 +158,32 @@ export class Database implements Sql {
       );
       await this.applyIncrementalMigration(ddl);
     }
+    const researchReferences = await this.query<{ present: boolean }>(
+      "SELECT to_regclass('prism.research_references') IS NOT NULL AS present",
+    );
+    if (!researchReferences.rows[0]?.present) {
+      if (this.options.production)
+        throw new Error('Apply the research references migration with pnpm db:migrate.');
+      const ddl = await readFile(
+        new URL('../../../database/migrations/007_research_references.sql', import.meta.url),
+        'utf8',
+      );
+      await this.applyIncrementalMigration(ddl);
+    }
+    const referenceArxivIdentifiers = await this.query<{ present: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='prism'
+          AND table_name='research_references' AND column_name='arxiv_id')
+        AND to_regclass('prism.research_references_arxiv') IS NOT NULL present`,
+    );
+    if (!referenceArxivIdentifiers.rows[0]?.present) {
+      if (this.options.production)
+        throw new Error('Apply the reference arXiv identifiers migration with pnpm db:migrate.');
+      const ddl = await readFile(
+        new URL('../../../database/migrations/008_reference_arxiv_identifiers.sql', import.meta.url),
+        'utf8',
+      );
+      await this.applyIncrementalMigration(ddl);
+    }
     if (this.options.production) {
       const result = await this.query<{ unsafe: boolean }>(
         "SELECT r.rolsuper OR r.rolbypassrls OR EXISTS(SELECT 1 FROM pg_tables WHERE schemaname='prism' AND tableowner=current_user) unsafe FROM pg_roles r WHERE r.rolname=current_user",

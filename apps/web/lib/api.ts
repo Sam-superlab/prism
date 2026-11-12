@@ -94,6 +94,14 @@ export async function api<T>(
       payload?.error?.details || {},
     );
   }
+  if (
+    method !== 'GET' &&
+    typeof window !== 'undefined' &&
+    /^\/(?:knowledge-items(?:\/[^/]+)?$|knowledge-relations(?:\/|$)|research\/(?:projects|objects|knowledge-links|paper-links|references)(?:\/|$)|arxiv\/(?:papers\/|for-you\/reaction$))/.test(
+      path,
+    )
+  )
+    window.dispatchEvent(new Event('prism:graph-changed'));
   if (response.status === 204) return undefined as T;
   const payload = await response.json();
   if (path === '/me' && payload?.timezone) selectedTimezone = payload.timezone;

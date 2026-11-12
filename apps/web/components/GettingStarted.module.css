@@ -1,11 +1,81 @@
-.welcome {
-  display: grid;
-  justify-items: start;
+.pipIntro {
+  display: flex;
+  align-items: center;
   gap: 0.75rem;
-  margin-block: 0.5rem 1.25rem;
+  margin-block: 0.5rem 0.75rem;
 }
 
-.welcome p,
+.pipIntro > button {
+  flex: 0 0 min(6.25rem, 27%);
+  color: var(--accent-ink, var(--accent));
+}
+
+.pipIntro p {
+  margin: 0 0 0.35rem;
+}
+
+.pipIntro h3,
+.areaGroup h4 {
+  margin: 0;
+}
+
+.interestLanguage {
+  margin-block-end: 1rem;
+}
+
+.interestChoices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.interestChoice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  min-block-size: 2.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.6rem;
+  background: var(--panel);
+  color: var(--ink);
+  text-align: start;
+}
+
+.interestChoice:not(:disabled):hover {
+  background: var(--surface-secondary);
+}
+
+.interestChoice[aria-pressed='true'] {
+  border-color: var(--accent-ink, var(--accent));
+  color: var(--accent-ink, var(--accent));
+}
+
+.interestChoice svg {
+  flex-shrink: 0;
+}
+
+.interestCount {
+  margin-block: 0.25rem 0.5rem;
+  font-size: 0.875em;
+  color: var(--muted);
+}
+
+.areaList {
+  display: grid;
+  gap: 0.85rem;
+  max-block-size: min(16rem, 33dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.25rem;
+}
+
+.areaGroup {
+  display: grid;
+  gap: 0.45rem;
+}
+
 .step p {
   margin: 0;
 }

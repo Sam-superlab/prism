@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useEffect, useState, type ReactNode } from 'react';
 import {
   api,
   datetime,
@@ -11,15 +12,31 @@ import {
   uuid,
 } from '../../lib/api';
 import type { Entity, Knowledge, Page, Project, ResearchEvent, ResearchObject, Task } from '../../lib/types';
+import type { GuideLanguage } from '../../lib/getting-started-copy';
+import { ConnectionGraph } from '../ConnectionGraph';
+import { ModuleGuide, ModuleGuideHint, useModuleGuide, type ModuleGuideState } from '../ModuleGuide';
 import { ProjectMaterials } from '../ResearchLinks';
+import { CitationField, ResearchMarkdown, ResearchReferences, useProjectBibliography } from '../ResearchReferences';
+import type { BibliographyItem } from '../../lib/zotero-reference';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, MathContent, Modal, Notice, label } from '../ui';
 import { TaskModal } from './Today';
 
-export function ResearchPage({ id }: { id?: string }) {
-  const projects = useResource<Page<Project>>('/research/projects?limit=100');
-  const [create, setCreate] = useState(false);
+export function ResearchPage({
+  id,
+  selectedObjectId,
+  guideUserId,
+  guideLanguage,
+}: {
+  id?: string;
+  selectedObjectId?: string;
+  guideUserId?: string;
+  guideLanguage?: GuideLanguage;
+}) {
+  const projects = useResource<Page<Project>>(id ? null : '/research/projects?limit=100');
+  const [create, setCreate] = useState<'regular' | 'guided'>();
   const [filter, setFilter] = useState('active');
-  if (id) return <ProjectDetail id={id} />;
+  const guide = useModuleGuide('research', guideUserId, guideLanguage);
+  if (id) return <ProjectDetail id={id} selectedObjectId={selectedObjectId} userId={guideUserId} guide={guide} />;
   const items = projects.data?.items.filter((x) => filter === 'all' || x.status === filter) || [];
   return (
     <>
@@ -28,11 +45,17 @@ export function ResearchPage({ id }: { id?: string }) {
           <span className="eyebrow">RESEARCH WORKSPACE</span>
           <h1>Research</h1>
         </div>
-        <button className="button primary" onClick={() => setCreate(true)}>
+        <button className="button primary" onClick={() => setCreate('regular')}>
           <Icon name="plus" size={17} />
           New research project
         </button>
       </div>
+      <ModuleGuide
+        guide={guide}
+        continuation={guide.progress?.itemId ? 'research' : undefined}
+        href={guide.progress?.itemId ? `/research/${guide.progress.itemId}` : undefined}
+        action={() => setCreate('guided')}
+      />
       <div className="collection-toolbar">
         <div className="tabs">
           {[
@@ -56,7 +79,7 @@ export function ResearchPage({ id }: { id?: string }) {
             icon="research"
             title="Every project starts with a question"
             action={
-              <button className="button primary" onClick={() => setCreate(true)}>
+              <button className="button primary" onClick={() => setCreate('regular')}>
                 Create a research project
               </button>
             }
@@ -88,9 +111,15 @@ export function ResearchPage({ id }: { id?: string }) {
       </div>
       {create && (
         <ProjectEditor
-          onClose={() => setCreate(false)}
+          guideHint={
+            create === 'guided' && (
+              <ModuleGuideHint guide={guide}>{guide.copy.editor.research}</ModuleGuideHint>
+            )
+          }
+          onClose={() => setCreate(undefined)}
           onSaved={(p) => {
-            setCreate(false);
+            if (create === 'guided' || !guide.progress?.itemId) guide.continueWith(p.id);
+            setCreate(undefined);
             window.location.href = `/research/${p.id}`;
           }}
         />
@@ -98,7 +127,20 @@ export function ResearchPage({ id }: { id?: string }) {
     </>
   );
 }
-function ProjectDetail({ id }: { id: string }) {
+function ProjectDetail({
+  id,
+  selectedObjectId,
+  userId,
+  guide,
+}: {
+  id: string;
+  selectedObjectId?: string;
+  userId?: string;
+  guide: ModuleGuideState;
+}) {
+  const router = useRouter();
+  const bibliography = useProjectBibliography(id);
+  const references = bibliography.data?.items ?? [];
   const project = useResource<Project>(`/research/projects/${id}`);
   const objects = useResource<Page<ResearchObject>>(`/research/projects/${id}/objects?limit=100`);
   const tasks = useResource<Page<Task>>(`/tasks?project_id=${id}&limit=100`);
@@ -110,11 +152,27 @@ function ProjectDetail({ id }: { id: string }) {
   const [edit, setEdit] = useState(false);
   const [objectEditor, setObjectEditor] = useState<ResearchObject | 'new' | null>(null);
   const [selected, setSelected] = useState<ResearchObject | null>(null);
+  const selectedObject = useResource<ResearchObject>(
+    selectedObjectId ? `/research/objects/${selectedObjectId}` : null,
+  ).data;
+  useEffect(() => {
+    if (!selectedObjectId) setSelected(null);
+    else if (selectedObject?.id === selectedObjectId && selectedObject.project_id === id)
+      setSelected(selectedObject);
+  }, [id, selectedObjectId, selectedObject]);
   const [task, setTask] = useState(false);
   const [taskObject, setTaskObject] = useState<string | undefined>();
   const [tab, setTab] = useState('objects');
   const [knowledgeLink, setKnowledgeLink] = useState<ResearchObject | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
+  const [materialPicker, setMaterialPicker] = useState<'knowledge' | 'paper' | null>(null);
+  function closeSelected() {
+    setSelected(null);
+    const url = new URL(window.location.href);
+    if (!url.searchParams.has('object')) return;
+    url.searchParams.delete('object');
+    router.replace(`${url.pathname}${url.search}${url.hash}`, { scroll: false });
+  }
   const refresh = () => {
     project.reload();
     objects.reload();
@@ -166,6 +224,12 @@ function ProjectDetail({ id }: { id: string }) {
           </button>
         </div>
       </div>
+      {guide.progress?.itemId === id && (
+        <ModuleGuide guide={guide} continuation="research" action={() => setMaterialPicker('knowledge')} />
+      )}
+      {guide.progress && !guide.progress.itemId && guide.progress.status !== 'completed' && (
+        <ModuleGuide guide={guide} href="/research" />
+      )}
       <div className="project-info-strip">
         <span>
           <Icon name="clock" size={15} />
@@ -365,10 +429,11 @@ function ProjectDetail({ id }: { id: string }) {
             )}
             {tab === 'notes' && (
               <div className="content-panel">
-                <MathContent
+                <ResearchMarkdown
                   content={
                     p.notes || 'No project notes yet. Keep context, ideas, and reference locations here.'
                   }
+                  references={references}
                 />
                 {p.source_code_locations.length > 0 && (
                   <div className="source-reference">
@@ -381,7 +446,30 @@ function ProjectDetail({ id }: { id: string }) {
           </section>
         </div>
         <aside>
-          <ProjectMaterials projectId={id} />
+          <ProjectMaterials
+            projectId={id}
+            userId={userId}
+            onPaperLinksChanged={bibliography.reload}
+            pickerOpen={!!materialPicker}
+            pickerKind={materialPicker ?? undefined}
+            onOpenPicker={() => setMaterialPicker('knowledge')}
+            onClosePicker={() => setMaterialPicker(null)}
+            guideHint={
+              guide.progress?.itemId === id && (
+                <ModuleGuideHint guide={guide}>{guide.copy.next.research}</ModuleGuideHint>
+              )
+            }
+            onLinked={() => {
+              if (guide.progress?.itemId === id) guide.finish();
+              setMaterialPicker(null);
+            }}
+          />
+          <ResearchReferences
+            projectId={id}
+            bibliography={bibliography}
+            onAddPaper={() => setMaterialPicker('paper')}
+          />
+          <ConnectionGraph focus={`project:${id}`} />
           <section className="panel timeline-panel">
             <div className="panel-heading">
               <h2>Research timeline</h2>
@@ -424,6 +512,7 @@ function ProjectDetail({ id }: { id: string }) {
       {edit && (
         <ProjectEditor
           project={p}
+          references={references}
           onClose={() => setEdit(false)}
           onSaved={() => {
             setEdit(false);
@@ -434,6 +523,7 @@ function ProjectDetail({ id }: { id: string }) {
       {objectEditor && (
         <ObjectEditor
           projectId={id}
+          references={references}
           object={objectEditor === 'new' ? undefined : objectEditor}
           onClose={() => setObjectEditor(null)}
           onSaved={() => {
@@ -456,7 +546,7 @@ function ProjectDetail({ id }: { id: string }) {
         />
       )}
       {selected && (
-        <Modal title={selected.title} onClose={() => setSelected(null)} wide>
+        <Modal title={selected.title} onClose={closeSelected} wide>
           <div className="inline-actions">
             <Badge tone="blue">{label(selected.object_type)}</Badge>
             <Badge tone={selected.claim_status === 'proved' ? 'green' : 'purple'}>
@@ -464,11 +554,11 @@ function ProjectDetail({ id }: { id: string }) {
             </Badge>
           </div>
           <div className="object-detail-content">
-            <MathContent content={selected.content} />
+            <ResearchMarkdown content={selected.content} references={references} />
             {selected.proof_content && (
               <>
                 <h3>Proof / Explanation</h3>
-                <MathContent content={selected.proof_content} />
+                <ResearchMarkdown content={selected.proof_content} references={references} />
               </>
             )}
             {Object.keys(selected.evidence_metadata).length > 0 && (
@@ -507,6 +597,7 @@ function ProjectDetail({ id }: { id: string }) {
                 </button>
               </div>
             ))}
+          <ConnectionGraph key={selected.id} focus={`research:${selected.id}`} inset />
           <div className="modal-footer">
             <button className="button small" onClick={() => setKnowledgeLink(selected)}>
               Related knowledge
@@ -520,7 +611,7 @@ function ProjectDetail({ id }: { id: string }) {
                       method: 'DELETE',
                       version: selected.version,
                     });
-                    setSelected(null);
+                    closeSelected();
                   });
               }}
             >
@@ -530,7 +621,7 @@ function ProjectDetail({ id }: { id: string }) {
               className="button primary"
               onClick={() => {
                 setObjectEditor(selected);
-                setSelected(null);
+                closeSelected();
               }}
             >
               Edit object
@@ -553,10 +644,14 @@ function ProjectDetail({ id }: { id: string }) {
 }
 function ProjectEditor({
   project,
+  guideHint,
+  references = [],
   onClose,
   onSaved,
 }: {
   project?: Project;
+  guideHint?: ReactNode;
+  references?: BibliographyItem[];
   onClose: () => void;
   onSaved: (p: Project) => void;
 }) {
@@ -573,6 +668,7 @@ function ProjectEditor({
   const action = useAction();
   return (
     <Modal title={project ? 'Edit research project' : 'New research project'} onClose={onClose} wide>
+      {guideHint}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -652,14 +748,7 @@ function ProjectEditor({
             />
           </Field>
         </div>
-        <Field label="Project notes">
-          <textarea
-            rows={5}
-            className="code-editor"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-          />
-        </Field>
+        <CitationField label="Project notes" rows={5} value={notes} onChange={setNotes} references={references} preview />
         <Field label="Code locations (one per line)">
           <textarea
             rows={2}
@@ -684,11 +773,13 @@ function ProjectEditor({
 function ObjectEditor({
   projectId,
   object,
+  references,
   onClose,
   onSaved,
 }: {
   projectId: string;
   object?: ResearchObject;
+  references: BibliographyItem[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -701,7 +792,6 @@ function ObjectEditor({
   const [reference, setReference] = useState(object?.evidence_reference || '');
   const [scope, setScope] = useState(String(object?.evidence_metadata.scope || ''));
   const [result, setResult] = useState(String(object?.evidence_metadata.result || ''));
-  const [preview, setPreview] = useState(false);
   const action = useAction(onSaved);
   return (
     <Modal title={object ? 'Edit research object' : 'Add research object'} onClose={onClose} wide>
@@ -758,27 +848,7 @@ function ObjectEditor({
             </select>
           </Field>
         </div>
-        <div className="editor-toolbar">
-          <span>MATHEMATICAL CONTENT</span>
-          <button type="button" className="text-link" onClick={() => setPreview(!preview)}>
-            {preview ? 'Edit' : 'Rendered preview'}
-          </button>
-        </div>
-        {preview ? (
-          <div className="math-preview">
-            <MathContent content={content} />
-          </div>
-        ) : (
-          <Field label="Content">
-            <textarea
-              required
-              className="code-editor"
-              rows={6}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-            />
-          </Field>
-        )}
+        <CitationField label="Content" rows={6} value={content} onChange={setContent} references={references} required preview />
         <Field label="Mathematical claim status">
           <select value={claim} onChange={(e) => setClaim(e.target.value)}>
             {['needs_verification', 'conjecture', 'computationally_verified', 'proved', 'disproved'].map(
@@ -812,14 +882,7 @@ function ObjectEditor({
             </Field>
           </div>
         )}
-        <Field label="Proof text / proof attempt">
-          <textarea
-            rows={5}
-            className="code-editor"
-            value={proof}
-            onChange={(e) => setProof(e.target.value)}
-          />
-        </Field>
+        <CitationField label="Proof text / proof attempt" rows={5} value={proof} onChange={setProof} references={references} preview />
         <Field label="Proof or evidence reference">
           <input
             value={reference}

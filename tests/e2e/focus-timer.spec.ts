@@ -64,6 +64,8 @@ test('persists muted reminders and desktop companion visibility', async ({ page 
   const sound = settings.getByRole('switch', { name: /Timer sound/ });
   const pet = settings.getByRole('switch', { name: /Desktop companion/ });
   await expect(pet).toBeChecked();
+  const settingsSwitch = (await pet.boundingBox())!;
+  expect(settingsSwitch.width).toBeGreaterThan(settingsSwitch.height * 1.6);
   await sound.uncheck();
   await pet.check();
   await expect(page.locator('html')).toHaveAttribute('data-test-focus', /"sound":false.*"pet":true/);
@@ -75,6 +77,15 @@ test('persists muted reminders and desktop companion visibility', async ({ page 
   await expect(page.locator('html')).toHaveAttribute('data-test-focus', /"sound":false.*"pet":false/);
   await page.reload();
   await expect(pet).not.toBeChecked();
+  await page.goto('/today');
+  const timerPet = page.getByRole('switch', { name: 'Pip desktop companion' });
+  await expect(timerPet).not.toBeChecked();
+  const timerSwitch = (await timerPet.boundingBox())!;
+  expect(timerSwitch.width).toBeGreaterThan(timerSwitch.height * 1.6);
+  await timerPet.check();
+  await expect(page.locator('html')).toHaveAttribute('data-test-focus', /"sound":false.*"pet":true/);
+  await page.goto('/settings');
+  await expect(pet).toBeChecked();
 });
 
 test('runs in the drag direction and offers a right-click hide action', async ({ page }) => {

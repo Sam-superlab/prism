@@ -10,6 +10,7 @@
   },
   "dependencies": {
     "@prism/shared-utils": "workspace:*",
+    "d3-force": "3.0.0",
     "ioredis": "6.0.0",
     "jose": "6.2.15",
     "katex": "0.19.1",
@@ -21,6 +22,7 @@
     "remark-math": "6.0.0"
   },
   "devDependencies": {
+    "@types/d3-force": "3.0.10",
     "@types/katex": "^0.16.8",
     "@types/node": "^24.0.0",
     "@types/react": "^19.3.0",

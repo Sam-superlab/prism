@@ -1,0 +1,112 @@
+.bar {
+  margin-block-end: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.heading :is(h2, h3) {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0;
+  font-size: 0.94rem;
+  font-weight: 650;
+}
+
+.heading svg {
+  flex: none;
+}
+
+.choices,
+.manage {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 9px;
+  margin-block-start: 8px;
+}
+
+.choice {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  padding: 5px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  transition:
+    color var(--motion-feedback),
+    background-color var(--motion-feedback);
+}
+
+.choice:hover,
+.choice[aria-pressed='true'] {
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.manage {
+  font-size: 0.82rem;
+}
+
+.paperTitle {
+  margin: 0 0 14px;
+  overflow-wrap: anywhere;
+}
+
+.groups {
+  display: grid;
+  gap: 12px;
+}
+
+.shelf {
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+
+.folderCheck {
+  display: flex;
+  align-items: start;
+  gap: 8px;
+  margin-block-start: 10px;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.folderCheck input {
+  flex: none;
+  inline-size: 16px;
+  block-size: 16px;
+  min-block-size: 16px;
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.newFolder {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 8px;
+  margin-block-start: 10px;
+}
+
+.newFolder :global(.field) {
+  margin: 0;
+}
+
+@media (max-width: 420px) {
+  .newFolder {
+    grid-template-columns: 1fr;
+  }
+}

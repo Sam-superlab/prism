@@ -80,6 +80,434 @@ describe('PRISM canonical backend', () => {
     expect((await get('/tasks?limit=-1')).statusCode).toBe(422);
     expect((await get('/tasks?project_id=bad')).statusCode).toBe(422);
   });
+  it('builds a bounded workspace graph from active records and explicit links owned by the user', async () => {
+    const project = (await post('/research/projects', { id: id(), title: 'Graph research project' })).json();
+    const createdObject = await post(`/research/projects/${project.id}/objects`, {
+      id: id(),
+      object_type: 'question',
+      title: 'Graph research question',
+      content: 'What relates these records?',
+      claim_status: 'needs_verification',
+    });
+    expect(createdObject.statusCode, createdObject.body).toBe(201);
+    const object = createdObject.json();
+    const createNote = async (title: string) =>
+      (await post('/knowledge-items', { id: id(), type: 'note', title, content: title })).json();
+    const first = await createNote('Graph linked note');
+    const second = await createNote('Graph neighboring note');
+    const separate = await createNote('Graph standalone note');
+    expect(
+      (
+        await post('/knowledge-relations', {
+          id: id(),
+          source_item_id: first.id,
+          target_item_id: second.id,
+          relation_type: 'depends_on',
+        })
+      ).statusCode,
+    ).toBe(201);
+    expect(
+      (
+        await post('/research/knowledge-links', {
+          id: id(),
+          project_id: project.id,
+          knowledge_item_id: first.id,
+        })
+      ).statusCode,
+    ).toBe(201);
+    const reference = (
+      await post('/research/references', {
+        id: id(),
+        project_id: project.id,
+        title: 'Graph project reference',
+        doi: '10.1234/graph',
+      })
+    ).json();
+    const linkedPaper = id(),
+      savedPaper = id(),
+      unownedPaper = id();
+    await db.transaction(undefined, async (sql) => {
+      for (const [paperId, arxivId] of [
+        [linkedPaper, '2601.98761'],
+        [savedPaper, '2601.98762'],
+        [unownedPaper, '2601.98763'],
+      ]) {
+        await sql.query(
+          `INSERT INTO arxiv_papers(id,arxiv_id,latest_version,title,authors,categories,published_at,updated_at,source_url,pdf_url)
+           VALUES($1,$2,1,'Graph arXiv paper',ARRAY['Graph Author'],ARRAY['math.AC'],now(),now(),$3,$4)`,
+          [paperId, arxivId, `https://arxiv.org/abs/${arxivId}`, `https://arxiv.org/pdf/${arxivId}`],
+        );
+      }
+    });
+    expect(
+      (await post('/research/paper-links', { id: id(), project_id: project.id, paper_id: linkedPaper }))
+        .statusCode,
+    ).toBe(201);
+    expect((await post(`/arxiv/papers/${savedPaper}/save`, {})).statusCode).toBe(200);
+    const otherUser = id(),
+      otherNote = id();
+    await db.transaction(otherUser, async (sql) => {
+      await sql.query('INSERT INTO users(id,oidc_subject,email,display_name) VALUES($1,$2,$3,$4)', [
+        otherUser,
+        otherUser,
+        `graph-${otherUser}@example.test`,
+        'Graph test user',
+      ]);
+      await sql.query(
+        "INSERT INTO knowledge_items(id,user_id,title,type) VALUES($1,$2,'Another user note','note')",
+        [otherNote, otherUser],
+      );
+      await sql.query('INSERT INTO user_papers(id,user_id,paper_id,is_saved) VALUES($1,$2,$3,true)', [
+        id(),
+        otherUser,
+        unownedPaper,
+      ]);
+    });
+
+    const all = await get('/graph');
+    expect(all.statusCode).toBe(200);
+    expect(all.json().nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: `knowledge:${separate.id}`, href: `/knowledge/${separate.id}` }),
+        expect.objectContaining({ id: `paper:${savedPaper}`, href: 'https://arxiv.org/abs/2601.98762' }),
+      ]),
+    );
+    expect(all.json().nodes.map((node: { id: string }) => node.id)).not.toContain(`knowledge:${otherNote}`);
+    expect(all.json().nodes.map((node: { id: string }) => node.id)).not.toContain(`paper:${unownedPaper}`);
+    expect((await get(`/graph?focus=knowledge:${otherNote}`)).statusCode).toBe(404);
+    expect((await get('/graph?depth=4')).statusCode).toBe(422);
+
+    const focus = `knowledge:${first.id}`;
+    const nearest = (await get(`/graph?focus=${focus}&depth=1`)).json();
+    expect(nearest.nodes.map((node: { id: string }) => node.id).sort()).toEqual(
+      [focus, `knowledge:${second.id}`, `project:${project.id}`].sort(),
+    );
+    const neighborhood = (await get(`/graph?focus=${focus}&depth=2`)).json();
+    expect(neighborhood.nodes).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: `paper:${linkedPaper}` }),
+        expect.objectContaining({
+          id: `research:${object.id}`,
+          href: `/research/${project.id}?object=${object.id}`,
+        }),
+        expect.objectContaining({ id: `reference:${reference.id}`, href: 'https://doi.org/10.1234/graph' }),
+      ]),
+    );
+    expect(neighborhood.edges).toEqual(
+      expect.arrayContaining([
+        { source: focus, target: `knowledge:${second.id}`, kind: 'depends_on' },
+        { source: `project:${project.id}`, target: `paper:${linkedPaper}`, kind: 'project_paper' },
+      ]),
+    );
+    const limited = (await get(`/graph?focus=${focus}&limit=1`)).json();
+    expect(limited).toMatchObject({ nodes: [{ id: focus }], edges: [], truncated: true });
+
+    const removed = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/research/references/${reference.id}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': `"${reference.version}"` },
+    });
+    expect(removed.statusCode).toBe(204);
+    const updated = (await get(`/graph?focus=project:${project.id}`)).json();
+    expect(updated.nodes.map((node: { id: string }) => node.id)).not.toContain(`reference:${reference.id}`);
+    expect(updated.edges.map((edge: { target: string }) => edge.target)).not.toContain(
+      `reference:${reference.id}`,
+    );
+  });
+  it('stores project bibliography entries, combines linked papers, and retains reference history', async () => {
+    const project = (await post('/research/projects', { id: id(), title: 'Bibliography project' })).json();
+    const other = (await post('/research/projects', { id: id(), title: 'Other bibliography' })).json();
+    const reference = {
+      id: id(),
+      project_id: project.id,
+      title: '  A reference  ',
+      authors: ['  Example, Ada  '],
+      doi: '10.1234/EXAMPLE',
+      year: 2024,
+      zotero_key: 'ABCD2345',
+    };
+    const saved = await post('/research/references', reference);
+    expect(saved.statusCode).toBe(201);
+    expect(saved.json()).toMatchObject({ title: 'A reference', authors: ['Example, Ada'], doi: '10.1234/example' });
+    expect((await post('/research/references', { ...reference, id: id(), zotero_key: 'ZBCDE234' })).statusCode).toBe(409);
+    expect((await post('/research/references', { ...reference, id: id(), project_id: other.id })).statusCode).toBe(201);
+    expect((await post('/research/references', { ...reference, id: id(), url: 'javascript:alert(1)' })).statusCode).toBe(422);
+
+    const paperId = id();
+    const arxivId = '2401.12345';
+    await db.transaction(undefined, (sql) =>
+      sql.query(
+        `INSERT INTO arxiv_papers(id,arxiv_id,latest_version,title,authors,categories,published_at,updated_at,source_url,pdf_url)
+         VALUES($1,$2,1,'Linked paper',ARRAY['Example, Eli'],ARRAY['math.AC'],'2024-01-01','2024-01-01',$3,$4)`,
+        [paperId, arxivId, `https://arxiv.org/abs/${arxivId}`, `https://arxiv.org/pdf/${arxivId}`],
+      ),
+    );
+    expect((await post('/research/paper-links', { id: id(), project_id: project.id, paper_id: paperId })).statusCode).toBe(201);
+    const bibliography = await get(`/research/projects/${project.id}/bibliography`);
+    expect(bibliography.json().items).toMatchObject([
+      { id: reference.id, title: 'A reference', kind: 'reference' },
+      { title: 'Linked paper', arxiv_id: arxivId, year: 2024, kind: 'arxiv' },
+    ]);
+    expect((await get(`/research/projects/${other.id}/bibliography`)).json().items).toHaveLength(1);
+
+    const deletion = await app.inject({
+      method: 'DELETE',
+      url: `/api/v1/research/projects/${project.id}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': `"${project.version}"` },
+    });
+    expect(deletion.statusCode).toBe(204);
+    expect((await get(`/research/projects/${project.id}/bibliography`)).statusCode).toBe(404);
+    expect((await get(`/research/references/${reference.id}`)).statusCode).toBe(404);
+    expect((await get(`/research/projects/${other.id}/bibliography`)).json().items).toHaveLength(1);
+  });
+  it('scopes knowledge and due cards to the current parent subject and chapter range', async () => {
+    const subject = 'Advanced Abstract Algebra';
+    const path = '/knowledge-items';
+    const create = async (title: string, course: string, tags: string[]) => {
+      const note = (
+        await post(path, { id: id(), title, type: 'definition', content: title, subject: course, tags })
+      ).json();
+      const card = (
+        await post(`${path}/${note.id}/cards`, {
+          id: id(),
+          card_type: 'statement',
+          prompt: `Define ${title}`,
+          answer: title,
+        })
+      ).json();
+      return { note, card };
+    };
+    const first = await create('Normal extension', subject, [
+      'chapter: 3\u00a0',
+      'chapter-title: Normality ',
+    ]);
+    const second = await create('Splitting field', subject, ['chapter:7']);
+    const unassigned = await create('Open note', '', ['chapter:03', 'chapter:3']);
+    expect((await get('/knowledge-subjects')).json().items).toEqual(expect.arrayContaining(['', subject]));
+    const query = `subject=${encodeURIComponent(subject)}`;
+    expect((await get(`/knowledge-chapters?${query}`)).json().items).toEqual([
+      { number: 3, title: 'Normality' },
+      { number: 7, title: '' },
+    ]);
+    expect((await get('/knowledge-chapters?subject=')).json().items).toEqual([]);
+    expect((await get('/knowledge-chapters')).statusCode).toBe(422);
+    expect(
+      (await get(`${path}?${query}`))
+        .json()
+        .items.map((item: any) => item.id)
+        .sort(),
+    ).toEqual([first.note.id, second.note.id].sort());
+    expect((await get(`${path}?subject=`)).json().items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: unassigned.note.id })]),
+    );
+    const range = `${query}&chapter_from=3&chapter_to=7`;
+    expect((await get(`${path}?${query}&chapter_from=3&chapter_to=3`)).json().items).toMatchObject([
+      { id: first.note.id },
+    ]);
+    expect((await get(`${path}?subject=&chapter_to=3`)).json().items).toEqual([]);
+    expect((await get(`${path}?${query}&chapter_from=8&chapter_to=3`)).statusCode).toBe(422);
+    expect((await get(`/review/queue?${query}&chapter_from=0`)).statusCode).toBe(422);
+    expect((await get(`/review/queue?${query}&chapter_from=7`)).json().items).toMatchObject([
+      { id: second.card.id },
+    ]);
+    const page = (await get(`/review/queue?${range}&limit=1`)).json();
+    expect(page.items).toHaveLength(1);
+    expect(page.next_cursor).toBeTruthy();
+    const cursor = encodeURIComponent(page.next_cursor);
+    const next = (await get(`/review/queue?${range}&limit=1&cursor=${cursor}`)).json();
+    expect([...page.items, ...next.items].map((card) => card.id).sort()).toEqual(
+      [first.card.id, second.card.id].sort(),
+    );
+    expect((await get(`/review/queue?subject=&cursor=${cursor}`)).statusCode).toBe(422);
+    expect(
+      (await get(`/review/queue?${query}&chapter_from=4&chapter_to=7&cursor=${cursor}`)).statusCode,
+    ).toBe(422);
+    expect(
+      (
+        await patch(
+          `${path}/${second.note.id}`,
+          { subject: '', base_snapshot: second.note },
+          second.note.version,
+        )
+      ).statusCode,
+    ).toBe(200);
+    expect((await get(`/review/queue?${query}`)).json().items).toMatchObject([{ id: first.card.id }]);
+    const nowUnassigned = (await get('/review/queue?subject=')).json().items;
+    expect(nowUnassigned).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: second.card.id,
+          version: second.card.version,
+          due_at: second.card.due_at,
+        }),
+        expect.objectContaining({ id: unassigned.card.id }),
+      ]),
+    );
+  });
+  it('keeps arXiv rounds across refreshes and adds more only after a completed round', async () => {
+    const subscription = await post('/arxiv/subscriptions', {
+      id: id(),
+      subscription_type: 'category',
+      subscription_value: 'math.AG',
+    });
+    expect(subscription.statusCode).toBe(201);
+    const now = new Date().toISOString();
+    const papers = [
+      'Syzygies of projective curves',
+      'Derived stacks and gerbes',
+      'Toric degenerations of flags',
+      'Moduli of stable sheaves',
+      'Motives of K3 surfaces',
+      'Frobenius splitting of divisors',
+      'Quantum cohomology of Grassmannians',
+      'Rational points on elliptic fibrations',
+    ].map((title, index) => {
+      const arxivId = `2611.9100${index}`;
+      return {
+        arxiv_id: arxivId,
+        latest_version: 1,
+        title,
+        abstract: title,
+        authors: ['For You fixture'],
+        categories: ['math.AG'],
+        published_at: now,
+        updated_at: now,
+        source_url: `https://arxiv.org/abs/${arxivId}`,
+        pdf_url: `https://arxiv.org/pdf/${arxivId}`,
+      };
+    });
+    await app.prism.service.ingestPapers(app.prism.config.userId, papers, id());
+    expect(
+      (await post('/arxiv/for-you/keywords', { term: '  Graded   Betti Numbers  ', mode: 'follow' }))
+        .statusCode,
+    ).toBe(204);
+    const [first, concurrent] = await Promise.all([get('/arxiv/for-you'), get('/arxiv/for-you')]);
+    expect(first.statusCode, first.body).toBe(200);
+    const deck = first.json();
+    expect(deck.items).toHaveLength(6);
+    expect(deck).toMatchObject({ round: 1, can_review_more: false });
+    expect(concurrent.json()).toEqual(deck);
+    expect(deck.keywords).toEqual([{ term: 'graded betti numbers', mode: 'follow' }]);
+    const [saved, declined] = deck.items.map((item: any) => item.paper.paper_id);
+    const more = { date: deck.date, round: 1 };
+    expect((await post('/arxiv/for-you/more', more)).statusCode).toBe(409);
+    const receipt = id();
+    expect(
+      (await post('/arxiv/for-you/reaction', { paper_id: saved, action: 'save' }, receipt)).statusCode,
+    ).toBe(204);
+    expect(
+      (await post('/arxiv/for-you/reaction', { paper_id: saved, action: 'save' }, receipt)).statusCode,
+    ).toBe(204);
+    expect(
+      (await post('/arxiv/for-you/reaction', { paper_id: declined, action: 'not_interested' })).statusCode,
+    ).toBe(204);
+    expect((await post('/arxiv/for-you/reaction', { paper_id: declined, action: 'liked' })).statusCode).toBe(
+      204,
+    );
+    expect(
+      (await post('/arxiv/for-you/keywords', { term: 'Graded Betti Numbers', mode: 'less' })).statusCode,
+    ).toBe(204);
+    const sameDay = (await get('/arxiv/for-you')).json();
+    const deckIds = deck.items.map((item: any) => item.paper.paper_id);
+    expect(sameDay.items.map((item: any) => item.paper.paper_id)).toEqual(deckIds);
+    expect(sameDay.items[0]).toMatchObject({ done: true, paper: { is_saved: true } });
+    expect(sameDay.items[1]).toMatchObject({ done: true, reaction: 'not_interested' });
+    expect(sameDay.keywords).toEqual([{ term: 'graded betti numbers', mode: 'less' }]);
+    const feed = (await get('/arxiv/feed')).json();
+    expect(feed.items.find((item: any) => item.paper_id === declined)).toMatchObject({ status: 'unread' });
+    expect(feed.items.find((item: any) => item.paper_id === saved)).toMatchObject({ is_saved: true });
+
+    const device = (await post('/devices', { id: id(), name: 'Explore sync', platform: 'ios' })).json();
+    const snapshot = (await post('/sync/snapshots', { device_id: device.id })).json();
+    const syncPage = (await get(`/sync/snapshots/${snapshot.id}/records`)).json();
+    const [liked, alsoLiked, interested, skipped] = deckIds.slice(2);
+    for (const [paper_id, action] of [
+      [liked, 'liked'],
+      [alsoLiked, 'liked'],
+      [interested, 'interested'],
+      [skipped, 'skip'],
+    ]) {
+      expect((await post('/arxiv/for-you/reaction', { paper_id, action })).statusCode).toBe(204);
+    }
+    const changes = (
+      await get('/sync/pull?cursor=' + encodeURIComponent(syncPage.resume_sync_cursor))
+    ).json();
+    expect(changes.batches.flatMap((batch: any) => batch.changes)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entity_type: 'user_paper',
+          data: expect.objectContaining({ paper_id: liked, for_you_reaction: 'liked' }),
+        }),
+        expect.objectContaining({
+          entity_type: 'user_paper',
+          data: expect.objectContaining({ paper_id: interested, for_you_reaction: 'interested' }),
+        }),
+      ]),
+    );
+    expect((await post(`/arxiv/papers/${liked}/mark-read`, {})).statusCode).toBe(200);
+    expect((await post(`/arxiv/papers/${liked}/save`, {})).statusCode).toBe(200);
+    const firstLiked = (await get('/arxiv/feed?reaction=liked&limit=1')).json();
+    expect(firstLiked.items).toHaveLength(1);
+    expect(firstLiked.next_cursor).toBeTruthy();
+    const cursor = encodeURIComponent(firstLiked.next_cursor);
+    const nextLiked = (await get(`/arxiv/feed?reaction=liked&limit=1&cursor=${cursor}`)).json();
+    expect(nextLiked.items).toHaveLength(1);
+    expect(nextLiked.next_cursor).toBeNull();
+    const likedItems = [...firstLiked.items, ...nextLiked.items];
+    expect(likedItems.map((item) => item.paper_id).sort()).toEqual([liked, alsoLiked].sort());
+    const laterPaper = nextLiked.items[0];
+    const search = encodeURIComponent(laterPaper.paper.arxiv_id);
+    const folderIds = encodeURIComponent(likedItems.map((item) => item.id).join(','));
+    const matching = (await get(`/arxiv/feed?reaction=liked&limit=1&q=${search}&ids=${folderIds}`)).json();
+    expect(matching.items.map((item: any) => item.id)).toEqual([laterPaper.id]);
+    expect(matching.next_cursor).toBeNull();
+    expect((await get(`/arxiv/feed?reaction=liked&q=${search}&ids=${firstLiked.items[0].id}`)).json().items).toEqual([]);
+    expect((await get(`/arxiv/feed?reaction=liked&q=${search}&cursor=${cursor}`)).statusCode).toBe(422);
+    expect(likedItems.find((item) => item.paper_id === liked)).toMatchObject({
+      for_you_reaction: 'liked',
+      status: 'read',
+      is_saved: true,
+    });
+    const interestedFeed = (await get('/arxiv/feed?reaction=interested')).json();
+    expect(interestedFeed.items).toMatchObject([{ paper_id: interested, for_you_reaction: 'interested' }]);
+    expect((await get(`/arxiv/feed?reaction=interested&cursor=${cursor}`)).statusCode).toBe(422);
+    expect((await get('/arxiv/feed?reaction=skip')).statusCode).toBe(422);
+    const completed = (await get('/arxiv/for-you')).json();
+    expect(completed).toMatchObject({ round: 1, can_review_more: true });
+    const extraRoundKey = id();
+    const requested = await Promise.all([
+      post('/arxiv/for-you/more', more, extraRoundKey),
+      post('/arxiv/for-you/more', more),
+    ]);
+    expect(requested.map((result) => result.statusCode)).toEqual([204, 204]);
+    expect((await post('/arxiv/for-you/more', more, extraRoundKey)).statusCode).toBe(204);
+    const extra = (await get('/arxiv/for-you')).json();
+    expect(extra).toMatchObject({ round: 2, can_review_more: false });
+    expect(extra.items).toHaveLength(2);
+    const extraIds = extra.items.map((item: any) => item.paper.paper_id);
+    expect(extraIds.every((paperId: string) => !deckIds.includes(paperId))).toBe(true);
+    for (const paperId of extraIds) {
+      expect((await post('/arxiv/for-you/reaction', { paper_id: paperId, action: 'skip' })).statusCode).toBe(
+        204,
+      );
+    }
+    expect((await post('/arxiv/for-you/more', { date: deck.date, round: 2 })).statusCode).toBe(204);
+    expect((await get('/arxiv/for-you')).json()).toMatchObject({ round: 2, can_review_more: false });
+
+    await db.transaction(app.prism.config.userId, (sql) =>
+      sql.query('UPDATE user_papers SET for_you_day=for_you_day-1 WHERE for_you_day=$1', [deck.date]),
+    );
+    const nextDay = (await get('/arxiv/for-you')).json();
+    expect(nextDay).toMatchObject({ items: [], round: 0, can_review_more: false });
+    expect(
+      (await post('/arxiv/for-you/keywords', { term: 'graded betti numbers', mode: 'remove' })).statusCode,
+    ).toBe(204);
+    expect((await get('/arxiv/for-you')).json().keywords).toEqual([]);
+    const rule = subscription.json();
+    expect(
+      (await patch(`/arxiv/subscriptions/${rule.id}`, { enabled: false }, rule.version)).statusCode,
+    ).toBe(200);
+  });
   it('preserves concurrent mathematical edits for explicit merge', async () => {
     const note = (
       await post('/knowledge-items', {
@@ -144,6 +572,16 @@ describe('PRISM canonical backend', () => {
       base_version: c1.version,
       idempotency_key: key,
     };
+    const { timezone } = (await get('/me')).json();
+    const dashboardDate = new Intl.DateTimeFormat('en-CA', {
+      timeZone: timezone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+    }).format(new Date(rating.reviewed_at));
+    const dashboard = '/today?date=' + dashboardDate;
+    const before = (await get(dashboard)).json().review_activity;
+    expect(before).toHaveLength(7);
     const responses = await Promise.all(
       Array.from({ length: 10 }, () => post('/review/events', rating, key)),
     );
@@ -159,6 +597,74 @@ describe('PRISM canonical backend', () => {
     const changed = await post('/review/events', { ...rating, rating: 'easy' }, key);
     expect(changed.statusCode).toBe(409);
     expect(changed.json().error.code).toBe('IDEMPOTENCY_KEY_REUSED');
+    expect((await get(dashboard)).json().review_activity).toEqual([
+      ...before.slice(0, -1),
+      { date: dashboardDate, count: before.at(-1).count + 1 },
+    ]);
+  });
+  it('stores ordered proof hints and immutable stuck-step snapshots with the review', async () => {
+    const note = (
+      await post('/knowledge-items', {
+        id: id(),
+        type: 'theorem',
+        title: 'Uniqueness of an identity',
+        content: 'An identity is unique.',
+      })
+    ).json();
+    const cards = `/knowledge-items/${note.id}/cards`;
+    const input = {
+      id: id(),
+      card_type: 'proof',
+      prompt: 'Prove uniqueness.',
+      answer: 'Compare the two identities by multiplying them.',
+    };
+    const steps = [
+      { id: id(), hint: 'Let both elements be identities.' },
+      { id: id(), hint: 'Compute their product in two ways.' },
+    ];
+    expect((await post(cards, { ...input, card_type: 'statement', proof_steps: steps })).statusCode).toBe(
+      422,
+    );
+    expect((await post(cards, { ...input, proof_steps: [steps[0], steps[0]] })).statusCode).toBe(422);
+    const created = await post(cards, { ...input, proof_steps: steps });
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json().proof_steps).toEqual(steps);
+    const card = `/review/cards/${input.id}`;
+    const edited = await patch(card, { prompt: 'Show the identity is unique.' }, created.json().version);
+    expect(edited.statusCode, edited.body).toBe(200);
+    expect(edited.json().proof_steps).toEqual(steps);
+    const device = (await post('/devices', { id: id(), name: 'Proof Recall', platform: 'web' })).json();
+    const key = id();
+    const request = {
+      card_id: input.id,
+      device_id: device.id,
+      rating: 'hard',
+      reviewed_at: new Date().toISOString(),
+      duration_ms: 2000,
+      base_version: edited.json().version,
+      idempotency_key: key,
+      proof_stuck_step_ids: [steps[1].id],
+    };
+    const invalidKey = id();
+    expect(
+      (
+        await post(
+          '/review/events',
+          { ...request, idempotency_key: invalidKey, proof_stuck_step_ids: [id()] },
+          invalidKey,
+        )
+      ).statusCode,
+    ).toBe(422);
+    const reviewed = await post('/review/events', request, key);
+    expect(reviewed.statusCode, reviewed.body).toBe(201);
+    const result = reviewed.json();
+    expect(result.event.proof_stuck_steps).toEqual([steps[1]]);
+    expect((await post('/review/events', request, key)).json().event.id).toBe(result.event.id);
+    const changedType = await patch(card, { card_type: 'statement' }, result.card.version);
+    expect(changedType.statusCode, changedType.body).toBe(200);
+    expect(changedType.json().proof_steps).toEqual([]);
+    const history = (await get(`/review/history?card_id=${input.id}`)).json().items;
+    expect(history).toMatchObject([{ id: result.event.id, proof_stuck_steps: [steps[1]] }]);
   });
   it('preserves mathematical claim status when completing linked task and audits changes', async () => {
     const project = (await post('/research/projects', { id: id(), title: 'Strong Persistence' })).json();
@@ -322,6 +828,54 @@ describe('PRISM canonical backend', () => {
     expect(plan.json().overload_minutes).toBeGreaterThan(0);
     expect(plan.json().items.some((x: any) => x.pinned)).toBe(true);
     expect((await get('/today?date=' + date)).statusCode).toBe(200);
+  });
+  it('keeps legacy workout tasks out of current plans without removing their records', async () => {
+    const date = '2026-11-09';
+    const template = (
+      await post('/fitness/templates', { id: id(), title: 'Legacy recovery', activity_type: 'recovery' })
+    ).json();
+    const workout = (
+      await post('/tasks', {
+        id: id(),
+        title: 'Legacy workout task',
+        source_type: 'workout',
+        workout_template_id: template.id,
+        planned_date: date,
+        estimated_minutes: 90,
+        pinned: true,
+      })
+    ).json();
+    expect(workout.id).toBeTruthy();
+    const request = {
+      plan_date: date,
+      timezone: 'Europe/Budapest',
+      as_of: '2026-11-09T10:00:00Z',
+      capacity_minutes: 180,
+    };
+    const generated = await post('/daily-plans/generate', request);
+    expect(generated.statusCode, generated.body).toBe(200);
+    const plan = generated.json();
+    expect(plan.items.length).toBeGreaterThan(1);
+    expect(plan.items.map((item: any) => item.task_id)).not.toContain(workout.id);
+    await db.transaction(app.prism.config.userId, (sql) =>
+      sql.query(
+        "INSERT INTO daily_plan_items (id, user_id, daily_plan_id, task_id, item_type, position, title_snapshot, scheduled_minutes, pinned, priority_reason) VALUES ($1,$2,$3,$4,'task',$5,'Legacy workout task',90,true,'Pinned')",
+        [id(), app.prism.config.userId, plan.id, workout.id, plan.items.length],
+      ),
+    );
+    const today = (await get('/today?date=' + date)).json();
+    expect(today.plan.items.map((item: any) => item.id)).toEqual(plan.items.map((item: any) => item.id));
+    const reversed = today.plan.items.map((item: any) => item.id).reverse();
+    const reordered = await post(
+      '/daily-plans/' + plan.id + '/reorder',
+      { item_ids: reversed },
+      id(),
+      plan.version,
+    );
+    expect(reordered.statusCode, reordered.body).toBe(200);
+    const current = (await get('/today?date=' + date)).json();
+    expect(current.plan.items.map((item: any) => item.id)).toEqual(reversed);
+    expect((await get('/tasks/' + workout.id)).json().id).toBe(workout.id);
   });
   it('creates an atomic snapshot and syncs offline capture without duplicate entities', async () => {
     const device = (await post('/devices', { id: id(), name: 'Offline phone', platform: 'ios' })).json();
@@ -714,9 +1268,19 @@ describe('PRISM canonical backend', () => {
       await post('/arxiv/subscriptions', {
         id: id(),
         subscription_type: 'category',
-        subscription_value: 'math.AC',
+        subscription_value: ' math,ac ',
       })
     ).json();
+    expect(subscription.subscription_value).toBe('math.AC');
+    expect(
+      (
+        await post('/arxiv/subscriptions', {
+          id: id(),
+          subscription_type: 'category',
+          subscription_value: 'math??AG',
+        })
+      ).statusCode,
+    ).toBe(422);
     await post('/arxiv/subscriptions', {
       id: id(),
       subscription_type: 'category',
@@ -736,10 +1300,40 @@ describe('PRISM canonical backend', () => {
       active = feed.items.find((x: any) => x.paper.arxiv_id === activePaper.arxiv_id);
     expect(fixture.paper.versions).toHaveLength(1);
     expect(active.paper.versions).toHaveLength(1);
+    const unreadPage = (await get('/arxiv/feed?status=unread&limit=1')).json();
+    expect(unreadPage.items).toHaveLength(1);
+    expect(unreadPage.next_cursor).toBeTruthy();
+    const nextUnread = `/arxiv/feed?status=unread&limit=1&cursor=${encodeURIComponent(unreadPage.next_cursor)}`;
+    expect((await get(nextUnread)).json().items[0].id).not.toBe(unreadPage.items[0].id);
+    const refresh = await post('/arxiv/refresh', {});
+    expect(refresh.statusCode).toBe(202);
+    expect((await post('/arxiv/refresh', {})).json().id).toBe(refresh.json().id);
     expect(
       (await patch('/arxiv/subscriptions/' + subscription.id, { enabled: false }, subscription.version))
         .statusCode,
     ).toBe(200);
+    const remainingUnread = (await get('/arxiv/feed?status=unread&limit=1')).json();
+    expect(remainingUnread.items.map((x: any) => x.paper_id)).toEqual([active.paper_id]);
+    expect(remainingUnread.next_cursor).toBeNull();
+    expect((await get(nextUnread)).statusCode).toBe(422);
+    expect((await post('/arxiv/papers/' + fixture.paper_id + '/save', {})).statusCode).toBe(200);
+    expect(
+      (await get('/arxiv/feed?status=unread&saved=true')).json().items.map((x: any) => x.paper_id),
+    ).toContain(fixture.paper_id);
+    const changedRefresh = await post('/arxiv/refresh', {});
+    expect(changedRefresh.statusCode).toBe(202);
+    expect(changedRefresh.json().id).not.toBe(refresh.json().id);
+    expect((await get('/automation/jobs/' + changedRefresh.json().id)).json().status).toBe('pending');
+    const stalePaper = {
+      ...paper,
+      arxiv_id: '2611.99996',
+      source_url: 'https://arxiv.org/abs/2611.99996',
+      pdf_url: 'https://arxiv.org/pdf/2611.99996',
+    };
+    await app.prism.service.ingestPapers(app.prism.config.userId, [stalePaper], id());
+    expect(
+      (await get('/arxiv/feed')).json().items.some((x: any) => x.paper.arxiv_id === stalePaper.arxiv_id),
+    ).toBe(false);
     const today = new Intl.DateTimeFormat('en-CA', {
       timeZone: 'Europe/Budapest',
       year: 'numeric',
@@ -818,5 +1412,49 @@ describe('PRISM canonical backend', () => {
     const zip = await get('/exports/' + exported.id + '/download');
     expect(zip.statusCode).toBe(200);
     expect(zip.headers['content-type']).toContain('application/zip');
+  });
+  it('creates review cards in an idempotent batch and rolls back a late ID collision', async () => {
+    const createdItem = await post('/knowledge-items', {
+      id: id(),
+      title: 'Batch recall fixture',
+      type: 'lemma',
+      content: 'A finite subset of a Hausdorff space is closed.',
+    });
+    expect(createdItem.statusCode).toBe(201);
+    const itemId = createdItem.json().id;
+    const path = `/knowledge-items/${itemId}/cards`;
+    const cards = [
+      { id: id(), card_type: 'statement', prompt: 'State the lemma.', answer: 'Finite subsets are closed.' },
+      {
+        id: id(),
+        card_type: 'hypotheses',
+        prompt: 'What is assumed about the space?',
+        answer: 'It is Hausdorff.',
+      },
+    ];
+    const key = id();
+    const created = await post(`${path}/batch`, { cards }, key);
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json().items).toMatchObject(cards.map((card) => ({ ...card, knowledge_item_id: itemId })));
+
+    const retried = await post(`${path}/batch`, { cards }, key);
+    expect(retried.statusCode, retried.body).toBe(201);
+    expect(retried.json()).toEqual(created.json());
+    const before = (await get(path)).json();
+    expect(before.items.map((card: { id: string }) => card.id).sort()).toEqual(
+      cards.map((card) => card.id).sort(),
+    );
+
+    const newCard = { ...cards[0], id: id(), prompt: 'A card that should roll back.' };
+    const collision = await post(`${path}/batch`, { cards: [newCard, cards[1]] });
+    expect(collision.statusCode, collision.body).toBe(422);
+    expect((await get(`/review/cards/${newCard.id}`)).statusCode).toBe(404);
+    expect((await get(path)).json().items).toMatchObject(
+      before.items.map((card: { id: string; version: string; due_at: string }) => ({
+        id: card.id,
+        version: card.version,
+        due_at: card.due_at,
+      })),
+    );
   });
 });

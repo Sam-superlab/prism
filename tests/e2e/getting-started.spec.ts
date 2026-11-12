@@ -55,7 +55,7 @@ test('skips and resumes onboarding, then schedules a review of the card just cre
   await page.getByRole('button', { name: 'Reveal answer' }).click();
   await page.getByRole('button', { name: /Good.*Recalled correctly/ }).click();
   await expect(page.getByRole('heading', { name: 'Next review' })).toBeVisible();
-  await page.getByRole('link', { name: 'Back to Today', exact: true }).click();
+  await page.getByRole('link', { name: 'Back to Dashboard', exact: true }).click();
   await expect(checklist.getByRole('heading', { name: 'You finished your first review' })).toBeVisible();
   await checklist.getByRole('button', { name: 'Done', exact: true }).click();
   await expect(checklist).toBeHidden();
@@ -69,6 +69,9 @@ test('practice makes no writes until the user keeps the example', async ({ page,
     }
   });
   await page.goto('/today');
+  await page.getByRole('button', { name: 'Skip for now' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Open guide' }).click();
   await page.getByRole('button', { name: 'Try an example', exact: true }).click();
   const demo = page.getByRole('dialog');
   await demo.getByRole('button', { name: 'See the review card' }).click();
@@ -100,7 +103,10 @@ test('switches tutorial languages without losing progress and shows the new guid
   await page.reload();
   await expect(welcome.getByRole('heading', { name: '欢迎使用 PRISM' })).toBeVisible();
   await expect(welcome.getByRole('combobox')).toHaveValue('zh-CN');
-  await welcome.getByRole('button', { name: '创建第一条笔记' }).click();
+  await welcome.getByRole('button', { name: '暂时跳过' }).click();
+  await page.getByRole('link', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: '打开指南' }).click();
+  await page.getByRole('button', { name: '创建笔记', exact: true }).click();
   const editor = page.getByRole('dialog');
   await editor.getByLabel('Title', { exact: true }).fill('Tutorial language note');
   await editor
@@ -128,6 +134,74 @@ test('switches tutorial languages without losing progress and shows the new guid
     'href',
     `/knowledge/${notesCreated[0]}`,
   );
+});
+
+test('resumes arXiv interest choices and opens the first For You round', async ({ page }) => {
+  const saved: string[] = [];
+  const jobId = randomUUID();
+  const job = { id: jobId, status: 'succeeded' };
+  await page.route(/\/api\/v1\/arxiv\/subscriptions(?:\?limit=100)?$/, async (route) => {
+    const request = route.request();
+    if (request.method() === 'POST') {
+      const body = request.postDataJSON();
+      saved.push(body.subscription_value);
+      await route.fulfill({ status: 201, json: body });
+    } else await route.fulfill({ json: { items: [], next_cursor: null } });
+  });
+  await page.route('**/api/v1/arxiv/refresh', (route) => route.fulfill({ status: 202, json: job }));
+  await page.route(`**/api/v1/automation/jobs/${jobId}`, (route) => route.fulfill({ json: job }));
+  await page.route('**/api/v1/arxiv/for-you', (route) =>
+    route.fulfill({
+      json: {
+        date: '2026-11-12',
+        round: 1,
+        can_review_more: false,
+        keywords: [],
+        suggestions: [],
+        items: [
+          {
+            paper: {
+              id: randomUUID(),
+              paper: {
+                title: 'A paper on commutative algebra',
+                authors: ['A. Author'],
+                categories: ['math.AC'],
+                abstract: 'An abstract for the first round.',
+                source_url: 'https://arxiv.org/abs/2101.00001',
+                pdf_url: 'https://arxiv.org/pdf/2101.00001',
+              },
+            },
+            reason: 'Matches a subscription.',
+            done: false,
+            reaction: null,
+          },
+        ],
+      },
+    }),
+  );
+
+  await page.goto('/today');
+  const guide = page.getByRole('dialog');
+  await guide.getByRole('button', { name: 'Mathematics', exact: true }).click();
+  await guide.getByRole('button', { name: 'Choose research areas' }).click();
+  await guide.getByRole('searchbox').fill('commutative');
+  await guide.getByRole('button', { name: 'Commutative Algebra', exact: true }).click();
+  await expect(guide.getByText('math.AC')).toHaveCount(0);
+  await guide.getByRole('button', { name: 'Skip for now' }).click();
+  expect(saved).toEqual([]);
+
+  await page.reload();
+  await expect(guide).toBeHidden();
+  await page.getByRole('link', { name: 'Discover', exact: true }).click();
+  await page.getByRole('button', { name: 'Choose interests', exact: true }).click();
+  await expect(guide.getByRole('button', { name: 'Commutative Algebra', exact: true })).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await guide.getByRole('button', { name: 'Show my first round', exact: true }).click();
+  await expect(page).toHaveURL(/\/discover\?view=for-you/);
+  await expect(page.getByRole('heading', { name: 'A paper on commutative algebra' })).toBeVisible();
+  expect(saved).toEqual(['math.AC']);
 });
 
 test('keeps the welcome closed for an existing workspace and opens the guide from Settings', async ({

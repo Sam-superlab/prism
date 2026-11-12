@@ -7,6 +7,12 @@ function chapterBound(value: SearchParams[string]) {
   return typeof value === 'string' && /^[1-9]\d{0,5}$/.test(value) ? Number(value) : undefined;
 }
 
+function entityId(value: SearchParams[string]) {
+  return typeof value === 'string' && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value)
+    ? value
+    : undefined;
+}
+
 export default async function Page({
   params,
   searchParams,
@@ -15,19 +21,31 @@ export default async function Page({
   searchParams: Promise<SearchParams>;
 }) {
   const { section } = await params;
-  if (section[0] === 'fitness') redirect('/today');
+  if (section[0] === 'fitness' || section[0] === 'planner') redirect('/today');
   const route = section.join('/');
-  const filters = route === 'knowledge' || route === 'review/session' ? await searchParams : {};
+  const filters =
+    route === 'knowledge' ||
+    route === 'review/session' ||
+    route === 'discover' ||
+    route.startsWith('research/')
+      ? await searchParams
+      : {};
   const subject = typeof filters.subject === 'string' ? filters.subject : undefined;
   const from = chapterBound(filters.chapter_from);
   const to = chapterBound(filters.chapter_to);
   const chapters =
     subject !== undefined && from !== undefined && to !== undefined && from <= to ? { from, to } : undefined;
-  const reviewCardId =
-    route === 'review/session' &&
-    typeof filters.card === 'string' &&
-    /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(filters.card)
-      ? filters.card
-      : undefined;
-  return <Workspace route={route} studyScope={{ subject, chapters }} reviewCardId={reviewCardId} />;
+  const reviewCardId = route === 'review/session' ? entityId(filters.card) : undefined;
+  const discoverView = route === 'discover' && filters.view === 'for-you' ? 'for-you' : undefined;
+  const discoverRefresh = discoverView ? entityId(filters.refresh) : undefined;
+  return (
+    <Workspace
+      route={route}
+      studyScope={{ subject, chapters }}
+      reviewCardId={reviewCardId}
+      discoverView={discoverView}
+      discoverRefresh={discoverRefresh}
+      researchObjectId={route.startsWith('research/') ? entityId(filters.object) : undefined}
+    />
+  );
 }

@@ -6,6 +6,7 @@ export const models = {
   'research/objects': { table: 'research_objects', kind: 'research_object' },
   'research/knowledge-links': { table: 'research_knowledge_links', kind: 'research_knowledge_link' },
   'research/paper-links': { table: 'research_paper_links', kind: 'research_paper_link' },
+  'research/references': { table: 'research_references', kind: 'research_reference' },
   tasks: { table: 'tasks', kind: 'task' },
   inbox: { table: 'inbox_entries', kind: 'inbox_entry' },
   'fitness/exercises': { table: 'exercises', kind: 'exercise' },

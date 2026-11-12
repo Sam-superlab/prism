@@ -116,7 +116,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -125,7 +125,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -206,7 +206,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -215,7 +215,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -300,10 +300,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -403,7 +403,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -412,7 +412,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -454,7 +454,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -463,7 +463,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -472,7 +472,9 @@
     "/knowledge-subjects": {
       "get": {
         "operationId": "get_knowledge_subjects",
-        "tags": ["knowledge-items"],
+        "tags": [
+          "knowledge-items"
+        ],
         "description": "Distinct subjects used by active knowledge items. An empty string represents unassigned items.",
         "parameters": [],
         "responses": {
@@ -485,23 +487,31 @@
                   "properties": {
                     "items": {
                       "type": "array",
-                      "items": { "type": "string" }
+                      "items": {
+                        "type": "string"
+                      }
                     }
                   },
-                  "required": ["items"],
+                  "required": [
+                    "items"
+                  ],
                   "additionalProperties": false
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/knowledge-chapters": {
       "get": {
         "operationId": "get_knowledge_chapters",
-        "tags": ["knowledge-items"],
+        "tags": [
+          "knowledge-items"
+        ],
         "description": "Numbered chapters used by active knowledge items in the selected subject.",
         "parameters": [
           {
@@ -509,7 +519,10 @@
             "in": "query",
             "required": true,
             "description": "Exact subject. Pass an empty string for unassigned items.",
-            "schema": { "type": "string", "maxLength": 200000 }
+            "schema": {
+              "type": "string",
+              "maxLength": 200000
+            }
           }
         ],
         "responses": {
@@ -525,21 +538,34 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "number": { "type": "integer", "minimum": 1, "maximum": 999999 },
-                          "title": { "type": "string" }
+                          "number": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 999999
+                          },
+                          "title": {
+                            "type": "string"
+                          }
                         },
-                        "required": ["number", "title"],
+                        "required": [
+                          "number",
+                          "title"
+                        ],
                         "additionalProperties": false
                       }
                     }
                   },
-                  "required": ["items"],
+                  "required": [
+                    "items"
+                  ],
                   "additionalProperties": false
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -584,8 +610,16 @@
             "schema": {
               "type": "string",
               "enum": [
-                "definition", "theorem", "lemma", "proposition", "corollary", "proof",
-                "example", "counterexample", "exercise", "note"
+                "definition",
+                "theorem",
+                "lemma",
+                "proposition",
+                "corollary",
+                "proof",
+                "example",
+                "counterexample",
+                "exercise",
+                "note"
               ]
             }
           },
@@ -660,10 +694,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -763,7 +797,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -772,7 +806,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -814,7 +848,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -823,7 +857,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -898,10 +932,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1001,7 +1035,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -1010,7 +1044,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1052,7 +1086,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -1061,7 +1095,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1107,10 +1141,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1176,16 +1210,23 @@
     "/knowledge-items/{id}/cards/batch": {
       "post": {
         "operationId": "post_knowledge_items_id_cards_batch",
-        "tags": ["knowledge-items"],
+        "tags": [
+          "knowledge-items"
+        ],
         "description": "Create up to 50 review cards for a knowledge item in one transaction.",
         "parameters": [
           {
             "name": "id",
             "in": "path",
             "required": true,
-            "schema": { "type": "string", "format": "uuid" }
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           },
-          { "$ref": "#/components/parameters/Idempotency" }
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
         ],
         "requestBody": {
           "required": true,
@@ -1198,10 +1239,14 @@
                     "type": "array",
                     "minItems": 1,
                     "maxItems": 50,
-                    "items": { "$ref": "#/components/schemas/ReviewCardCreate" }
+                    "items": {
+                      "$ref": "#/components/schemas/ReviewCardCreate"
+                    }
                   }
                 },
-                "required": ["cards"],
+                "required": [
+                  "cards"
+                ],
                 "additionalProperties": false
               }
             }
@@ -1215,15 +1260,24 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/ReviewCard" } }
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/ReviewCard"
+                      }
+                    }
                   },
-                  "required": ["items"],
+                  "required": [
+                    "items"
+                  ],
                   "additionalProperties": false
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -1311,7 +1365,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -1320,7 +1374,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1362,7 +1416,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -1371,7 +1425,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1473,10 +1527,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1628,10 +1682,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1731,7 +1785,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -1740,7 +1794,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1782,7 +1836,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -1791,7 +1845,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -1884,10 +1938,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -1987,7 +2041,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -1996,7 +2050,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2038,7 +2092,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2047,7 +2101,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -2195,10 +2249,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2298,7 +2352,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2307,7 +2361,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2349,7 +2403,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2358,7 +2412,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -2449,10 +2503,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2552,7 +2606,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2561,7 +2615,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2603,7 +2657,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2612,7 +2666,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -2687,10 +2741,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2790,7 +2844,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2799,7 +2853,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2841,7 +2895,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2850,7 +2904,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -2899,7 +2953,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2908,7 +2962,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -2967,7 +3021,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -2976,7 +3030,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3061,10 +3115,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3108,7 +3162,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3117,7 +3171,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3166,7 +3220,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3175,7 +3229,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3260,10 +3314,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3363,7 +3417,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3372,7 +3426,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3414,7 +3468,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3423,7 +3477,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3498,10 +3552,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3601,7 +3655,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3610,7 +3664,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3652,7 +3706,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3661,7 +3715,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3707,10 +3761,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3769,7 +3823,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3778,7 +3832,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3820,7 +3874,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3829,7 +3883,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -3875,10 +3929,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3937,7 +3991,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3946,7 +4000,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -3988,7 +4042,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -3997,7 +4051,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -4043,10 +4097,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -4105,7 +4159,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -4114,7 +4168,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -4156,7 +4210,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -4165,7 +4219,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -4240,10 +4294,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -4343,7 +4397,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -4352,7 +4406,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -4394,7 +4448,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -4403,7 +4457,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -4452,7 +4506,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -4461,7 +4515,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -4613,10 +4667,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -4716,7 +4770,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -4725,7 +4779,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -4767,7 +4821,7 @@
           "204": {
             "description": "Success"
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -4776,7 +4830,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -4785,28 +4839,38 @@
     "/arxiv/refresh": {
       "post": {
         "operationId": "post_arxiv_refresh",
-        "tags": ["arxiv"],
+        "tags": [
+          "arxiv"
+        ],
         "description": "Queue an ingestion job for the enabled subscriptions, or return a recent job for the same subscriptions. Poll GET /automation/jobs/{id} before reloading the feed.",
         "parameters": [
-          { "$ref": "#/components/parameters/Idempotency" }
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
         ],
         "responses": {
           "202": {
             "description": "Refresh job accepted",
             "content": {
               "application/json": {
-                "schema": { "$ref": "#/components/schemas/AutomationJob" }
+                "schema": {
+                  "$ref": "#/components/schemas/AutomationJob"
+                }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/arxiv/for-you": {
       "get": {
         "operationId": "get_arxiv_for_you",
-        "tags": ["arxiv"],
+        "tags": [
+          "arxiv"
+        ],
         "description": "Get the current local day's active round of up to six papers. Create the first round when papers are available.",
         "parameters": [],
         "responses": {
@@ -4817,20 +4881,48 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "date": { "type": "string", "format": "date" },
-                    "round": { "type": "integer", "minimum": 0 },
-                    "can_review_more": { "type": "boolean" },
+                    "date": {
+                      "type": "string",
+                      "format": "date"
+                    },
+                    "round": {
+                      "type": "integer",
+                      "minimum": 0
+                    },
+                    "can_review_more": {
+                      "type": "boolean"
+                    },
                     "items": {
-                      "type": "array", "maxItems": 6,
+                      "type": "array",
+                      "maxItems": 6,
                       "items": {
                         "type": "object",
                         "properties": {
-                          "paper": { "$ref": "#/components/schemas/UserPaper" },
-                          "reason": { "type": "string" },
-                          "done": { "type": "boolean" },
-                          "reaction": { "enum": ["interested", "liked", "not_interested", "skip", null] }
+                          "paper": {
+                            "$ref": "#/components/schemas/UserPaper"
+                          },
+                          "reason": {
+                            "type": "string"
+                          },
+                          "done": {
+                            "type": "boolean"
+                          },
+                          "reaction": {
+                            "enum": [
+                              "interested",
+                              "liked",
+                              "not_interested",
+                              "skip",
+                              null
+                            ]
+                          }
                         },
-                        "required": ["paper", "reason", "done", "reaction"],
+                        "required": [
+                          "paper",
+                          "reason",
+                          "done",
+                          "reaction"
+                        ],
                         "additionalProperties": false
                       }
                     },
@@ -4839,31 +4931,61 @@
                       "items": {
                         "type": "object",
                         "properties": {
-                          "term": { "type": "string" },
-                          "mode": { "enum": ["follow", "less"] }
+                          "term": {
+                            "type": "string"
+                          },
+                          "mode": {
+                            "enum": [
+                              "follow",
+                              "less"
+                            ]
+                          }
                         },
-                        "required": ["term", "mode"],
+                        "required": [
+                          "term",
+                          "mode"
+                        ],
                         "additionalProperties": false
                       }
                     },
-                    "suggestions": { "type": "array", "items": { "type": "string" } }
+                    "suggestions": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    }
                   },
-                  "required": ["date", "round", "can_review_more", "items", "keywords", "suggestions"],
+                  "required": [
+                    "date",
+                    "round",
+                    "can_review_more",
+                    "items",
+                    "keywords",
+                    "suggestions"
+                  ],
                   "additionalProperties": false
                 }
               }
             }
           },
-          "default": { "$ref": "#/components/responses/Error" }
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/arxiv/for-you/more": {
       "post": {
         "operationId": "post_arxiv_for_you_more",
-        "tags": ["arxiv"],
+        "tags": [
+          "arxiv"
+        ],
         "description": "Start another round after the specified round is complete. A stale request has no effect.",
-        "parameters": [{ "$ref": "#/components/parameters/Idempotency" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4871,27 +4993,46 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "date": { "type": "string", "format": "date" },
-                  "round": { "type": "integer", "minimum": 1 }
+                  "date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "round": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
                 },
-                "required": ["date", "round"],
+                "required": [
+                  "date",
+                  "round"
+                ],
                 "additionalProperties": false
               }
             }
           }
         },
         "responses": {
-          "204": { "description": "Round request processed" },
-          "default": { "$ref": "#/components/responses/Error" }
+          "204": {
+            "description": "Round request processed"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/arxiv/for-you/reaction": {
       "post": {
         "operationId": "post_arxiv_for_you_reaction",
-        "tags": ["arxiv"],
+        "tags": [
+          "arxiv"
+        ],
         "description": "Record the first decision on a deck card. Save also adds the paper to the saved library.",
-        "parameters": [{ "$ref": "#/components/parameters/Idempotency" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4899,27 +5040,51 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "paper_id": { "type": "string", "format": "uuid" },
-                  "action": { "enum": ["interested", "liked", "save", "not_interested", "skip"] }
+                  "paper_id": {
+                    "type": "string",
+                    "format": "uuid"
+                  },
+                  "action": {
+                    "enum": [
+                      "interested",
+                      "liked",
+                      "save",
+                      "not_interested",
+                      "skip"
+                    ]
+                  }
                 },
-                "required": ["paper_id", "action"],
+                "required": [
+                  "paper_id",
+                  "action"
+                ],
                 "additionalProperties": false
               }
             }
           }
         },
         "responses": {
-          "204": { "description": "Card decision recorded" },
-          "default": { "$ref": "#/components/responses/Error" }
+          "204": {
+            "description": "Card decision recorded"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
     "/arxiv/for-you/keywords": {
       "post": {
         "operationId": "post_arxiv_for_you_keywords",
-        "tags": ["arxiv"],
+        "tags": [
+          "arxiv"
+        ],
         "description": "Follow, downrank, or remove a keyword rule for future rounds.",
-        "parameters": [{ "$ref": "#/components/parameters/Idempotency" }],
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
         "requestBody": {
           "required": true,
           "content": {
@@ -4927,18 +5092,35 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "term": { "type": "string", "minLength": 1, "maxLength": 100 },
-                  "mode": { "enum": ["follow", "less", "remove"] }
+                  "term": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 100
+                  },
+                  "mode": {
+                    "enum": [
+                      "follow",
+                      "less",
+                      "remove"
+                    ]
+                  }
                 },
-                "required": ["term", "mode"],
+                "required": [
+                  "term",
+                  "mode"
+                ],
                 "additionalProperties": false
               }
             }
           }
         },
         "responses": {
-          "204": { "description": "Keyword rule updated" },
-          "default": { "$ref": "#/components/responses/Error" }
+          "204": {
+            "description": "Keyword rule updated"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
         }
       }
     },
@@ -4988,6 +5170,28 @@
                 "liked",
                 "interested"
               ]
+            }
+          },
+          {
+            "name": "q",
+            "in": "query",
+            "required": false,
+            "description": "Search papers in the current view.",
+            "schema": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 120
+            }
+          },
+          {
+            "name": "ids",
+            "in": "query",
+            "required": false,
+            "description": "Filter by a comma-separated list of up to 100 user-paper IDs.",
+            "schema": {
+              "type": "string",
+              "maxLength": 3699,
+              "pattern": "^[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}(?:,[a-fA-F0-9]{8}(?:-[a-fA-F0-9]{4}){3}-[a-fA-F0-9]{12}){0,99}$"
             }
           }
         ],
@@ -5102,7 +5306,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -5111,7 +5315,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5167,10 +5371,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -5216,10 +5420,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         }
@@ -5265,10 +5469,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5315,10 +5519,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5418,7 +5622,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -5427,7 +5631,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5486,7 +5690,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -5495,7 +5699,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5563,7 +5767,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -5572,7 +5776,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5799,10 +6003,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5849,10 +6053,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -5952,10 +6156,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -6189,7 +6393,7 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
           "412": {
@@ -6198,7 +6402,7 @@
           "428": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -6328,10 +6532,10 @@
               }
             }
           },
-          "default": {
+          "409": {
             "$ref": "#/components/responses/Error"
           },
-          "409": {
+          "default": {
             "$ref": "#/components/responses/Error"
           }
         },
@@ -6416,6 +6620,286 @@
                 "schema": {
                   "type": "string",
                   "format": "binary"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/research/references": {
+      "get": {
+        "operationId": "get_research_references",
+        "tags": [
+          "research"
+        ],
+        "description": "",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Cursor"
+          },
+          {
+            "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchReferencePage"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Present for mutable entity responses: quoted decimal version."
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_research_references",
+        "tags": [
+          "research"
+        ],
+        "description": "",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchReference"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Present for mutable entity responses: quoted decimal version."
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResearchReferenceCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/research/references/{id}": {
+      "get": {
+        "operationId": "get_research_references_id",
+        "tags": [
+          "research"
+        ],
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResearchReference"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Present for mutable entity responses: quoted decimal version."
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "delete": {
+        "operationId": "delete_research_references_id",
+        "tags": [
+          "research"
+        ],
+        "description": "Soft delete, increment version and emit tombstone. Preserve historical records.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          },
+          {
+            "$ref": "#/components/parameters/IfMatch"
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Success"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error"
+          },
+          "412": {
+            "$ref": "#/components/responses/Error"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error"
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/research/projects/{id}/bibliography": {
+      "get": {
+        "operationId": "get_research_project_bibliography",
+        "tags": [
+          "research"
+        ],
+        "description": "",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bibliography"
+                }
+              }
+            },
+            "headers": {
+              "ETag": {
+                "schema": {
+                  "type": "string"
+                },
+                "description": "Present for mutable entity responses: quoted decimal version."
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/graph": {
+      "get": {
+        "operationId": "get_workspace_graph",
+        "tags": [
+          "graph"
+        ],
+        "description": "Return workspace records and explicit links, optionally restricted to neighbors of a selected record.",
+        "parameters": [
+          {
+            "name": "focus",
+            "in": "query",
+            "description": "Node identifier to center the graph on.",
+            "schema": {
+              "type": "string",
+              "pattern": "^(knowledge|project|research|paper|reference):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+            }
+          },
+          {
+            "name": "depth",
+            "in": "query",
+            "description": "Number of links to follow from the focus.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 3,
+              "default": 2
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "description": "Maximum number of visible nodes.",
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 500,
+              "default": 350
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkspaceGraph"
                 }
               }
             }
@@ -7318,7 +7802,10 @@
             "maxLength": 4000
           }
         },
-        "required": ["id", "hint"],
+        "required": [
+          "id",
+          "hint"
+        ],
         "additionalProperties": false
       },
       "ReviewCard": {
@@ -9604,7 +10091,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -9678,7 +10165,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -9740,7 +10227,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -10066,7 +10553,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -10085,7 +10572,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -10174,7 +10661,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -10252,7 +10739,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -10358,7 +10845,7 @@
           "distance": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "distance_unit": {
             "type": "string",
@@ -10371,7 +10858,7 @@
           "distance_meters": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "average_heart_rate": {
             "anyOf": [
@@ -10435,7 +10922,7 @@
           "distance": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "distance_unit": {
             "type": "string",
@@ -10495,7 +10982,7 @@
           "distance": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "distance_unit": {
             "type": "string",
@@ -10638,7 +11125,7 @@
           "volume_kg_reps": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           }
         },
         "required": [
@@ -10802,7 +11289,7 @@
           "volume_kg_reps": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "cardio_duration_seconds": {
             "type": "integer",
@@ -10812,7 +11299,7 @@
           "cardio_distance_meters": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "points": {
             "type": "array",
@@ -10836,7 +11323,7 @@
                     {
                       "type": "number",
                       "minimum": 0,
-                      "maximum": 1000000000000.0
+                      "maximum": 1000000000000
                     },
                     {
                       "type": "null"
@@ -10851,7 +11338,7 @@
                 "volume_kg_reps": {
                   "type": "number",
                   "minimum": 0,
-                  "maximum": 1000000000000.0
+                  "maximum": 1000000000000
                 }
               },
               "required": [
@@ -11237,7 +11724,7 @@
           "relevance_score": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "match_reasons": {
             "type": "array",
@@ -11314,7 +11801,7 @@
           "relevance_score": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "match_reasons": {
             "type": "array",
@@ -11379,7 +11866,7 @@
           "relevance_score": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "match_reasons": {
             "type": "array",
@@ -12072,7 +12559,10 @@
             "maximum": 2147483647
           },
           "continuation_note": {
-            "type": ["string", "null"],
+            "type": [
+              "string",
+              "null"
+            ],
             "description": "The previous local day's saved continuation note."
           },
           "plan": {
@@ -12478,7 +12968,7 @@
               {
                 "type": "number",
                 "minimum": 0,
-                "maximum": 1000000000000.0
+                "maximum": 1000000000000
               },
               {
                 "type": "null"
@@ -12568,7 +13058,7 @@
           "distance": {
             "type": "number",
             "minimum": 0,
-            "maximum": 1000000000000.0
+            "maximum": 1000000000000
           },
           "distance_unit": {
             "type": "string",
@@ -13791,7 +14281,8 @@
               "plan_item",
               "daily_plan_review_card",
               "daily_shutdown",
-              "conflict"
+              "conflict",
+              "research_reference"
             ]
           },
           "entity_id": {
@@ -14285,6 +14776,23 @@
                 "anyOf": [
                   {
                     "$ref": "#/components/schemas/PlanReviewCard"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            }
+          },
+          {
+            "properties": {
+              "entity_type": {
+                "const": "research_reference"
+              },
+              "data": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/ResearchReference"
                   },
                   {
                     "type": "null"
@@ -15064,6 +15572,457 @@
           "time"
         ],
         "additionalProperties": false
+      },
+      "ResearchReference": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "deleted_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "authors": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9999
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250,
+                "pattern": "^10\\.[0-9]{4,9}/[^\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "arxiv_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^(?:[0-9]{4}\\.[0-9]{4,5}|[A-Za-z-]+(?:\\.[A-Za-z-]+)?/[0-9]{7})(?:v[1-9][0-9]*)?$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "zotero_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z0-9]{8}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "created_at",
+          "updated_at",
+          "version",
+          "deleted_at",
+          "project_id",
+          "title",
+          "authors",
+          "year",
+          "doi",
+          "arxiv_id",
+          "url",
+          "zotero_key"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchReferenceCreate": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "authors": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 300
+            }
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9999
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250,
+                "pattern": "^10\\.[0-9]{4,9}/[^\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "arxiv_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 80,
+                "pattern": "^(?:[0-9]{4}\\.[0-9]{4,5}|[A-Za-z-]+(?:\\.[A-Za-z-]+)?/[0-9]{7})(?:v[1-9][0-9]*)?$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "zotero_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z0-9]{8}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "title"
+        ],
+        "additionalProperties": false
+      },
+      "ResearchReferencePage": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ResearchReference"
+            }
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 200000
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "next_cursor"
+        ],
+        "additionalProperties": false
+      },
+      "BibliographyItem": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "version": {
+            "type": "string",
+            "pattern": "^[1-9][0-9]*$"
+          },
+          "title": {
+            "type": "string"
+          },
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 9999
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "doi": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 250,
+                "pattern": "^10\\.[0-9]{4,9}/[^\\s]+$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "arxiv_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "url": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 2000,
+                "format": "uri"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "zotero_key": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[A-Z0-9]{8}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "reference",
+              "arxiv"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "version",
+          "title",
+          "authors",
+          "year",
+          "doi",
+          "arxiv_id",
+          "url",
+          "zotero_key",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "Bibliography": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BibliographyItem"
+            }
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "WorkspaceGraphNode": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^(knowledge|project|research|paper|reference):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "knowledge",
+              "project",
+              "research",
+              "paper"
+            ]
+          },
+          "label": {
+            "type": "string"
+          },
+          "href": {
+            "type": "string",
+            "description": "Workspace path or HTTPS source for this item, when available."
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "additionalProperties": false
+      },
+      "WorkspaceGraphEdge": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "pattern": "^(knowledge|project|research|paper|reference):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "target": {
+            "type": "string",
+            "pattern": "^(knowledge|project|research|paper|reference):[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "related",
+              "depends_on",
+              "example_of",
+              "proof_of",
+              "project_object",
+              "project_knowledge",
+              "object_knowledge",
+              "project_paper",
+              "project_reference"
+            ]
+          }
+        },
+        "required": [
+          "source",
+          "target",
+          "kind"
+        ],
+        "additionalProperties": false
+      },
+      "WorkspaceGraph": {
+        "type": "object",
+        "properties": {
+          "nodes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceGraphNode"
+            },
+            "maxItems": 500
+          },
+          "edges": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/WorkspaceGraphEdge"
+            },
+            "maxItems": 1500
+          },
+          "truncated": {
+            "type": "boolean",
+            "description": "Whether the result exceeded the node or edge limit."
+          }
+        },
+        "required": [
+          "nodes",
+          "edges",
+          "truncated"
+        ],
+        "additionalProperties": false
       }
     },
     "securitySchemes": {
@@ -15105,13 +16064,21 @@
         "name": "chapter_from",
         "in": "query",
         "description": "Inclusive lower bound on the numbered chapter of the knowledge item.",
-        "schema": { "type": "integer", "minimum": 1, "maximum": 999999 }
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999999
+        }
       },
       "ChapterTo": {
         "name": "chapter_to",
         "in": "query",
         "description": "Inclusive upper bound on the numbered chapter of the knowledge item.",
-        "schema": { "type": "integer", "minimum": 1, "maximum": 999999 }
+        "schema": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 999999
+        }
       },
       "Limit": {
         "name": "limit",

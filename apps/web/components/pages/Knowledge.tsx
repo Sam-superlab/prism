@@ -2,7 +2,7 @@
 import { knowledgeChapter, knowledgeChapterTitle } from '@prism/shared-utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useDeferredValue, useEffect, useId, useRef, useState, useTransition } from 'react';
+import { useDeferredValue, useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react';
 import { ApiError, api, datetime, useAction, useResource, uuid } from '../../lib/api';
 import {
   chapterName,
@@ -13,7 +13,10 @@ import {
 } from '../../lib/knowledge-scope';
 import type { Card, Entity, Knowledge, Page, ProofStep, ReviewEvent } from '../../lib/types';
 import { reviewCardTypes } from '../../lib/review-card-markdown';
+import type { GuideLanguage } from '../../lib/getting-started-copy';
 import { KnowledgeMarkdownActions } from '../KnowledgeMarkdownActions';
+import { ConnectionGraph } from '../ConnectionGraph';
+import { ModuleGuide, ModuleGuideHint, useModuleGuide, type ModuleGuideState } from '../ModuleGuide';
 import { ReviewCardImport } from '../ReviewCardImport';
 import { KnowledgeResearchLinks } from '../ResearchLinks';
 import { ProofRecall, ProofStepEditor } from '../ProofRecall';
@@ -146,11 +149,22 @@ function ChapterFilter({
   );
 }
 
-export function KnowledgePage({ id, scope }: { id?: string; scope: StudyScope }) {
+export function KnowledgePage({
+  id,
+  scope,
+  guideUserId,
+  guideLanguage,
+}: {
+  id?: string;
+  scope: StudyScope;
+  guideUserId?: string;
+  guideLanguage?: GuideLanguage;
+}) {
   const [q, setQ] = useState('');
   const [type, setType] = useState('');
+  const guide = useModuleGuide('knowledge', guideUserId, guideLanguage);
   return id ? (
-    <KnowledgeDetail id={id} />
+    <KnowledgeDetail id={id} guide={guide} />
   ) : (
     <KnowledgeCollection
       key={scopedPath('/knowledge', scope)}
@@ -159,6 +173,7 @@ export function KnowledgePage({ id, scope }: { id?: string; scope: StudyScope })
       type={type}
       setQ={setQ}
       setType={setType}
+      guide={guide}
     />
   );
 }
@@ -169,17 +184,19 @@ function KnowledgeCollection({
   type,
   setQ,
   setType,
+  guide,
 }: {
   scope: StudyScope;
   q: string;
   type: string;
   setQ: (value: string) => void;
   setType: (value: string) => void;
+  guide: ModuleGuideState;
 }) {
   const router = useRouter();
   const { subject, chapters } = scope;
   const [switchingScope, switchScope] = useTransition();
-  const [editor, setEditor] = useState(false);
+  const [editor, setEditor] = useState<'regular' | 'guided'>();
   const subjects = useResource<SubjectList>('/knowledge-subjects');
   const itemsPath = scopedPath('/knowledge-items', scope, {
     limit: '100',
@@ -236,12 +253,18 @@ function KnowledgeCollection({
             Start review
             <Icon name="arrow" size={16} />
           </Link>
-          <button className="button primary" onClick={() => setEditor(true)}>
+          <button className="button primary" onClick={() => setEditor('regular')}>
             <Icon name="plus" size={17} />
             New knowledge
           </button>
         </div>
       </div>
+      <ModuleGuide
+        guide={guide}
+        continuation={guide.progress?.itemId ? 'knowledge' : undefined}
+        href={guide.progress?.itemId ? `/knowledge/${guide.progress.itemId}` : undefined}
+        action={() => setEditor('guided')}
+      />
       <div className={`collection-toolbar ${scopeStyles.toolbar}`}>
         <label className="filter-search">
           <Icon name="search" size={18} />
@@ -299,7 +322,7 @@ function KnowledgeCollection({
           <Empty
             title={filtered ? 'No matching knowledge' : 'No knowledge items yet'}
             action={
-              <button className="button primary" onClick={() => setEditor(true)}>
+              <button className="button primary" onClick={() => setEditor('regular')}>
                 {filtered ? 'Create a knowledge item' : 'Create your first knowledge item'}
               </button>
             }
@@ -365,10 +388,17 @@ function KnowledgeCollection({
       {editor && (
         <KnowledgeEditor
           initialSubject={subject}
+          initialType={editor === 'guided' ? 'definition' : undefined}
           initialChapter={chapters && chapters.from === chapters.to ? chapters.from : undefined}
-          onClose={() => setEditor(false)}
+          guideHint={
+            editor === 'guided' && (
+              <ModuleGuideHint guide={guide}>{guide.copy.editor.knowledge}</ModuleGuideHint>
+            )
+          }
+          onClose={() => setEditor(undefined)}
           onSaved={(item) => {
-            setEditor(false);
+            if (editor === 'guided' || !guide.progress?.itemId) guide.continueWith(item.id);
+            setEditor(undefined);
             window.location.href = `/knowledge/${item.id}`;
           }}
         />
@@ -376,7 +406,7 @@ function KnowledgeCollection({
     </>
   );
 }
-function KnowledgeDetail({ id }: { id: string }) {
+function KnowledgeDetail({ id, guide }: { id: string; guide: ModuleGuideState }) {
   const item = useResource<Knowledge>(`/knowledge-items/${id}`);
   const cards = useResource<Page<Card>>(`/knowledge-items/${id}/cards?limit=100`);
   const [edit, setEdit] = useState(false);
@@ -411,6 +441,12 @@ function KnowledgeDetail({ id }: { id: string }) {
       <Link className="back-link" href="/knowledge">
         ← All knowledge
       </Link>
+      {guide.progress?.itemId === id && (
+        <ModuleGuide guide={guide} continuation="knowledge" action={() => setCardEdit('new')} />
+      )}
+      {guide.progress && !guide.progress.itemId && guide.progress.status !== 'completed' && (
+        <ModuleGuide guide={guide} href="/knowledge" />
+      )}
       <div className="page-heading detail-heading">
         <div>
           <div className="eyebrow">
@@ -577,6 +613,7 @@ function KnowledgeDetail({ id }: { id: string }) {
           </section>
         </div>
         <aside>
+          <ConnectionGraph focus={`knowledge:${id}`} />
           <KnowledgeResearchLinks note={k} />
           <section className="panel">
             <div className="panel-heading">
@@ -649,8 +686,15 @@ function KnowledgeDetail({ id }: { id: string }) {
         <CardEditor
           knowledge={k}
           card={cardEdit === 'new' ? undefined : cardEdit}
+          guideHint={
+            cardEdit === 'new' &&
+            guide.progress?.itemId === id && (
+              <ModuleGuideHint guide={guide}>{guide.copy.makeCard}</ModuleGuideHint>
+            )
+          }
           onClose={() => setCardEdit(null)}
           onSaved={() => {
+            if (cardEdit === 'new' && guide.progress?.itemId === id) guide.finish();
             setCardEdit(null);
             cards.reload();
           }}
@@ -689,6 +733,7 @@ export function KnowledgeEditor({
   initialSubject,
   initialType,
   initialChapter,
+  guideHint,
   onClose,
   onSaved,
 }: {
@@ -696,6 +741,7 @@ export function KnowledgeEditor({
   initialSubject?: string;
   initialType?: string;
   initialChapter?: number;
+  guideHint?: ReactNode;
   onClose: () => void;
   onSaved: (item: Knowledge) => void;
 }) {
@@ -725,6 +771,7 @@ export function KnowledgeEditor({
   const action = useAction();
   return (
     <Modal title={item ? 'Edit knowledge item' : 'New knowledge item'} onClose={onClose} wide>
+      {guideHint}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -948,11 +995,13 @@ function KnowledgeTextEditor({
 export function CardEditor({
   knowledge,
   card,
+  guideHint,
   onClose,
   onSaved,
 }: {
   knowledge: Knowledge;
   card?: Card;
+  guideHint?: ReactNode;
   onClose: () => void;
   onSaved: (card: Card) => void;
 }) {
@@ -966,6 +1015,7 @@ export function CardEditor({
   const action = useAction();
   return (
     <Modal title={card ? 'Edit review card' : 'Create an independent review card'} onClose={onClose}>
+      {guideHint}
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -1054,7 +1104,8 @@ function HistoryModal({ cardId, onClose }: { cardId: string; onClose: () => void
               {!!x.proof_stuck_steps?.length && (
                 <details className={proofStyles.historyDetails}>
                   <summary>
-                    Stuck on {x.proof_stuck_steps.length === 1 ? '1 step' : `${x.proof_stuck_steps.length} steps`}
+                    Stuck on{' '}
+                    {x.proof_stuck_steps.length === 1 ? '1 step' : `${x.proof_stuck_steps.length} steps`}
                   </summary>
                   <ul>
                     {x.proof_stuck_steps.map((step) => (
@@ -1289,7 +1340,9 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
             disabled={filtersLocked}
             onChange={(range) =>
               switchScope(() =>
-                router.replace(scopedPath('/review/session', { subject, chapters: range }), { scroll: false }),
+                router.replace(scopedPath('/review/session', { subject, chapters: range }), {
+                  scroll: false,
+                }),
               )
             }
           />
@@ -1302,7 +1355,7 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
       {(cardId ? selectedCard.loading && !focused : queue.loading && !queue.data) && <Loading />}
       {cardId && selectedCard.error && (
         <Link href="/today" className="button">
-          Back to Today
+          Back to Dashboard
         </Link>
       )}
       {batch.error && <Notice tone="error">{batch.error}</Notice>}
@@ -1335,8 +1388,8 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
                 : subject !== undefined
                   ? 'No cards in this subject are due yet. Choose another subject or return later.'
                   : cardId
-                  ? 'Return to Today to continue with your checklist.'
-                  : 'Add more knowledge, or return when your next cards are due.'}
+                    ? 'Return to Today to continue with your checklist.'
+                    : 'Add more knowledge, or return when your next cards are due.'}
           </p>
           <div className="rating-summary">
             {Object.entries(ratings).map(([r, n]) => (
@@ -1359,7 +1412,7 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
           )}
           <div className="inline-actions centered">
             <Link href="/today" className="button primary">
-              Back to Today
+              Back to Dashboard
               <Icon name="arrow" size={16} />
             </Link>
             <Link href={scopedPath('/knowledge', scope)} className="button">

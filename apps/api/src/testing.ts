@@ -27,6 +27,8 @@ export async function createTestPostgres() {
     '004_ai_review_drafts',
     '005_proof_recall',
     '006_research_project_knowledge',
+    '007_research_references',
+    '008_reference_arxiv_identifiers',
   ]) {
     await owner.query(
       await readFile(new URL(`../../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'),

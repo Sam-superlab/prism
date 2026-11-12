@@ -37,6 +37,10 @@ const local = (url) => {
 function openExternal(url) {
   try {
     const parsed = new URL(url);
+    if (/^zotero:\/\/select\/library\/items\/[A-Z0-9]{8}$/.test(parsed.href)) {
+      void shell.openExternal(parsed.href).catch(() => {});
+      return;
+    }
     if (
       ['https:', 'http:'].includes(parsed.protocol) &&
       !['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)

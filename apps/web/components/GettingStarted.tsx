@@ -10,6 +10,7 @@ import {
   type GuideLanguage,
 } from '../lib/getting-started-copy';
 import type { Knowledge, Page, ReviewEvent } from '../lib/types';
+import { ArxivInterestGuide, readArxivInterestDraft, type ArxivInterestDraft } from './ArxivInterestGuide';
 import { Icon, KnowledgeMarkdown, Modal, Notice } from './ui';
 import { CardEditor, KnowledgeEditor } from './pages/Knowledge';
 import styles from './GettingStarted.module.css';
@@ -20,6 +21,7 @@ type Progress = {
   cardId?: string;
   reviewed?: boolean;
   exampleIds?: { note: string; card: string; language?: GuideLanguage };
+  interests?: ArxivInterestDraft;
 };
 
 export function useGettingStarted(userId: string | undefined, isToday: boolean) {
@@ -68,7 +70,9 @@ export function useGettingStarted(userId: string | undefined, isToday: boolean) 
     let progress: Progress | null = null;
     try {
       const value = JSON.parse(localStorage.getItem(key) ?? 'null') as Progress | null;
-      if (value && ['welcome', 'active', 'hidden'].includes(value.status)) progress = value;
+      if (value && ['welcome', 'active', 'hidden'].includes(value.status)) {
+        progress = { ...value, interests: readArxivInterestDraft(value.interests) };
+      }
     } catch {
       // Treat unavailable storage as a first visit.
     }
@@ -132,12 +136,14 @@ export function GettingStarted({
   language,
   onLanguageChange,
   onCardSaved,
+  onDiscover,
 }: {
   progress: Progress;
   update: (progress: Progress) => void;
   language: GuideLanguage;
   onLanguageChange: (language: GuideLanguage) => void;
   onCardSaved: () => void;
+  onDiscover: (jobId?: string) => void;
 }) {
   const copy = guideCopy[language];
   const [panel, setPanel] = useState<'note' | 'card' | 'example'>();
@@ -164,39 +170,17 @@ export function GettingStarted({
   return (
     <>
       {progress.status === 'welcome' ? (
-        <Modal title={copy.welcome} lang={language} closeLabel={copy.close} onClose={hide}>
-          <div className={styles.welcome}>
-            <img src="/prism-mark.svg" width={52} height={52} alt="" />
-            <p>{copy.welcomeDetail}</p>
-            <GuideLanguageSelect language={language} onChange={onLanguageChange} />
-            <button className="text-link" onClick={() => update(active)}>
-              {copy.viewChecklist}
-            </button>
-          </div>
-          <div className={`modal-footer ${styles.actions}`}>
-            <button className="button" onClick={hide}>
-              {copy.skip}
-            </button>
-            <button
-              className="button"
-              onClick={() => {
-                update(active);
-                setPanel('example');
-              }}
-            >
-              {copy.tryExample}
-            </button>
-            <button
-              className="button primary"
-              onClick={() => {
-                update(active);
-                setPanel('note');
-              }}
-            >
-              {copy.firstNote}
-            </button>
-          </div>
-        </Modal>
+        <ArxivInterestGuide
+          language={language}
+          languageControl={<GuideLanguageSelect language={language} onChange={onLanguageChange} />}
+          draft={progress.interests}
+          onChange={(interests) => update({ ...progress, interests })}
+          onSkip={hide}
+          onFinish={(jobId) => {
+            update({ ...progress, status: 'hidden', interests: undefined });
+            onDiscover(jobId);
+          }}
+        />
       ) : (
         <section
           className={`panel content-panel ${styles.checklist}`}

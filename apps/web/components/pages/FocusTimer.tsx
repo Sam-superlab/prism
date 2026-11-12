@@ -411,6 +411,18 @@ export function FocusTimer({ timer }: { timer: FocusTimerController }) {
         <FocusReadout session={session} />
         <StudyPet phase={session.phase} status={status} />
       </div>
+      {timer.native && (
+        <label className={`switch-row ${styles.companionToggle}`}>
+          <span>Pip desktop companion</span>
+          <input
+            type="checkbox"
+            role="switch"
+            checked={timer.options.pet}
+            onChange={(event) => timer.setOption('pet', event.target.checked)}
+            disabled={!ready}
+          />
+        </label>
+      )}
       <div className={styles.details}>
         <p className={styles.state} role="status">
           {stateText}

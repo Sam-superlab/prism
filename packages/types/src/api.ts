@@ -1341,6 +1341,72 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/research/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_research_references"];
+        put?: never;
+        post: operations["post_research_references"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_research_references_id"];
+        put?: never;
+        post?: never;
+        /** @description Soft delete, increment version and emit tombstone. Preserve historical records. */
+        delete: operations["delete_research_references_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/projects/{id}/bibliography": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_research_project_bibliography"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/graph": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Return workspace records and explicit links, optionally restricted to neighbors of a selected record. */
+        get: operations["get_workspace_graph"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -2844,7 +2910,7 @@ export interface components {
         });
         SyncRecord: {
             /** @enum {string} */
-            entity_type: "user" | "preferences" | "knowledge_item" | "knowledge_relation" | "review_card" | "review_event" | "research_project" | "research_object" | "research_event" | "research_knowledge_link" | "research_paper_link" | "task" | "inbox_entry" | "exercise" | "workout_template" | "workout_template_exercise" | "workout_session" | "session_exercise" | "workout_set" | "cardio_entry" | "arxiv_subscription" | "user_paper" | "daily_plan" | "plan_item" | "daily_plan_review_card" | "daily_shutdown" | "conflict";
+            entity_type: "user" | "preferences" | "knowledge_item" | "knowledge_relation" | "review_card" | "review_event" | "research_project" | "research_object" | "research_event" | "research_knowledge_link" | "research_paper_link" | "task" | "inbox_entry" | "exercise" | "workout_template" | "workout_template_exercise" | "workout_session" | "session_exercise" | "workout_set" | "cardio_entry" | "arxiv_subscription" | "user_paper" | "daily_plan" | "plan_item" | "daily_plan_review_card" | "daily_shutdown" | "conflict" | "research_reference";
             /** Format: uuid */
             entity_id: string;
             entity_version: string;
@@ -2960,6 +3026,10 @@ export interface components {
             /** @constant */
             entity_type?: "daily_plan_review_card";
             data?: components["schemas"]["PlanReviewCard"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_reference";
+            data?: components["schemas"]["ResearchReference"] | null;
         });
         SyncResult: {
             /** Format: uuid */
@@ -3100,6 +3170,79 @@ export interface components {
         DigestPreferences: {
             enabled: boolean;
             time: string;
+        };
+        ResearchReference: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            project_id: string;
+            title: string;
+            authors: string[];
+            year: number | null;
+            doi: string | null;
+            arxiv_id: string | null;
+            url: string | null;
+            zotero_key: string | null;
+        };
+        ResearchReferenceCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            title: string;
+            authors?: string[];
+            year?: number | null;
+            doi?: string | null;
+            arxiv_id?: string | null;
+            url?: string | null;
+            zotero_key?: string | null;
+        };
+        ResearchReferencePage: {
+            items: components["schemas"]["ResearchReference"][];
+            next_cursor: string | null;
+        };
+        BibliographyItem: {
+            /** Format: uuid */
+            id: string;
+            version: string;
+            title: string;
+            authors: string[];
+            year: number | null;
+            doi: string | null;
+            arxiv_id: string | null;
+            url: string | null;
+            zotero_key: string | null;
+            /** @enum {string} */
+            kind: "reference" | "arxiv";
+        };
+        Bibliography: {
+            items: components["schemas"]["BibliographyItem"][];
+        };
+        WorkspaceGraphNode: {
+            id: string;
+            /** @enum {string} */
+            kind: "knowledge" | "project" | "research" | "paper";
+            label: string;
+            /** @description Workspace path or HTTPS source for this item, when available. */
+            href?: string;
+        };
+        WorkspaceGraphEdge: {
+            source: string;
+            target: string;
+            /** @enum {string} */
+            kind: "related" | "depends_on" | "example_of" | "proof_of" | "project_object" | "project_knowledge" | "object_knowledge" | "project_paper" | "project_reference";
+        };
+        WorkspaceGraph: {
+            nodes: components["schemas"]["WorkspaceGraphNode"][];
+            edges: components["schemas"]["WorkspaceGraphEdge"][];
+            /** @description Whether the result exceeded the node or edge limit. */
+            truncated: boolean;
         };
     };
     responses: {
@@ -6044,6 +6187,10 @@ export interface operations {
                 saved?: boolean;
                 /** @description Filter by a positive For You reaction, independently of saved and read status. */
                 reaction?: "liked" | "interested";
+                /** @description Search papers in the current view. */
+                q?: string;
+                /** @description Filter by a comma-separated list of up to 100 user-paper IDs. */
+                ids?: string;
             };
             header?: never;
             path?: never;
@@ -6859,6 +7006,168 @@ export interface operations {
                 };
                 content: {
                     "application/zip": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_research_references: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReferencePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_research_references: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchReferenceCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReference"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_research_references_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReference"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_research_references_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_research_project_bibliography: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Bibliography"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_workspace_graph: {
+        parameters: {
+            query?: {
+                /** @description Node identifier to center the graph on. */
+                focus?: string;
+                /** @description Number of links to follow from the focus. */
+                depth?: number;
+                /** @description Maximum number of visible nodes. */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkspaceGraph"];
                 };
             };
             default: components["responses"]["Error"];

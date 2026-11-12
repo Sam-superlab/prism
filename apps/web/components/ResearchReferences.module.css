@@ -1,0 +1,78 @@
+.references {
+  margin-block-end: 16px;
+}
+
+.toolbar,
+.actions,
+.pagination {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.actions {
+  margin-block-end: 12px;
+}
+
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 8px;
+  padding-block: 10px;
+  border-block-end: 1px solid var(--line);
+}
+
+.row:last-child {
+  border-block-end: 0;
+}
+
+.rowTitle {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.rowMeta {
+  display: block;
+  margin-block-start: 3px;
+  overflow-wrap: anywhere;
+}
+
+.inlineActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-block-start: 4px;
+}
+
+.collection {
+  display: block;
+  width: 100%;
+  text-align: start;
+}
+
+.pagination {
+  justify-content: space-between;
+  margin-block-start: 8px;
+}
+
+.citationControls {
+  margin-block: 4px 14px;
+}
+
+.citationControls > :first-child {
+  margin-block-end: 6px;
+}
+
+.citationControls select {
+  flex: 1;
+  min-width: 12ch;
+  min-height: 34px;
+}

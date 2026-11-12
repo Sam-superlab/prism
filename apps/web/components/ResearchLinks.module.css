@@ -34,3 +34,105 @@
 .card :global(.relation-row) > div {
   min-inline-size: 0;
 }
+
+.materialTypes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 3px;
+  padding: 3px;
+  margin-block: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-secondary);
+}
+
+.materialTypes button {
+  min-inline-size: 0;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  transition:
+    color var(--motion-feedback),
+    background-color var(--motion-feedback);
+}
+
+.materialTypes button[aria-pressed='true'] {
+  border-color: var(--line);
+  background: var(--panel);
+  color: var(--ink);
+}
+
+.materialTypes button:not(:disabled):hover {
+  color: var(--ink);
+}
+
+.paperFilters {
+  margin-block-end: 12px;
+}
+
+.shelfTabs {
+  flex-wrap: wrap;
+  gap: 3px 10px;
+  margin-block-end: 5px;
+}
+
+.materialResults {
+  display: grid;
+  gap: 2px;
+  max-block-size: min(19rem, 33dvh);
+  margin: 0 0 10px;
+  padding: 4px;
+  overflow-y: auto;
+  list-style: none;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.materialChoice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  inline-size: 100%;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  text-align: start;
+  transition:
+    background-color var(--motion-feedback),
+    border-color var(--motion-feedback);
+}
+
+.materialChoice:not(:disabled):hover {
+  background: var(--hover-tint);
+}
+
+.materialChoice[aria-pressed='true'] {
+  border-color: var(--accent);
+  background: var(--accent-soft, var(--surface-secondary));
+}
+
+.materialChoice span {
+  display: grid;
+  min-inline-size: 0;
+  gap: 3px;
+  overflow-wrap: anywhere;
+}
+
+.materialChoice strong {
+  font-weight: 550;
+}
+
+.materialChoice small {
+  color: var(--muted);
+}
+
+.materialChoice svg {
+  flex: none;
+  color: var(--accent-ink, var(--accent));
+}
+
+.resultsEmpty {
+  margin-block: 14px;
+}

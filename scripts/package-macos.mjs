@@ -249,6 +249,8 @@ try {
     'migrations/004_ai_review_drafts.sql',
     'migrations/005_proof_recall.sql',
     'migrations/006_research_project_knowledge.sql',
+    'migrations/007_research_references.sql',
+    'migrations/008_reference_arxiv_identifiers.sql',
   ])
     copy(join(repo, 'database', file), resolve(databaseModule, '../../database', file));
   copy(join(repo, 'apps/macos/launch.mjs'), join(runtime, 'launch.mjs'));

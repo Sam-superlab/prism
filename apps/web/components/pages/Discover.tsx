@@ -1,6 +1,22 @@
 'use client';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, datetime, localInputToInstant, useAction, useResource, uuid } from '../../lib/api';
+import type { GuideLanguage } from '../../lib/getting-started-copy';
+import {
+  isPaperShelf,
+  paperShelfQuery,
+  paperShelves,
+  shelvesForPaper,
+  usePaperFolderFeed,
+  usePaperFolders,
+} from '../../lib/paper-folders';
+import {
+  FolderGlyph,
+  OrganizePaperFolders,
+  PaperFolderBar,
+  PaperFolderEditor,
+  type FolderEditorTarget,
+} from '../PaperFolders';
 import { ResearchLinkModal } from '../ResearchLinks';
 import type { Job, Page, Project, Subscription, UserPaper } from '../../lib/types';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, MathContent, Modal, Notice, label } from '../ui';
@@ -9,9 +25,9 @@ import styles from './DiscoverForYou.module.css';
 
 const exploreFilters = {
   unread: { label: 'Unread', query: '&status=unread' },
-  saved: { label: 'Saved', query: '&saved=true' },
-  liked: { label: 'Liked', query: '&reaction=liked' },
-  interested: { label: 'Interested', query: '&reaction=interested' },
+  saved: { label: paperShelves.saved, query: paperShelfQuery('saved') },
+  interested: { label: paperShelves.interested, query: paperShelfQuery('interested') },
+  liked: { label: paperShelves.liked, query: paperShelfQuery('liked') },
   read: { label: 'Read', query: '&status=read' },
   all: { label: 'All', query: '' },
 };
@@ -22,24 +38,46 @@ function exploreFeedPath(filter: ExploreFilter, cursor?: string) {
   return `/arxiv/feed?limit=100${exploreFilters[filter].query}${pagination}`;
 }
 
-export function DiscoverPage() {
-  const [view, setView] = useState<'for-you' | 'explore'>('explore');
+export function DiscoverPage({
+  initialView = 'explore',
+  initialRefreshJob,
+  onOpenInterests,
+  guideLanguage,
+  userId,
+}: {
+  initialView?: 'for-you' | 'explore';
+  initialRefreshJob?: string;
+  onOpenInterests?: () => void;
+  guideLanguage?: GuideLanguage;
+  userId?: string;
+}) {
+  const [view, setView] = useState(initialView);
   const [filter, setFilter] = useState<ExploreFilter>('unread');
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
+  const [folderEditor, setFolderEditor] = useState<FolderEditorTarget | null>(null);
+  const [organizing, setOrganizing] = useState<UserPaper | null>(null);
   const [subscriptionEditor, setSubscriptionEditor] = useState(false);
   const [paperTask, setPaperTask] = useState<UserPaper | null>(null);
   const [projectPaper, setProjectPaper] = useState<UserPaper | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const [refreshJobId, setRefreshJobId] = useState<string | null>(null);
-  const feed = useResource<Page<UserPaper>>(exploreFeedPath(filter));
+  const [refreshJobId, setRefreshJobId] = useState<string | null>(initialRefreshJob ?? null);
+  const folderStore = usePaperFolders(userId);
+  const shelf = isPaperShelf(filter) ? filter : null;
+  const shelfFolders = shelf ? folderStore.folders.filter((folder) => folder.shelf === shelf) : [];
+  const selectedFolder = shelfFolders.find((folder) => folder.id === selectedFolderId) ?? null;
+  const feed = useResource<Page<UserPaper>>(selectedFolder ? null : exploreFeedPath(filter));
+  const folderFeed = usePaperFolderFeed(selectedFolder);
+  const visibleFeed = selectedFolder ? folderFeed : feed;
+  const reloadVisibleFeed = visibleFeed.reload;
   const subscriptions = useResource<Page<Subscription>>('/arxiv/subscriptions?limit=100');
   const pagination = useAction();
   const pageRequest = useRef<AbortController | null>(null);
   const reloadFeed = useCallback(() => {
     pageRequest.current?.abort();
     pagination.setError(null);
-    feed.reload();
-  }, [feed.reload, pagination.setError]);
+    reloadVisibleFeed();
+  }, [reloadVisibleFeed, pagination.setError]);
   const refresh = () => {
     reloadFeed();
     subscriptions.reload();
@@ -56,11 +94,26 @@ export function DiscoverPage() {
   }
 
   function selectFilter(next: ExploreFilter) {
-    if (next === filter) return;
+    if (next === filter) {
+      selectFolder(null);
+      return;
+    }
+    resetPagination();
+    setSelectedFolderId(null);
+    setFilter(next);
+  }
+
+  function resetPagination() {
     pageRequest.current?.abort();
     pagination.setError(null);
     feed.setData(null);
-    setFilter(next);
+  }
+
+  function selectFolder(id: string | null) {
+    if (id === selectedFolderId) return;
+    resetPagination();
+    if (id === null && !selectedFolder) feed.reload();
+    setSelectedFolderId(id);
   }
 
   function loadMore() {
@@ -122,29 +175,34 @@ export function DiscoverPage() {
               : 'Browse and filter recent arXiv papers.'}
           </p>
         </div>
-        {view === 'explore' && (
-          <div className="heading-actions">
-            <button
-              className="button"
-              disabled={refreshing}
-              onClick={() => {
-                setMessage('');
-                setRefreshJobId(null);
-                void requestRefresh.run(async () => {
-                  const queued = await api<Job>('/arxiv/refresh', { method: 'POST' });
-                  setRefreshJobId(queued.id);
-                });
-              }}
-            >
-              <Icon name="refresh" size={16} />
-              {refreshing ? 'Refreshing feed…' : 'Refresh feed'}
+        <div className="heading-actions">
+          {onOpenInterests && (
+            <button className="button" onClick={onOpenInterests}>
+              Choose interests
             </button>
+          )}
+          <button
+            className="button"
+            disabled={refreshing}
+            onClick={() => {
+              setMessage('');
+              setRefreshJobId(null);
+              void requestRefresh.run(async () => {
+                const queued = await api<Job>('/arxiv/refresh', { method: 'POST' });
+                setRefreshJobId(queued.id);
+              });
+            }}
+          >
+            <Icon name="refresh" size={16} />
+            {refreshing ? 'Refreshing feed…' : 'Refresh feed'}
+          </button>
+          {view === 'explore' && (
             <button className="button primary" onClick={() => setSubscriptionEditor(true)}>
               <Icon name="plus" size={17} />
               Add subscription
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </div>
       <div className="collection-toolbar">
         <div className="tabs" role="group" aria-label="Discover view">
@@ -164,7 +222,27 @@ export function DiscoverPage() {
           </button>
         </div>
       </div>
-      {view === 'for-you' && <DiscoverForYou onExplore={openExplore} onLinkResearch={setProjectPaper} />}
+      {requestRefresh.error && <Notice tone="error">{requestRefresh.error}</Notice>}
+      {refreshJobId && <ErrorState error={jobStatus.error} retry={jobStatus.reload} />}
+      <div role="status">
+        {refreshing && !job?.error_message && <Notice>Checking arXiv for your enabled subscriptions…</Notice>}
+        {job?.status === 'failed' && (
+          <Notice tone="warning">
+            arXiv refresh failed. Another attempt is scheduled for {datetime(job.scheduled_at)}.{' '}
+            {job.error_message}
+          </Notice>
+        )}
+        {job?.status === 'dead' && (
+          <Notice tone="error">The arXiv feed could not be refreshed. {job.error_message}</Notice>
+        )}
+      </div>
+      {view === 'for-you' && !refreshing && (
+        <DiscoverForYou
+          onExplore={openExplore}
+          onLinkResearch={setProjectPaper}
+          firstRoundGuideLanguage={initialView === 'for-you' ? guideLanguage : undefined}
+        />
+      )}
       <div className={`discover-layout ${styles.explore}`} hidden={view !== 'explore'}>
         <div>
           <div className="collection-toolbar">
@@ -172,16 +250,26 @@ export function DiscoverPage() {
               {(Object.keys(exploreFilters) as ExploreFilter[]).map((value) => (
                 <button
                   key={value}
-                  className={filter === value ? 'active' : ''}
+                  className={`${filter === value ? 'active' : ''} ${isPaperShelf(value) ? styles.folderTab : ''}`}
                   aria-pressed={filter === value}
                   onClick={() => selectFilter(value)}
                 >
+                  {isPaperShelf(value) && <FolderGlyph />}
                   {exploreFilters[value].label}
                 </button>
               ))}
             </div>
-            <span className="muted small-text">{feed.data?.items.length || 0} papers</span>
+            <span className="muted small-text">{visibleFeed.data?.items.length || 0} papers</span>
           </div>
+          {userId && shelf && (
+            <PaperFolderBar
+              shelf={shelf}
+              folders={shelfFolders}
+              current={selectedFolder}
+              onSelect={selectFolder}
+              onEdit={setFolderEditor}
+            />
+          )}
           {message && (
             <Notice>
               {message}
@@ -191,37 +279,24 @@ export function DiscoverPage() {
             </Notice>
           )}
           {action.error && <Notice tone="error">{action.error}</Notice>}
-          {requestRefresh.error && <Notice tone="error">{requestRefresh.error}</Notice>}
-          {refreshJobId && <ErrorState error={jobStatus.error} retry={jobStatus.reload} />}
-          <div role="status">
-            {refreshing && !job?.error_message && (
-              <Notice>Checking arXiv for your enabled subscriptions…</Notice>
-            )}
-            {job?.status === 'failed' && (
-              <Notice tone="warning">
-                arXiv refresh failed. Another attempt is scheduled for {datetime(job.scheduled_at)}.{' '}
-                {job.error_message}
-              </Notice>
-            )}
-            {job?.status === 'dead' && (
-              <Notice tone="error">The arXiv feed could not be refreshed. {job.error_message}</Notice>
-            )}
-          </div>
-          <ErrorState error={feed.error} retry={reloadFeed} />
+          <ErrorState error={visibleFeed.error} retry={reloadFeed} />
           {pagination.error && <Notice tone="error">{pagination.error}</Notice>}
-          {feed.loading && !feed.data && <Loading />}
-          {feed.data?.items.length === 0 && (
+          {visibleFeed.loading && !visibleFeed.data && <Loading />}
+          {visibleFeed.data?.items.length === 0 && (
             <section className="panel">
               <Empty
                 icon="discover"
                 title={
-                  reactionEmpty?.title ??
-                  (filter === 'saved'
-                    ? 'No saved papers yet'
-                    : 'No papers yet')
+                  selectedFolder
+                    ? 'No papers in this folder'
+                    : (reactionEmpty?.title ?? (filter === 'saved' ? 'No saved papers yet' : 'No papers yet'))
                 }
                 action={
-                  reactionEmpty ? (
+                  selectedFolder ? (
+                    <button className="button" onClick={() => selectFolder(null)}>
+                      Browse {paperShelves[selectedFolder.shelf]}
+                    </button>
+                  ) : reactionEmpty ? (
                     <button className="button" onClick={() => setView('for-you')}>
                       Open For You
                     </button>
@@ -236,15 +311,17 @@ export function DiscoverPage() {
                   )
                 }
               >
-                {reactionEmpty?.description ??
-                  (filter === 'saved'
-                    ? 'Saved papers sync across devices. Turn any paper into a reading task.'
-                    : 'Add arXiv categories, keywords, or authors. Refresh the feed to check for matching papers.')}
+                {selectedFolder
+                  ? 'Use Organize folders on a paper to add it here.'
+                  : (reactionEmpty?.description ??
+                    (filter === 'saved'
+                      ? 'Saved papers sync across devices. Turn any paper into a reading task.'
+                      : 'Add arXiv categories, keywords, or authors. Refresh the feed to check for matching papers.'))}
               </Empty>
             </section>
           )}
           <div className="paper-list">
-            {feed.data?.items.map((up) => {
+            {visibleFeed.data?.items.map((up) => {
               const p = up.paper;
               const open = expanded === up.id;
               return (
@@ -335,6 +412,18 @@ export function DiscoverPage() {
                         <a href={p.source_url} target="_blank" rel="noreferrer">
                           Open on arXiv
                         </a>
+                        {userId && shelvesForPaper(up).length > 0 && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              const menu = event.currentTarget.closest('details');
+                              if (menu) menu.open = false;
+                              setOrganizing(up);
+                            }}
+                          >
+                            Organize folders
+                          </button>
+                        )}
                         <button
                           onClick={() =>
                             void action.run(() =>
@@ -370,7 +459,7 @@ export function DiscoverPage() {
               );
             })}
           </div>
-          {feed.data?.next_cursor && (
+          {visibleFeed.data?.next_cursor && (
             <button className="button" disabled={pagination.busy || feed.loading} onClick={loadMore}>
               {pagination.busy ? 'Loading more…' : 'Load more'}
             </button>
@@ -390,7 +479,7 @@ export function DiscoverPage() {
             </div>
             <ErrorState error={subscriptions.error} retry={subscriptions.reload} />
             {subscriptions.data?.items.length === 0 && (
-              <p className="panel-description muted">Start with math.AC, math.AG, math.NT, or math.CO.</p>
+              <p className="panel-description muted">Choose the fields you’d like to follow.</p>
             )}
             {subscriptions.data?.items.map((s) => (
               <div className="subscription-row" key={s.id}>
@@ -401,7 +490,7 @@ export function DiscoverPage() {
                   </small>
                 </div>
                 <button
-                  className={`toggle ${s.enabled ? 'on' : ''}`}
+                  type="button"
                   role="switch"
                   aria-checked={s.enabled}
                   aria-label={`${s.enabled ? 'Disable' : 'Enable'} ${s.subscription_value}`}
@@ -415,9 +504,7 @@ export function DiscoverPage() {
                       }),
                     )
                   }
-                >
-                  <span />
-                </button>
+                />
                 <button
                   className="icon-button danger"
                   aria-label={`Delete subscription ${s.subscription_value}`}
@@ -444,6 +531,12 @@ export function DiscoverPage() {
           </section>
         </aside>
       </div>
+      {folderEditor && (
+        <PaperFolderEditor target={folderEditor} store={folderStore} onClose={() => setFolderEditor(null)} />
+      )}
+      {organizing && (
+        <OrganizePaperFolders paper={organizing} store={folderStore} onClose={() => setOrganizing(null)} />
+      )}
       {subscriptionEditor && (
         <SubscriptionModal
           onClose={() => setSubscriptionEditor(false)}

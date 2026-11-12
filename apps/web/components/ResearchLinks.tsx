@@ -1,9 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { api, useAction, useResource, uuid } from '../lib/api';
-import type { Entity, Knowledge, Page, Paper, Project, ResearchObject } from '../lib/types';
+import {
+  paperShelfQuery,
+  paperShelves,
+  usePaperFolderFeed,
+  usePaperFolders,
+  type PaperFolder,
+  type PaperShelf,
+} from '../lib/paper-folders';
+import type { Entity, Knowledge, Page, Paper, Project, ResearchObject, UserPaper } from '../lib/types';
 import { ErrorState, Field, Icon, Loading, Modal, Notice } from './ui';
 import styles from './ResearchLinks.module.css';
 
@@ -184,7 +192,28 @@ export function KnowledgeResearchLinks({ note }: { note: Knowledge }) {
   );
 }
 
-export function ProjectMaterials({ projectId }: { projectId: string }) {
+export function ProjectMaterials({
+  projectId,
+  userId,
+  pickerOpen,
+  pickerKind,
+  onOpenPicker,
+  onClosePicker,
+  onLinked,
+  onPaperLinksChanged,
+  guideHint,
+}: {
+  projectId: string;
+  userId?: string;
+  pickerOpen: boolean;
+  pickerKind?: Material['kind'];
+  onOpenPicker: () => void;
+  onClosePicker: () => void;
+  onLinked: () => void;
+  onPaperLinksChanged?: () => void;
+  guideHint?: ReactNode;
+}) {
+  const section = useRef<HTMLElement>(null);
   const notes = useResource<Page<KnowledgeLink>>(
     `/research/knowledge-links?project_id=${projectId}&limit=500`,
   );
@@ -195,14 +224,18 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
   });
 
   const remove = (kind: Material['kind'], link: ProjectLink) =>
-    void action.run(() =>
-      api(`/research/${kind}-links/${link.id}`, { method: 'DELETE', version: link.version }),
-    );
+    void action.run(async () => {
+      await api(`/research/${kind}-links/${link.id}`, { method: 'DELETE', version: link.version });
+      if (kind === 'paper') onPaperLinksChanged?.();
+    });
 
   return (
-    <section className={`panel ${styles.card}`} aria-label="Project materials">
+    <section ref={section} tabIndex={-1} className={`panel ${styles.card}`} aria-label="Project materials">
       <div className={`panel-heading ${styles.heading}`}>
         <h2>Project materials</h2>
+        <button className="button small" onClick={onOpenPicker}>
+          <Icon name="plus" size={15} /> Add material
+        </button>
       </div>
       <ErrorState error={notes.error} retry={notes.reload} />
       <ErrorState error={papers.error} retry={papers.reload} />
@@ -232,7 +265,316 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
           <Link href="/discover">Discover</Link> to bring materials here.
         </p>
       )}
+      {pickerOpen && (
+        <ProjectMaterialPicker
+          projectId={projectId}
+          userId={userId}
+          initialKind={pickerKind}
+          linkedNotes={notes.data?.items ?? []}
+          linkedPapers={papers.data?.items ?? []}
+          onClose={onClosePicker}
+          guideHint={guideHint}
+          onLinked={(kind) => {
+            notes.reload();
+            papers.reload();
+            if (kind === 'paper') onPaperLinksChanged?.();
+            onLinked();
+            window.requestAnimationFrame(() => section.current?.focus());
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function ProjectMaterialPicker({
+  projectId,
+  userId,
+  initialKind = 'knowledge',
+  linkedNotes,
+  linkedPapers,
+  onClose,
+  onLinked,
+  guideHint,
+}: {
+  projectId: string;
+  userId?: string;
+  initialKind?: Material['kind'];
+  linkedNotes: KnowledgeLink[];
+  linkedPapers: PaperLink[];
+  onClose: () => void;
+  onLinked: (kind: Material['kind']) => void;
+  guideHint?: ReactNode;
+}) {
+  const [kind, setKind] = useState<Material['kind']>(initialKind);
+  const [shelf, setShelf] = useState<PaperShelf | 'all'>('saved');
+  const [folderId, setFolderId] = useState('');
+  const [query, setQuery] = useState('');
+  const [search, setSearch] = useState('');
+  const [selection, setSelection] = useState<{ id: string; linkId: string }>();
+  const { folders } = usePaperFolders(userId);
+  const subfolders = kind === 'paper' ? folders.filter((folder) => folder.shelf === shelf) : [];
+  const folder = subfolders.find(({ id }) => id === folderId);
+  const trimmedQuery = query.trim();
+  const action = useAction(() => onLinked(kind));
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setSearch(trimmedQuery), 180);
+    return () => window.clearTimeout(timer);
+  }, [trimmedQuery]);
+
+  const queryParam = search ? `&q=${encodeURIComponent(search)}` : '';
+  const paperFilter = shelf === 'all' ? '' : paperShelfQuery(shelf);
+  const path =
+    kind === 'knowledge'
+      ? `/knowledge-items?limit=18${queryParam}`
+      : `/arxiv/feed?limit=18${paperFilter}${queryParam}`;
+
+  return (
+    <Modal title="Link material to project" onClose={() => !action.busy && onClose()}>
+      {guideHint}
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!selection || action.busy || search !== trimmedQuery) return;
+          if (
+            kind === 'knowledge'
+              ? linkedNotes.some((link) => link.knowledge_item_id === selection.id)
+              : linkedPapers.some((link) => link.paper_id === selection.id)
+          )
+            return;
+          const field = kind === 'knowledge' ? 'knowledge_item_id' : 'paper_id';
+          void action.run(() =>
+            api(`/research/${kind}-links`, {
+              method: 'POST',
+              body: { id: selection.linkId, project_id: projectId, [field]: selection.id },
+            }),
+          );
+        }}
+      >
+        <Field label="Search materials">
+          <input
+            type="search"
+            value={query}
+            maxLength={120}
+            disabled={action.busy}
+            placeholder={
+              kind === 'knowledge' ? 'Search notes by title or text' : 'Search title, author or arXiv ID'
+            }
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setSelection(undefined);
+            }}
+          />
+        </Field>
+        <div className={styles.materialTypes} role="group" aria-label="Material type">
+          {(['knowledge', 'paper'] as const).map((value) => (
+            <button
+              key={value}
+              type="button"
+              aria-pressed={kind === value}
+              disabled={action.busy}
+              onClick={() => {
+                if (kind === value) return;
+                setKind(value);
+                setSelection(undefined);
+              }}
+            >
+              {value === 'knowledge' ? 'Knowledge notes' : 'Papers'}
+            </button>
+          ))}
+        </div>
+        {kind === 'paper' && (
+          <div className={styles.paperFilters}>
+            <div className={`tabs ${styles.shelfTabs}`} role="group" aria-label="Paper collection">
+              {(['saved', 'interested', 'liked', 'all'] as const).map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={shelf === value}
+                  className={shelf === value ? 'active' : ''}
+                  disabled={action.busy}
+                  onClick={() => {
+                    if (value === shelf) return;
+                    setShelf(value);
+                    setFolderId('');
+                    setSelection(undefined);
+                  }}
+                >
+                  {value === 'all' ? 'All papers' : paperShelves[value]}
+                </button>
+              ))}
+            </div>
+            {subfolders.length > 0 && (
+              <Field label="Subfolder">
+                <select
+                  value={folder?.id ?? ''}
+                  disabled={action.busy}
+                  onChange={(event) => {
+                    setFolderId(event.target.value);
+                    setSelection(undefined);
+                  }}
+                >
+                  <option value="">All in this collection</option>
+                  {subfolders.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {item.name}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            )}
+          </div>
+        )}
+        {search === trimmedQuery ? (
+          <MaterialResults
+            key={`${path}:${folder?.id ?? ''}`}
+            path={path}
+            folder={folder}
+            search={search}
+            kind={kind}
+            linkedNotes={linkedNotes}
+            linkedPapers={linkedPapers}
+            selectedId={selection?.id}
+            onSelect={(id) =>
+              setSelection((current) => (current?.id === id ? current : { id, linkId: uuid() }))
+            }
+            busy={action.busy}
+          />
+        ) : (
+          <Loading />
+        )}
+        {action.error && <Notice tone="error">{action.error}</Notice>}
+        <div className="modal-footer">
+          <button className="button primary" disabled={!selection || action.busy || search !== trimmedQuery}>
+            Create link
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
+function MaterialResults({
+  path,
+  folder,
+  search,
+  kind,
+  linkedNotes,
+  linkedPapers,
+  selectedId,
+  onSelect,
+  busy,
+}: {
+  path: string;
+  folder?: PaperFolder;
+  search: string;
+  kind: Material['kind'];
+  linkedNotes: KnowledgeLink[];
+  linkedPapers: PaperLink[];
+  selectedId?: string;
+  onSelect: (id: string) => void;
+  busy: boolean;
+}) {
+  const page = useResource<Page<Knowledge | UserPaper>>(folder ? null : path);
+  const folderPage = usePaperFolderFeed(folder ?? null, search);
+  const resource = folder ? folderPage : page;
+  const pagination = useAction();
+  const [visibleCount, setVisibleCount] = useState(18);
+  const request = useRef<AbortController | null>(null);
+  useEffect(() => () => request.current?.abort(), []);
+  const cursor = page.data?.next_cursor;
+  const available = (resource.data?.items ?? []).flatMap((item) => {
+    if ('paper' in item) {
+      return linkedPapers.some((link) => link.paper_id === item.paper.id)
+        ? []
+        : [{ id: item.paper.id, title: item.paper.title, detail: item.paper.authors.join(', ') }];
+    }
+    return linkedNotes.some((link) => link.knowledge_item_id === item.id)
+      ? []
+      : [{ id: item.id, title: item.title, detail: item.subject }];
+  });
+
+  function loadMore() {
+    if (folder) {
+      setVisibleCount((count) => count + 18);
+      return;
+    }
+    if (!cursor || request.current) return;
+    const controller = new AbortController();
+    request.current = controller;
+    void pagination.run(async () => {
+      try {
+        const next = await api<Page<Knowledge | UserPaper>>(`${path}&cursor=${encodeURIComponent(cursor)}`, {
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted)
+          page.setData((current) => ({
+            items: [...(current?.items ?? []), ...next.items],
+            next_cursor: next.next_cursor,
+          }));
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      } finally {
+        request.current = null;
+      }
+    });
+  }
+
+  return (
+    <>
+      <ErrorState error={resource.error} retry={resource.reload} />
+      {resource.loading ? (
+        <Loading />
+      ) : (
+        <>
+          {available.length > 0 ? (
+            <ul className={styles.materialResults} aria-label="Material results">
+              {(folder ? available.slice(0, visibleCount) : available).map((item) => (
+                <li key={item.id}>
+                  <button
+                    type="button"
+                    className={styles.materialChoice}
+                    aria-pressed={selectedId === item.id}
+                    disabled={busy}
+                    onClick={() => onSelect(item.id)}
+                  >
+                    <span>
+                      <strong>{item.title}</strong>
+                      {item.detail && <small>{item.detail}</small>}
+                    </span>
+                    {selectedId === item.id && <Icon name="check" size={16} />}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            !resource.error && (
+              <p className={`muted small-text ${styles.resultsEmpty}`}>
+                {search
+                  ? 'No unlinked materials match your search.'
+                  : kind === 'knowledge'
+                    ? 'No available notes. Add one in Knowledge.'
+                    : folder
+                      ? 'No unlinked papers in this folder.'
+                      : 'No unlinked papers in this collection.'}
+              </p>
+            )
+          )}
+          {pagination.error && <Notice tone="error">{pagination.error}</Notice>}
+          {(folder ? available.length > visibleCount : cursor) && (
+            <button
+              className="button small"
+              type="button"
+              disabled={busy || pagination.busy}
+              onClick={loadMore}
+            >
+              {pagination.busy ? 'Loading more…' : 'Load more'}
+            </button>
+          )}
+        </>
+      )}
+    </>
   );
 }
 

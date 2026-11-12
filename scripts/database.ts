@@ -42,6 +42,8 @@ try {
       '004_ai_review_drafts',
       '005_proof_recall',
       '006_research_project_knowledge',
+      '007_research_references',
+      '008_reference_arxiv_identifiers',
     ]) {
       const migrationDdl = await readFile(
         new URL(`../database/migrations/${migrationId}.sql`, import.meta.url),

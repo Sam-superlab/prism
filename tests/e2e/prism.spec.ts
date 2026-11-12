@@ -11,6 +11,7 @@ async function createKnowledge(page: Page, title: string) {
   await page.getByRole('button', { name: 'New knowledge', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Title', { exact: true }).fill(title);
+  await dialog.getByLabel('Subject / course').fill(title);
   await dialog.getByLabel('Mathematical content').fill(legacyKnowledgeContent);
   await expect(dialog.getByRole('region', { name: 'Content preview' }).locator('.katex')).toBeVisible();
   await dialog.getByRole('button', { name: 'Save knowledge', exact: true }).click();
@@ -42,7 +43,8 @@ test.describe.serial('PRISM complete product workflows', () => {
   test('create theorem, two independent cards, reveal/rate and inspect immutable history', async ({
     page,
   }) => {
-    const id = await createKnowledge(page, `${prefix} · 数学知识`);
+    const subject = `${prefix} · 数学知识`;
+    const id = await createKnowledge(page, subject);
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
     const editor = page.getByRole('dialog');
     const contentInput = editor.getByLabel('Mathematical content');
@@ -87,7 +89,7 @@ test.describe.serial('PRISM complete product workflows', () => {
     expect(saved.proof_content).toBe(proof);
     await addCard(page, 'Statement — browser workflow');
     await addCard(page, 'Proof — independent schedule', 'proof');
-    await page.goto('/review/session');
+    await page.goto(`/review/session?subject=${encodeURIComponent(subject)}`);
     await expect(page.locator('.recall-prompt')).toContainText('Statement — browser workflow');
     await expect(page.locator('.recall-answer')).toHaveCount(0);
     await page.getByRole('button', { name: 'Reveal answer' }).click();
@@ -113,7 +115,8 @@ test.describe.serial('PRISM complete product workflows', () => {
   });
 
   test('lost review response retries the exact same operation and commits once', async ({ page }) => {
-    const id = await createKnowledge(page, `${prefix} · 丢失响应恢复`);
+    const subject = `${prefix} · 丢失响应恢复`;
+    const id = await createKnowledge(page, subject);
     await addCard(page, 'Retry-safe review');
     const commands: { key: string; body: string | null }[] = [];
     await page.route('**/api/v1/review/events', async (route) => {
@@ -123,7 +126,7 @@ test.describe.serial('PRISM complete product workflows', () => {
       if (commands.length === 1) await route.abort('failed');
       else await route.fulfill({ response });
     });
-    await page.goto('/review/session');
+    await page.goto(`/review/session?subject=${encodeURIComponent(subject)}`);
     await expect(page.locator('.recall-prompt')).toContainText('Retry-safe review');
     await page.getByRole('button', { name: 'Reveal answer' }).click();
     await page.getByRole('button', { name: /^Good/ }).click();

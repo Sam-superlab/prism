@@ -54,11 +54,9 @@ function taskPlanFeedback(task: Task, day: Today, item: PlanItem | undefined, pl
 }
 
 export function TodayPage({
-  planner = false,
   gettingStarted,
   focusTimer,
 }: {
-  planner?: boolean;
   gettingStarted?: (reload: () => void) => ReactNode;
   focusTimer: FocusTimerController;
 }) {
@@ -106,7 +104,7 @@ export function TodayPage({
   const capacityValid =
     capacityDraft !== '' && Number.isInteger(capacity) && capacity >= 0 && capacity <= 1440;
   const draftDate =
-    process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d && !planner ? previousDate(d.date) : null;
+    process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d ? previousDate(d.date) : null;
   const reloadToday = today.reload;
   useEffect(() => {
     if (!d || today.loading || autoPlanning || action.busy || (d.plan && (tasks.loading || !tasks.data)))
@@ -150,23 +148,6 @@ export function TodayPage({
       )
       .finally(() => setAutoPlanning(false));
   }, [d, today.loading, tasks.data, tasks.loading, autoPlanning, action.busy, reloadToday, savedTask]);
-  const localHour = me.data
-    ? Number(
-        new Intl.DateTimeFormat('en-GB', {
-          timeZone: me.data.timezone,
-          hour: '2-digit',
-          hourCycle: 'h23',
-        }).format(new Date()),
-      )
-    : null;
-  const greeting =
-    localHour === null
-      ? 'Hello'
-      : localHour < 12
-        ? 'Good morning'
-        : localHour < 18
-          ? 'Good afternoon'
-          : 'Good evening';
   const plan = d?.plan;
   const savedPlanItem = plan?.items.find((item) => item.task_id === savedTask?.id);
   const savedTaskFeedback =
@@ -248,29 +229,22 @@ export function TodayPage({
     focusPanel.current?.querySelector('h2')?.focus({ preventScroll: true });
     focusPanel.current?.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'instant' : 'smooth' });
   }
-  const count = d?.completed_count || 0;
-  const total = d?.planned_count || 0;
-  const progress = total ? Math.min(100, Math.round((count / total) * 100)) : 0;
   return (
     <>
       <div className="page-heading">
         <div>
           <div className="eyebrow">
-            {planner
-              ? 'INTELLIGENT PLANNER'
-              : me.data
-                ? new Intl.DateTimeFormat('en-US', {
-                    month: 'long',
-                    day: 'numeric',
-                    weekday: 'long',
-                    timeZone: me.data.timezone,
-                  })
-                    .format(new Date())
-                    .toUpperCase()
-                : 'TODAY DASHBOARD'}
+            {me.data &&
+              new Intl.DateTimeFormat('en-US', {
+                month: 'long',
+                day: 'numeric',
+                weekday: 'long',
+                timeZone: me.data.timezone,
+              })
+                .format(new Date())
+                .toUpperCase()}
           </div>
-          <h1>{planner ? 'Planner' : `${greeting}.`}</h1>
-          {planner && <p>Plan a realistic day around the time you have.</p>}
+          <h1>Dashboard</h1>
         </div>
         <div className="heading-meta">
           <span className="timezone">
@@ -337,16 +311,14 @@ export function TodayPage({
               <Icon name="arrow" className="summary-arrow" size={17} />
             </Link>
           </div>
-          {!planner && (
-            <TodayOverview
-              today={d}
-              onShowPlan={(filter) => {
-                setTab(filter);
-                planPanel.current?.focus({ preventScroll: true });
-                planPanel.current?.scrollIntoView({ block: 'start' });
-              }}
-            />
-          )}
+          <TodayOverview
+            today={d}
+            onShowPlan={(filter) => {
+              setTab(filter);
+              planPanel.current?.focus({ preventScroll: true });
+              planPanel.current?.scrollIntoView({ block: 'start' });
+            }}
+          />
           <div className="today-layout">
             <section
               ref={planPanel}
@@ -649,23 +621,6 @@ export function TodayPage({
                   <Icon name="refresh" size={15} />
                 </button>
               </section>
-              {planner && (
-                <section className="panel completion-panel">
-                  <div className="panel-heading">
-                    <h2>Progress, one step at a time</h2>
-                    <span className="completion-number">
-                      {progress}
-                      <small>%</small>
-                    </span>
-                  </div>
-                  <div className="progress-track">
-                    <span style={{ width: `${progress}%` }} />
-                  </div>
-                  <p>
-                    <strong>{count}</strong> / {total} planned items completed
-                  </p>
-                </section>
-              )}
             </aside>
           </div>
         </>

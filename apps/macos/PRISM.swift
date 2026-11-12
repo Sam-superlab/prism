@@ -486,7 +486,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if url.scheme == "about" || local {
             decisionHandler(.allow)
         } else {
-            if action.navigationType == .linkActivated && ["https", "http", "mailto"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
+            let zoteroItem = url.absoluteString.range(
+                of: "^zotero://select/library/items/[A-Z0-9]{8}$", options: .regularExpression
+            ) != nil
+            if action.navigationType == .linkActivated && (zoteroItem || ["https", "http", "mailto"].contains(url.scheme ?? "")) {
+                NSWorkspace.shared.open(url)
+            }
             decisionHandler(.cancel)
         }
     }
