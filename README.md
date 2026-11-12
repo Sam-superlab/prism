@@ -2,7 +2,7 @@
 
 PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download for Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.14/PRISM-macOS-arm64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.14/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.14) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.16/PRISM-macOS-arm64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.16/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.16) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
@@ -26,7 +26,7 @@ Requires Windows 10 or 11 (64-bit x64).
 
 Windows 0.2.6 adds in-app updates. If you have 0.2.5, close PRISM and download/extract the current version once. Keep the AppData directory to retain your notes and settings.
 
-Windows 0.2.7 automatically checks once every 24 hours while running, and catches up after the next launch if the app was closed. Up-to-date results and network failures stay quiet. New versions require your confirmation to download and install.
+Starting with 0.2.16, PRISM checks for updates once an hour while running on Mac and Windows. If a check was due while the app was closed, it checks when reopened. Installation requires confirmation.
 
 From 0.2.6 onward, choose **File → Check for Updates…**, download the available update, then select **Install and Restart**. PRISM verifies signed update information and the download before replacing the application. Save open edits before installing. Keep PRISM in its own writable folder with the extracted program files together.
 
