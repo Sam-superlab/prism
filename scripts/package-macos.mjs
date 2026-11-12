@@ -14,7 +14,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { installSparkle, signSparkle, sparkleSwiftFlags } from './macos-sparkle.mjs';
+import { installSparkle, runMacToolchain, signSparkle, sparkleSwiftFlags } from './macos-sparkle.mjs';
 
 if (
   process.platform !== 'darwin' ||
@@ -56,7 +56,10 @@ const bundleId = updateTestId ? `app.prism.desktop.update-test.${updateTestId}` 
 const releaseName = `PRISM-macOS-${process.arch}.zip`;
 const zip = join(temp, releaseName);
 const offline = process.env.PRISM_PACKAGE_OFFLINE === 'true' ? ['--offline'] : [];
-const publicUpdateFeed = 'https://sam-superlab.github.io/prism/appcast.xml';
+const targetArchitecture = process.arch === 'arm64' ? 'arm64' : 'x86_64';
+const publicAppcast = process.arch === 'arm64' ? 'appcast.xml' : 'appcast-intel.xml';
+const publicUpdateFeed = `https://sam-superlab.github.io/prism/${publicAppcast}`;
+const buildPath = [dirname(process.execPath), process.env.PATH].filter(Boolean).join(':');
 
 function copy(source, target) {
   mkdirSync(dirname(target), { recursive: true });
@@ -74,6 +77,14 @@ function run(cmd, args, options = {}) {
 function sign(path, args = []) {
   const hardened = identity === '-' ? [] : ['--options', 'runtime', '--timestamp'];
   run('codesign', ['--force', '--sign', identity, ...hardened, ...args, path]);
+}
+
+function verifyArchitecture(path) {
+  try {
+    runMacToolchain(['lipo', '-verify_arch', targetArchitecture, path]);
+  } catch (error) {
+    throw new Error(`${path} does not contain a ${targetArchitecture} build.`, { cause: error });
+  }
 }
 
 async function downloadNode() {
@@ -119,9 +130,8 @@ function validateUpdater() {
     )
       throw new Error('Update tests require a separate ad-hoc bundle, Web port and loopback appcast.');
   } else {
-    if (process.arch !== 'arm64') throw new Error('The public PRISM update feed supports Apple silicon.');
     if (process.env.PRISM_MACOS_UPDATE_TEST_PORT || updateFeed !== publicUpdateFeed)
-      throw new Error('Public updater builds require the canonical PRISM Pages appcast.');
+      throw new Error(`Public ${process.arch} updater builds require ${publicUpdateFeed}.`);
     if (publicAdHocPreview) {
       if (identity !== '-' || notaryProfile)
         throw new Error('The public ad-hoc preview uses ad-hoc signing without a notarization profile.');
@@ -188,11 +198,19 @@ try {
       })
     : Promise.resolve();
   sparkle.catch(() => {});
-  run('pnpm', ['install', '--frozen-lockfile', ...offline], { cwd: staging });
+  const pnpmEnv = { ...process.env, PATH: buildPath };
+  const userAgent = execFileSync(
+    'pnpm',
+    ['--config.verify-deps-before-run=false', 'exec', 'node', '-p', 'process.env.npm_config_user_agent'],
+    { cwd: staging, env: pnpmEnv, encoding: 'utf8' },
+  );
+  if (userAgent.match(/\bdarwin (\S+)/)?.[1] !== process.arch)
+    throw new Error(`Use pnpm running on ${process.arch} Node.js to install matching native dependencies.`);
+  run('pnpm', ['install', '--frozen-lockfile', ...offline], { cwd: staging, env: pnpmEnv });
   run('pnpm', ['--filter', '@prism/web', 'build'], {
     cwd: staging,
     env: {
-      PATH: process.env.PATH,
+      PATH: buildPath,
       HOME: process.env.HOME,
       TMPDIR: process.env.TMPDIR,
       NEXT_TELEMETRY_DISABLED: '1',
@@ -213,7 +231,10 @@ try {
     if (entry.name === '@img' || (entry.name === 'sharp' && entry.isSymbolicLink()))
       rmSync(join(entry.parentPath, entry.name), { recursive: true, force: true });
   }
-  run('pnpm', ['--filter', '@prism/api', 'deploy', '--prod', '--legacy', ...offline, api], { cwd: staging });
+  run('pnpm', ['--filter', '@prism/api', 'deploy', '--prod', '--legacy', ...offline, api], {
+    cwd: staging,
+    env: pnpmEnv,
+  });
   // pnpm's install metadata contains the builder's absolute store path. Node does not use it.
   rmSync(join(api, 'node_modules/.modules.yaml'), { force: true });
   // pnpm's legacy deploy adds an unused self-reference to the build workspace.
@@ -255,11 +276,11 @@ try {
 <key>PRISMPackaged</key><true/>
 ${updaterInfo()}</dict></plist>\n`,
   );
-  run('xcrun', [
+  runMacToolchain([
     'swiftc',
     '-O',
     '-target',
-    `${process.arch === 'arm64' ? 'arm64' : 'x86_64'}-apple-macos13.5`,
+    `${targetArchitecture}-apple-macos13.5`,
     '-framework',
     'Cocoa',
     '-framework',
@@ -272,18 +293,34 @@ ${updaterInfo()}</dict></plist>\n`,
   ]);
   run(process.execPath, [join(repo, 'scripts/smoke-macos-package.mjs'), bundle, '--files-only']);
 
+  const nodeBinary = join(binaries, 'node');
+  verifyArchitecture(join(binaries, 'PRISM'));
+  verifyArchitecture(nodeBinary);
+  const nativeCode = new Set();
+  for (const path of readdirSync(runtime, { recursive: true, withFileTypes: true })) {
+    if (!path.isFile()) continue;
+    const file = join(path.parentPath, path.name);
+    // pnpm also installs shell and JavaScript launchers named esbuild.
+    if (
+      /\.(?:node|dylib)$/.test(path.name) ||
+      (path.name === 'esbuild' && readFileSync(file).subarray(0, 2).toString() !== '#!')
+    )
+      nativeCode.add(realpathSync(file));
+  }
+  for (const path of nativeCode) verifyArchitecture(path);
+  if (withUpdater) {
+    const sparkleFramework = join(frameworks, 'Sparkle.framework');
+    for (const file of ['Sparkle', 'Autoupdate', 'Updater.app/Contents/MacOS/Updater'])
+      verifyArchitecture(join(sparkleFramework, file));
+  }
+
   // Keep native helper code signed from the inside out before signing the outer bundle.
   const nodeEntitlements = join(temp, 'node-entitlements.plist');
   writeFileSync(
     nodeEntitlements,
     '<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict><key>com.apple.security.cs.allow-jit</key><true/></dict></plist>',
   );
-  sign(join(binaries, 'node'), ['--entitlements', nodeEntitlements]);
-  const nativeCode = new Set();
-  for (const path of readdirSync(runtime, { recursive: true, withFileTypes: true })) {
-    if (path.isFile() && (/\.(?:node|dylib)$/.test(path.name) || path.name === 'esbuild'))
-      nativeCode.add(realpathSync(join(path.parentPath, path.name)));
-  }
+  sign(nodeBinary, ['--entitlements', nodeEntitlements]);
   for (const path of nativeCode) sign(path);
   if (withUpdater) signSparkle(frameworks, sign);
   sign(bundle, ['--identifier', bundleId]);
@@ -295,9 +332,9 @@ ${updaterInfo()}</dict></plist>\n`,
     run('ditto', ['-c', '-k', ...(!notaryProfile ? ['--norsrc'] : []), '--keepParent', bundle, zip]);
   zipBundle();
   if (notaryProfile) {
-    run('xcrun', ['notarytool', 'submit', zip, '--keychain-profile', notaryProfile, '--wait']);
-    run('xcrun', ['stapler', 'staple', bundle]);
-    run('xcrun', ['stapler', 'validate', bundle]);
+    runMacToolchain(['notarytool', 'submit', zip, '--keychain-profile', notaryProfile, '--wait']);
+    runMacToolchain(['stapler', 'staple', bundle]);
+    runMacToolchain(['stapler', 'validate', bundle]);
     rmSync(zip);
     zipBundle();
   }

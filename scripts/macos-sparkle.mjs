@@ -6,6 +6,15 @@ import { dirname, join } from 'node:path';
 const version = '2.10.1';
 const digest = '1a856d2a9edb8e628de88121d7be04cf0e2167f8641650b78fca00b14244cf27';
 
+export function runMacToolchain(args, options = { stdio: 'inherit' }) {
+  // Xcode Command Line Tools on Apple silicon may contain only arm64 host binaries.
+  const translated =
+    process.arch === 'x64' &&
+    execFileSync('/usr/sbin/sysctl', ['-in', 'sysctl.proc_translated'], { encoding: 'utf8' }).trim() === '1';
+  if (translated) return execFileSync('/usr/bin/arch', ['-arm64', '/usr/bin/xcrun', ...args], options);
+  return execFileSync('/usr/bin/xcrun', args, options);
+}
+
 export async function installSparkle({ temporaryDirectory, frameworksDirectory, resourcesDirectory }) {
   const archiveName = `Sparkle-${version}.tar.xz`;
   const archivePath = join(temporaryDirectory, archiveName);

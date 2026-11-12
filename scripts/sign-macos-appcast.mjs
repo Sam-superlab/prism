@@ -1,7 +1,9 @@
 import { execFileSync } from 'node:child_process';
 import { createHash, createPublicKey, verify } from 'node:crypto';
 import {
+  closeSync,
   mkdtempSync,
+  openSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -9,9 +11,11 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
+import { runMacToolchain } from './macos-sparkle.mjs';
 
 const { values } = parseArgs({
   options: {
@@ -77,6 +81,30 @@ function isWithin(directory, path) {
   return name !== '..' && !name.startsWith('../') && !isAbsolute(name);
 }
 
+function verifyPublicArchitecture(architecture) {
+  const directory = mkdtempSync(join(tmpdir(), 'prism-appcast-'));
+  try {
+    for (const name of ['PRISM', 'node']) {
+      const executable = join(directory, name);
+      const handle = openSync(executable, 'wx');
+      try {
+        execFileSync('/usr/bin/unzip', ['-p', archive, `PRISM.app/Contents/MacOS/${name}`], {
+          stdio: ['ignore', handle, 'pipe'],
+        });
+      } finally {
+        closeSync(handle);
+      }
+      const architectures = runMacToolchain(['lipo', '-archs', executable], {
+        encoding: 'utf8',
+      }).trim();
+      if (architectures !== architecture)
+        throw new Error(`Public update ${name} must be ${architecture}. Found ${architectures}.`);
+    }
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+}
+
 let credentials = ['--account', values.account];
 if (test) {
   if (
@@ -118,16 +146,28 @@ if (test) {
       'Personal PRISM updates require the local appcast, a matching versioned ZIP, and the prism-macos-personal Keychain account.',
     );
   }
-} else if (
-  CFBundleIdentifier !== 'app.prism.desktop.release' ||
-  feed.href !== 'https://sam-superlab.github.io/prism/appcast.xml' ||
-  download.href !==
-    `https://github.com/Sam-superlab/prism/releases/download/v${CFBundleShortVersionString}/PRISM-macOS-arm64.zip` ||
-  values['test-key-file']
-) {
-  throw new Error(
-    'Public PRISM releases require the project Pages feed, the matching versioned GitHub ZIP, and a Keychain signing key.',
-  );
+} else {
+  const publicFeeds = new Map([
+    ['https://sam-superlab.github.io/prism/appcast.xml', ['arm64', 'arm64']],
+    ['https://sam-superlab.github.io/prism/appcast-intel.xml', ['x64', 'x86_64']],
+  ]);
+  const release = publicFeeds.get(feed.href);
+  if (CFBundleIdentifier !== 'app.prism.desktop.release' || !release || values['test-key-file']) {
+    throw new Error('Public PRISM releases require the project Pages feed and a Keychain signing key.');
+  }
+  const [assetArchitecture, executableArchitecture] = release;
+  const asset = `PRISM-macOS-${assetArchitecture}.zip`;
+  if (
+    basename(archive) !== asset ||
+    basename(output) !== basename(feed.pathname) ||
+    download.href !==
+      `https://github.com/Sam-superlab/prism/releases/download/v${CFBundleShortVersionString}/${asset}`
+  ) {
+    throw new Error(
+      'Public PRISM releases require the archive, appcast, and GitHub URL to match the update architecture.',
+    );
+  }
+  verifyPublicArchitecture(executableArchitecture);
 }
 
 function sparkle(args) {

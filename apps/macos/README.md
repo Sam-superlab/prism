@@ -42,6 +42,10 @@ Build with Node.js 24, pnpm 11 and Apple Command Line Tools on macOS 13.5 or new
 node scripts/package-macos.mjs
 ```
 
-This builds the Web and API services in a clean temporary directory and includes a checksum-verified Node.js runtime. It runs a fresh-workspace smoke test and writes `output/macos/PRISM-macOS-arm64.zip` on Apple silicon or `output/macos/PRISM-macOS-x64.zip` on Intel. Recipients can extract the ZIP and move `PRISM.app` to Applications. The release uses `~/Library/Application Support/PRISM Desktop` for its workspace and `~/Library/Logs/PRISM/release.log` for logs. The first launch creates a fresh database.
+This builds the Web and API services in a clean temporary directory and includes a checksum-verified Node.js runtime. It runs a fresh-workspace smoke test. Build with arm64 Node.js and pnpm for `output/macos/PRISM-macOS-arm64.zip`, or use x64 Node.js and run pnpm under that same x64 runtime for `output/macos/PRISM-macOS-x64.zip`. The x64 build also works on an Apple silicon build machine with Rosetta installed. Check `node -p 'process.arch'` and `pnpm exec node -p 'process.env.npm_config_user_agent'` before building.
+
+Download the ZIP for the processor shown in **Apple menu → About This Mac**, extract it, and move `PRISM.app` to Applications. Both versions require macOS 13.5 or later. The release uses `~/Library/Application Support/PRISM Desktop` for its workspace and `~/Library/Logs/PRISM/release.log` for logs. Replacing `PRISM.app` retains the existing workspace.
+
+Sparkle uses the public `appcast.xml` for Apple silicon and `appcast-intel.xml` for Intel. Set `PRISM_MACOS_UPDATE_FEED_URL` to the corresponding feed on `https://sam-superlab.github.io/prism/` and `PRISM_MACOS_UPDATE_PUBLIC_KEY` to the release signing key's public value when building for distribution. Stage the matching signed archive and appcast together with `scripts/sign-macos-appcast.mjs`.
 
 The default build is an ad-hoc signed preview. For Developer ID signing and Apple notarization, set `PRISM_MACOS_SIGN_IDENTITY` to the installed Developer ID Application identity and `PRISM_MACOS_NOTARY_PROFILE` to a keychain profile previously saved with `notarytool`. `PRISM_RELEASE_VERSION` sets the numeric app version.
