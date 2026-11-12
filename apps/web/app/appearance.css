@@ -144,6 +144,7 @@
     --sidebar-inset: 9px;
     --sidebar-radius: 22px;
     --toolbar-radius: 18px;
+    --toolbar-inset: 9px;
     --sidebar-rim: inset 0 1px var(--glass-rim), inset -1px 0 var(--glass-rim), 0 9px 24px var(--glass-shade);
     --toolbar-rim: inset 0 1px var(--glass-rim), 0 6px 18px -9px var(--glass-shade);
     --selected-rim:
@@ -163,6 +164,7 @@
     --sidebar-inset: initial;
     --sidebar-radius: initial;
     --toolbar-radius: initial;
+    --toolbar-inset: initial;
     --sidebar-rim: initial;
     --toolbar-rim: initial;
     --selected-rim: initial;
@@ -402,13 +404,14 @@ summary:focus-visible {
 }
 .topbar {
   position: sticky;
-  top: 0;
+  top: var(--toolbar-inset, 0px);
   z-index: 40;
   min-height: 66px;
   background-color: var(--glass-over-content, var(--panel));
   background-image: var(--toolbar-light, none);
   border-bottom: 1px solid var(--material-divider, var(--line));
-  border-radius: 0 0 var(--toolbar-radius, 0px) var(--toolbar-radius, 0px);
+  border-radius: var(--toolbar-radius, 0px);
+  margin: var(--toolbar-inset, 0px) var(--toolbar-inset, 0px) 0 0;
   box-shadow: var(--toolbar-rim, none);
   padding: 16px 36px;
 }
@@ -1257,6 +1260,7 @@ kbd {
     padding: 25px 20px;
   }
   .topbar {
+    margin-left: var(--toolbar-inset, 0px);
     padding: 13px 20px;
   }
   .workspace-footer {
