@@ -1,0 +1,39 @@
+.body {
+  display: grid;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.dateField {
+  max-width: 100%;
+}
+
+.dateField label {
+  margin-bottom: 0;
+}
+
+.group {
+  display: grid;
+  gap: 8px;
+  overflow-wrap: anywhere;
+}
+
+.group a:hover {
+  text-decoration: underline;
+}
+
+.card {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+
+.cardHeading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}

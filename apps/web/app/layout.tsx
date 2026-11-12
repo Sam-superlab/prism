@@ -6,7 +6,7 @@ import { APPEARANCE_BOOTSTRAP } from '../lib/appearance';
 
 export const metadata: Metadata = {
   title: 'PRISM · Personal Research',
-  description: 'A focused home for learning, research, training, and daily progress.',
+  description: 'A focused home for learning, research, and daily planning.',
 };
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

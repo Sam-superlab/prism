@@ -3,9 +3,16 @@ import { useEffect, useState } from 'react';
 import { api, datetime, useAction, useResource } from '../../lib/api';
 import { guideCopy, type GuideLanguage } from '../../lib/getting-started-copy';
 import type { Conflict, ExportJob, Job, Page, Preferences, User } from '../../lib/types';
-import { Badge, Empty, ErrorState, Field, Icon, Loading, Modal, Notice } from '../ui';
+import {
+  shortcutKeys,
+  shortcutPlatform,
+  workspaceShortcuts,
+  type ShortcutPlatform,
+} from '../../lib/workspace-shortcuts';
+import { Badge, ErrorState, Field, Icon, Loading, Modal, Notice } from '../ui';
 import { AppearancePanel } from '../Appearance';
 import { GuideLanguageSelect } from '../GettingStarted';
+import styles from './Settings.module.css';
 
 export function SettingsPage({
   guideLanguage,
@@ -23,8 +30,25 @@ export function SettingsPage({
   const jobs = useResource<Page<Job>>('/automation/jobs?limit=30');
   const [selected, setSelected] = useState<Conflict | null>(null);
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
-  const [message, setMessage] = useState('');
+  const [saved, setSaved] = useState<'profile' | 'preferences' | 'conflicts'>();
+  const [anchor, setAnchor] = useState('');
   const action = useAction();
+  const sections = [
+    { id: 'appearance-heading', label: 'Appearance', icon: 'settings' },
+    { id: 'learning-settings', label: 'Learning and notifications', icon: 'planner' },
+    { id: 'profile-settings', label: 'Profile and timezone', icon: 'clock' },
+    { id: 'keyboard-shortcuts', label: 'Keyboard shortcuts', icon: 'menu' },
+    { id: 'getting-started-settings', label: guide.settingsTitle, icon: 'knowledge', lang: guideLanguage },
+    { id: 'data-export', label: 'Data export', icon: 'external' },
+    { id: 'sync-conflicts', label: 'Sync conflicts', icon: 'check' },
+    { id: 'background-activity', label: 'Background activity', icon: 'refresh' },
+  ];
+  useEffect(() => {
+    const readAnchor = () => setAnchor(window.location.hash.slice(1));
+    readAnchor();
+    window.addEventListener('hashchange', readAnchor);
+    return () => window.removeEventListener('hashchange', readAnchor);
+  }, []);
   useEffect(() => {
     if (!exportJob || !['pending', 'running'].includes(exportJob.status)) return;
     const timer = setInterval(() => {
@@ -36,26 +60,79 @@ export function SettingsPage({
   }, [exportJob?.id, exportJob?.status]);
   return (
     <>
-      <div className="page-heading">
+      <div className={`page-heading ${styles.header}`}>
         <div>
-          <span className="eyebrow">YOUR PERSONAL SYSTEM</span>
           <h1>Settings</h1>
-          <p>Manage reviews, planning, and notifications. Your data stays yours.</p>
+          <p>Customize your workspace, review schedule, and notifications.</p>
         </div>
         <a className="button" href="/auth/logout">
           Sign out
           <Icon name="arrow" size={16} />
         </a>
       </div>
-      {message && <Notice tone="success">{message}</Notice>}
-      <div className="settings-layout">
-        <div>
+      <div className={styles.layout}>
+        <nav className={styles.index} aria-label="Settings sections">
+          <ul>
+            {sections.map(({ id, label, icon, lang }) => (
+              <li key={id}>
+                <a href={`#${id}`} lang={lang} aria-current={anchor === id ? 'location' : undefined}>
+                  <Icon name={icon} size={16} />
+                  <span>{label}</span>
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+        <div className={styles.stack}>
           <AppearancePanel />
-          <section className="panel content-panel" lang={guideLanguage}>
+          <section className="panel content-panel" aria-labelledby="learning-settings">
             <div className="panel-heading">
-              <h2>{guide.settingsTitle}</h2>
+              <h2 id="learning-settings">Learning, planning, and notifications</h2>
             </div>
-            <p className="muted">{guide.settingsDetail}</p>
+            <ErrorState error={preferences.error} retry={preferences.reload} />
+            {preferences.data ? (
+              <PreferencesForm
+                preferences={preferences.data}
+                onSaved={() => {
+                  preferences.reload();
+                  setSaved('preferences');
+                }}
+              />
+            ) : (
+              preferences.loading && <Loading />
+            )}
+            {saved === 'preferences' && (
+              <Notice tone="success">Preferences saved. Future scheduling will use these settings.</Notice>
+            )}
+          </section>
+          <section className="panel content-panel" aria-labelledby="profile-settings">
+            <div className="panel-heading">
+              <h2 id="profile-settings">Profile and timezone</h2>
+            </div>
+            <ErrorState error={me.error} retry={me.reload} />
+            {me.data ? (
+              <ProfileForm
+                user={me.data}
+                onSaved={() => {
+                  me.reload();
+                  setSaved('profile');
+                }}
+              />
+            ) : (
+              me.loading && <Loading />
+            )}
+            {saved === 'profile' && <Notice tone="success">Profile saved.</Notice>}
+          </section>
+          <KeyboardShortcuts />
+          <section
+            className="panel content-panel"
+            aria-labelledby="getting-started-settings"
+            lang={guideLanguage}
+          >
+            <div className="panel-heading">
+              <h2 id="getting-started-settings">{guide.settingsTitle}</h2>
+            </div>
+            <p className={`muted ${styles.description}`}>{guide.settingsDetail}</p>
             <div className="inline-actions">
               <GuideLanguageSelect
                 language={guideLanguage}
@@ -67,51 +144,13 @@ export function SettingsPage({
               </button>
             </div>
           </section>
-          <section className="panel content-panel">
+          <section className="panel content-panel" aria-labelledby="data-export">
             <div className="panel-heading">
-              <h2>Profile and timezone</h2>
-              <Icon name="settings" size={19} />
+              <h2 id="data-export">Export your data</h2>
             </div>
-            <ErrorState error={me.error} retry={me.reload} />
-            {me.data ? (
-              <ProfileForm
-                user={me.data}
-                onSaved={() => {
-                  me.reload();
-                  setMessage('Profile saved.');
-                }}
-              />
-            ) : (
-              me.loading && <Loading />
-            )}
-          </section>
-          <section className="panel content-panel">
-            <div className="panel-heading">
-              <h2>Learning, planning, and notifications</h2>
-            </div>
-            <ErrorState error={preferences.error} retry={preferences.reload} />
-            {preferences.data ? (
-              <PreferencesForm
-                preferences={preferences.data}
-                onSaved={() => {
-                  preferences.reload();
-                  setMessage('Preferences saved. Future scheduling will use these settings.');
-                }}
-              />
-            ) : (
-              preferences.loading && <Loading />
-            )}
-          </section>
-          <section className="panel content-panel">
-            <div className="panel-heading">
-              <div>
-                <span className="eyebrow">DATA OWNERSHIP</span>
-                <h2>Export your data</h2>
-              </div>
-              <Icon name="external" size={18} />
-            </div>
-            <p className="muted">
-              Export structured JSON, knowledge and research notes in Markdown, and a manifest with checksums. Review and research history are included.
+            <p className={`muted ${styles.description}`}>
+              Export structured JSON, knowledge and research notes in Markdown, and a manifest with checksums.
+              Review and research history are included.
             </p>
             <button
               className="button primary"
@@ -146,11 +185,9 @@ export function SettingsPage({
             {exportJob?.status === 'expired' && <Notice>This export has expired. Create a new one.</Notice>}
             {action.error && <Notice tone="error">{action.error}</Notice>}
           </section>
-        </div>
-        <aside>
-          <section className="panel">
+          <section className="panel" aria-labelledby="sync-conflicts">
             <div className="panel-heading">
-              <h2>Sync conflicts</h2>
+              <h2 id="sync-conflicts">Sync conflicts</h2>
               <Badge tone="peach">{conflicts.data?.items.filter((x) => !x.resolved_at).length || 0}</Badge>
             </div>
             <ErrorState error={conflicts.error} retry={conflicts.reload} />
@@ -174,10 +211,11 @@ export function SettingsPage({
                   <Icon name="chevron" size={16} />
                 </button>
               ))}
+            {saved === 'conflicts' && <Notice tone="success">Conflict resolution saved.</Notice>}
           </section>
-          <section className="panel jobs-panel">
+          <section className="panel jobs-panel" aria-labelledby="background-activity">
             <div className="panel-heading">
-              <h2>Background activity</h2>
+              <h2 id="background-activity">Background activity</h2>
               <button className="icon-button" aria-label="Refresh activity" onClick={jobs.reload}>
                 <Icon name="refresh" size={16} />
               </button>
@@ -206,21 +244,13 @@ export function SettingsPage({
                   </Badge>
                 </summary>
                 <p className="small-text muted">
-                  Attempts: {j.attempts}{j.error_message ? ` · ${j.error_message}` : ''}
+                  Attempts: {j.attempts}
+                  {j.error_message ? ` · ${j.error_message}` : ''}
                 </p>
               </details>
             ))}
           </section>
-          <div className="quiet-card small">
-            <span className="eyebrow">AUTOMATION WITH CONTROL</span>
-            <p>
-              Background tasks,
-              <br />
-              visible progress.
-            </p>
-            <small>You control mathematical verification. Background tasks do not change claim statuses or deadlines.</small>
-          </div>
-        </aside>
+        </div>
       </div>
       {selected && (
         <ConflictModal
@@ -229,13 +259,59 @@ export function SettingsPage({
           onSaved={() => {
             setSelected(null);
             conflicts.reload();
-            setMessage('Conflict resolution saved.');
+            setSaved('conflicts');
           }}
         />
       )}
     </>
   );
 }
+
+function KeyboardShortcuts() {
+  const [platform, setPlatform] = useState<ShortcutPlatform>();
+  useEffect(() => setPlatform(shortcutPlatform(navigator.userAgent)), []);
+
+  return (
+    <section className="panel content-panel" aria-labelledby="keyboard-shortcuts">
+      <div className="panel-heading">
+        <h2 id="keyboard-shortcuts">Keyboard shortcuts</h2>
+      </div>
+      <dl className={styles.shortcuts}>
+        {workspaceShortcuts.map((shortcut) => (
+          <div key={shortcut.action}>
+            <dt>{shortcut.label}</dt>
+            <dd>
+              {platform || shortcut.modifier === 'none' ? (
+                <ShortcutKeys keys={shortcutKeys(shortcut, platform ?? 'other')} />
+              ) : (
+                <>
+                  <ShortcutKeys keys={shortcutKeys(shortcut, 'apple')} />
+                  <span className="muted">or</span>
+                  <ShortcutKeys keys={shortcutKeys(shortcut, 'other')} />
+                </>
+              )}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+const keyLabels: Record<string, string> = { '⌘': 'Command', '⇧': 'Shift', ',': 'Comma' };
+
+function ShortcutKeys({ keys }: { keys: string[] }) {
+  return (
+    <span className={styles.keys}>
+      {keys.map((key) => (
+        <kbd key={key} aria-label={keyLabels[key] ?? key}>
+          {key}
+        </kbd>
+      ))}
+    </span>
+  );
+}
+
 function ProfileForm({ user, onSaved }: { user: User; onSaved: () => void }) {
   const [name, setName] = useState(user.display_name);
   const [timezone, setTimezone] = useState(user.timezone);
@@ -253,7 +329,10 @@ function ProfileForm({ user, onSaved }: { user: User; onSaved: () => void }) {
         <Field label="Display name">
           <input required value={name} onChange={(e) => setName(e.target.value)} />
         </Field>
-        <Field label="IANA timezone" hint="Timezone affects date grouping and notifications while preserving review timestamps.">
+        <Field
+          label="IANA timezone"
+          hint="Timezone affects date grouping and notifications while preserving review timestamps."
+        >
           <input required list="timezones" value={timezone} onChange={(e) => setTimezone(e.target.value)} />
           <datalist id="timezones">
             {[
@@ -319,7 +398,10 @@ function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences
       }}
     >
       <div className="form-grid">
-        <Field label="FSRS desired retention" hint="Higher retention usually means more reviews. Default: 0.90.">
+        <Field
+          label="FSRS desired retention"
+          hint="Higher retention usually means more reviews. Default: 0.90."
+        >
           <input
             required
             type="number"
@@ -374,7 +456,9 @@ function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences
       <Field label="End-of-day reminder (optional)">
         <input type="time" value={shutdown} onChange={(e) => setShutdown(e.target.value)} />
       </Field>
-      <p className="small-text muted">Matching quiet-hour times mute push notifications all day. Preferences are checked before delivery.</p>
+      <p className="small-text muted">
+        Matching quiet-hour times mute push notifications all day. Preferences are checked before delivery.
+      </p>
       {a.error && <Notice tone="error">{a.error}</Notice>}
       <div className="form-bottom">
         <button className="button primary" disabled={a.busy}>
@@ -400,7 +484,10 @@ function ConflictModal({
   const review = c.entity_type.includes('review');
   return (
     <Modal title="Review and resolve conflict" onClose={onClose} wide>
-      <Notice tone="warning">Your original submission is preserved. Resolving this conflict leaves committed review and research history intact.</Notice>
+      <Notice tone="warning">
+        Your original submission is preserved. Resolving this conflict leaves committed review and research
+        history intact.
+      </Notice>
       <div className="conflict-columns">
         <div>
           <h3>Device submission</h3>

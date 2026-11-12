@@ -11,6 +11,7 @@ import {
   uuid,
 } from '../../lib/api';
 import type { Entity, Knowledge, Page, Project, ResearchEvent, ResearchObject, Task } from '../../lib/types';
+import { ProjectMaterials } from '../ResearchLinks';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, MathContent, Modal, Notice, label } from '../ui';
 import { TaskModal } from './Today';
 
@@ -25,8 +26,7 @@ export function ResearchPage({ id }: { id?: string }) {
       <div className="page-heading">
         <div>
           <span className="eyebrow">RESEARCH WORKSPACE</span>
-          <h1>Move a question forward.</h1>
-          <p>Distinguish conjectures, computational evidence, and proofs. Keep a record of your reasoning.</p>
+          <h1>Research</h1>
         </div>
         <button className="button primary" onClick={() => setCreate(true)}>
           <Icon name="plus" size={17} />
@@ -381,6 +381,7 @@ function ProjectDetail({ id }: { id: string }) {
           </section>
         </div>
         <aside>
+          <ProjectMaterials projectId={id} />
           <section className="panel timeline-panel">
             <div className="panel-heading">
               <h2>Research timeline</h2>

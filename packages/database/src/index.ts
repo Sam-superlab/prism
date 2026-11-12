@@ -61,6 +61,23 @@ export class Database implements Sql {
       release();
     }
   }
+  private async applyIncrementalMigration(ddl: string): Promise<void> {
+    if (!this.pool) {
+      await this.exclusive(() => this.lite!.transaction((tx) => tx.exec(ddl)));
+      return;
+    }
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query(ddl);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
   async initialize(): Promise<void> {
     const exists = await this.query<{ present: boolean }>(
       "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_schema='prism' AND table_name='users') present",
@@ -76,6 +93,70 @@ export class Database implements Sql {
       );
       if (this.pool) await this.pool.query(ddl);
       else await this.lite!.exec(ddl);
+    }
+    const forYou = await this.query<{ present: boolean }>(
+      "SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='prism' AND table_name='user_papers' AND column_name='for_you_day') present",
+    );
+    if (!forYou.rows[0]?.present) {
+      if (this.options.production) throw new Error('Apply the arXiv For You migration with pnpm db:migrate.');
+      const ddl = await readFile(
+        new URL('../../../database/migrations/002_arxiv_for_you.sql', import.meta.url),
+        'utf8',
+      );
+      await this.applyIncrementalMigration(ddl);
+    }
+    const forYouRounds = await this.query<{ present: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM information_schema.columns
+        WHERE table_schema='prism' AND table_name='user_papers' AND column_name='for_you_round')
+        AND to_regclass('prism.user_papers_for_you_deck_round') IS NOT NULL
+        AND to_regclass('prism.user_papers_for_you_deck') IS NULL present`,
+    );
+    if (!forYouRounds.rows[0]?.present) {
+      if (this.options.production)
+        throw new Error('Apply the arXiv For You rounds migration with pnpm db:migrate.');
+      const ddl = await readFile(
+        new URL('../../../database/migrations/003_arxiv_for_you_rounds.sql', import.meta.url),
+        'utf8',
+      );
+      await this.applyIncrementalMigration(ddl);
+    }
+    const aiDrafts = await this.query<{ present: boolean }>(
+      `SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_schema='prism'
+        AND table_name='ai_review_drafts' AND column_name='resuming') present`,
+    );
+    if (!aiDrafts.rows[0]?.present) {
+      if (this.options.production)
+        throw new Error('Apply the AI review drafts migration with pnpm db:migrate.');
+      const ddl = await readFile(
+        new URL('../../../database/migrations/004_ai_review_drafts.sql', import.meta.url),
+        'utf8',
+      );
+      await this.applyIncrementalMigration(ddl);
+    }
+    const proofRecall = await this.query<{ present: boolean }>(
+      `SELECT count(*) = 2 AS present FROM information_schema.columns WHERE table_schema='prism'
+        AND (table_name,column_name) IN (('review_cards','proof_steps'), ('review_events','proof_stuck_steps'))`,
+    );
+    if (!proofRecall.rows[0]?.present) {
+      if (this.options.production)
+        throw new Error('Apply the Proof Recall migration with pnpm db:migrate.');
+      const ddl = await readFile(
+        new URL('../../../database/migrations/005_proof_recall.sql', import.meta.url),
+        'utf8',
+      );
+      await this.applyIncrementalMigration(ddl);
+    }
+    const projectKnowledge = await this.query<{ present: boolean }>(
+      "SELECT to_regclass('prism.research_project_knowledge_active') IS NOT NULL AS present",
+    );
+    if (!projectKnowledge.rows[0]?.present) {
+      if (this.options.production)
+        throw new Error('Apply the research project knowledge migration with pnpm db:migrate.');
+      const ddl = await readFile(
+        new URL('../../../database/migrations/006_research_project_knowledge.sql', import.meta.url),
+        'utf8',
+      );
+      await this.applyIncrementalMigration(ddl);
     }
     if (this.options.production) {
       const result = await this.query<{ unsafe: boolean }>(

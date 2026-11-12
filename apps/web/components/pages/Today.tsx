@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   api,
   datetime,
@@ -13,6 +13,14 @@ import {
 } from '../../lib/api';
 import type { InboxEntry, Page, PlanItem, Task, Today, User } from '../../lib/types';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, Modal, Notice, label } from '../ui';
+import { DailyReviewDrafts } from './DailyReviewDrafts';
+import { TodayOverview } from './TodayOverview';
+
+function previousDate(date: string) {
+  const day = new Date(`${date}T00:00:00.000Z`);
+  day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
 
 export function TodayPage({
   planner = false,
@@ -22,8 +30,9 @@ export function TodayPage({
   gettingStarted?: (reload: () => void) => ReactNode;
 }) {
   const me = useResource<User>('/me');
-  const date = todayDate(me.data?.timezone);
-  const today = useResource<Today>(`/today?date=${date}`);
+  const timezone = me.data?.timezone;
+  const [date, setDate] = useState('');
+  const today = useResource<Today>(date ? `/today?date=${date}` : null);
   const tasks = useResource<Page<Task>>('/tasks?limit=500');
   const inbox = useResource<Page<InboxEntry>>('/inbox?limit=100');
   const [editingTask, setEditingTask] = useState<Task | undefined>();
@@ -35,13 +44,51 @@ export function TodayPage({
   const [defer, setDefer] = useState<PlanItem | null>(null);
   const [reason, setReason] = useState('Focusing on other work today');
   const [message, setMessage] = useState('');
+  const [autoPlanning, setAutoPlanning] = useState(false);
+  const [autoError, setAutoError] = useState('');
+  const attempted = useRef('');
+  const planPanel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!timezone) return;
+    const update = () => setDate(todayDate(timezone));
+    update();
+    const timer = window.setInterval(update, 30_000);
+    window.addEventListener('focus', update);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', update);
+    };
+  }, [timezone]);
   const refresh = () => {
     today.reload();
     tasks.reload();
     inbox.reload();
   };
   const action = useAction(refresh);
-  const d = today.data;
+  const d = today.data?.date === date ? today.data : null;
+  const draftDate =
+    process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d && !planner
+      ? previousDate(d.date)
+      : null;
+  const reloadToday = today.reload;
+  useEffect(() => {
+    if (!d || d.plan || attempted.current === d.date) return;
+    attempted.current = d.date;
+    setAutoError('');
+    setAutoPlanning(true);
+    void api('/daily-plans/generate', {
+      method: 'POST',
+      body: {
+        plan_date: d.date,
+        timezone: d.timezone,
+        capacity_minutes: d.capacity_minutes,
+        if_missing: true,
+      },
+    })
+      .then(reloadToday)
+      .catch(() => setAutoError('Could not prepare the plan automatically. Try Generate plan.'))
+      .finally(() => setAutoPlanning(false));
+  }, [d, reloadToday]);
   const localHour = me.data
     ? Number(
         new Intl.DateTimeFormat('en-GB', {
@@ -70,8 +117,10 @@ export function TodayPage({
           ? x.status === 'completed'
           : x.status === 'deferred' || x.status === 'skipped'),
   );
-  const taskById = new Map(tasks.data?.items.map((t) => [t.id, t]));
+  const workspaceTasks = tasks.data?.items.filter((t) => t.source_type !== 'workout') ?? [];
+  const taskById = new Map(workspaceTasks.map((t) => [t.id, t]));
   async function generate() {
+    setAutoError('');
     await action.run(() =>
       api('/daily-plans/generate', {
         method: 'POST',
@@ -112,10 +161,6 @@ export function TodayPage({
   async function start(item: PlanItem) {
     const task = item.task_id && taskById.get(item.task_id);
     if (!task) return;
-    if (task.source_type === 'workout') {
-      window.location.href = '/fitness';
-      return;
-    }
     await action.run(() =>
       api(`/tasks/${task.id}`, { method: 'PATCH', version: task.version, body: { status: 'in_progress' } }),
     );
@@ -142,34 +187,31 @@ export function TodayPage({
                     .toUpperCase()
                 : 'TODAY DASHBOARD'}
           </div>
-          <h1>
-            {planner
-              ? 'Make time for what matters.'
-              : `${greeting}.`}
-            <span className="heading-spark">✧</span>
-          </h1>
-          <p>
-            {planner
-              ? 'Plan a realistic day around the time you have.'
-              : 'A little clarity. A little progress. Give today a clear direction.'}
-          </p>
+          <h1>{planner ? 'Planner' : `${greeting}.`}</h1>
+          {planner && <p>Plan a realistic day around the time you have.</p>}
         </div>
         <div className="heading-meta">
           <span className="timezone">
             <Icon name="clock" size={15} />
             {me.data?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
           </span>
-          <button className="button" onClick={() => setShutdown(true)}>
+          <button className="button" disabled={!plan} onClick={() => setShutdown(true)}>
             Daily reflection
             <Icon name="arrow" size={16} />
           </button>
         </div>
       </div>
-      {gettingStarted?.(refresh)}
-      <ErrorState error={today.error} retry={today.reload} />
-      {today.loading && !d && <Loading />}
+      {gettingStarted?.(reloadToday)}
+      <ErrorState error={me.error || today.error} retry={me.error ? me.reload : today.reload} />
+      {(me.loading || today.loading) && !d && <Loading />}
       {d && (
         <>
+          {d.continuation_note && (
+            <section className="panel continuation-note" aria-label="Yesterday’s next step">
+              <span className="eyebrow">PICK UP WHERE YOU LEFT OFF</span>
+              <p>{d.continuation_note}</p>
+            </section>
+          )}
           <div className="summary-grid">
             <Link href="/review/session" className="summary-card purple">
               <div className="summary-icon">
@@ -195,22 +237,6 @@ export function TodayPage({
                   {d.research_tasks_due}
                   <small>due</small>
                 </strong>
-                <span className="card-footnote">Bring a question closer to an answer</span>
-              </div>
-              <Icon name="arrow" className="summary-arrow" size={17} />
-            </Link>
-            <Link href="/fitness" className="summary-card peach">
-              <div className="summary-icon">
-                <Icon name="fitness" />
-              </div>
-              <div>
-                <span className="card-label">Planned workout</span>
-                <strong className="text-stat">{d.planned_workout?.title || 'Open schedule'}</strong>
-                <span className="card-footnote">
-                  {d.planned_workout
-                    ? `${d.planned_workout.estimated_minutes} min · Your own plan`
-                    : 'Training and recovery both count'}
-                </span>
               </div>
               <Icon name="arrow" className="summary-arrow" size={17} />
             </Link>
@@ -229,12 +255,27 @@ export function TodayPage({
               <Icon name="arrow" className="summary-arrow" size={17} />
             </Link>
           </div>
+          {!planner && (
+            <TodayOverview
+              today={d}
+              onShowPlan={(filter) => {
+                setTab(filter);
+                planPanel.current?.focus({ preventScroll: true });
+                planPanel.current?.scrollIntoView({ block: 'start' });
+              }}
+            />
+          )}
           <div className="today-layout">
-            <section className="panel plan-panel">
+            <section
+              ref={planPanel}
+              className="panel plan-panel"
+              tabIndex={-1}
+              aria-labelledby="today-plan-heading"
+            >
               <div className="panel-heading">
                 <div>
                   <span className="eyebrow">YOUR DAILY FOCUS</span>
-                  <h2>Today’s plan</h2>
+                  <h2 id="today-plan-heading">Today’s plan</h2>
                 </div>
                 <button
                   className="button small"
@@ -271,7 +312,10 @@ export function TodayPage({
                 </Notice>
               )}
               {action.error && <Notice tone="error">{action.error}</Notice>}
-              {!plan ? (
+              {!plan && autoError && <Notice tone="error">{autoError}</Notice>}
+              {!plan && autoPlanning ? (
+                <Loading />
+              ) : !plan ? (
                 <Empty
                   icon="planner"
                   title="Give today a clear plan"
@@ -320,9 +364,7 @@ export function TodayPage({
                                   ? 'purple'
                                   : task?.source_type === 'research'
                                     ? 'blue'
-                                    : task?.source_type === 'workout'
-                                      ? 'peach'
-                                      : ''
+                                    : ''
                               }
                             >
                               {item.item_type === 'review'
@@ -421,8 +463,7 @@ export function TodayPage({
                 </div>
               )}
               <div className="panel-bottom-note">
-                <span className="tiny-star">✧</span>Your plan adapts as you progress. Manual choices are
-                preserved.
+                Your plan adapts as you progress. Manual choices are preserved.
               </div>
             </section>
             <aside className="today-side">
@@ -470,49 +511,41 @@ export function TodayPage({
                 <button
                   className="button primary full"
                   onClick={() => void generate()}
-                  disabled={action.busy}
+                  disabled={action.busy || autoPlanning}
                 >
                   {action.busy ? 'Planning…' : plan ? 'Replan' : 'Generate plan'}
                   <Icon name="refresh" size={15} />
                 </button>
               </section>
-              <section className="panel completion-panel">
-                <div className="panel-heading">
-                  <h2>Progress, one step at a time</h2>
-                  <span className="completion-number">
-                    {progress}
-                    <small>%</small>
-                  </span>
-                </div>
-                <div className="progress-track">
-                  <span style={{ width: `${progress}%` }} />
-                </div>
-                <p>
-                  <strong>{count}</strong> / {total} planned items completed
-                </p>
-                <span className="small-text muted">Every completed step brings a little more clarity.</span>
-              </section>
-              <section className="quiet-card">
-                <span className="eyebrow">THE LONG VIEW</span>
-                <p>
-                  Give what matters
-                  <br />
-                  your attention.
-                </p>
-                <span className="quiet-line" />
-                <small>Knowledge over activity.</small>
-              </section>
+              {planner && (
+                <section className="panel completion-panel">
+                  <div className="panel-heading">
+                    <h2>Progress, one step at a time</h2>
+                    <span className="completion-number">
+                      {progress}
+                      <small>%</small>
+                    </span>
+                  </div>
+                  <div className="progress-track">
+                    <span style={{ width: `${progress}%` }} />
+                  </div>
+                  <p>
+                    <strong>{count}</strong> / {total} planned items completed
+                  </p>
+                </section>
+              )}
             </aside>
           </div>
         </>
       )}
+      {draftDate && <DailyReviewDrafts key={draftDate} date={draftDate} />}
       <details className="panel task-pool">
         <summary>
           <span>
             <Icon name="planner" size={17} />
             Task library{' '}
             <span className="count-label">
-              {tasks.data?.items.filter((t) => !['completed', 'archived'].includes(t.status)).length || 0}
+              {workspaceTasks.filter((t) => !['completed', 'archived'].includes(t.status)).length || 0}
             </span>
           </span>
           <span>
@@ -541,7 +574,7 @@ export function TodayPage({
         </div>
         <ErrorState error={tasks.error} retry={tasks.reload} />
         <div className="task-pool-list">
-          {tasks.data?.items
+          {workspaceTasks
             .filter(
               (t) =>
                 poolFilter === 'all' ||
@@ -598,7 +631,7 @@ export function TodayPage({
               </article>
             ))}
         </div>
-        {tasks.data?.items.length === 0 && (
+        {tasks.data && workspaceTasks.length === 0 && (
           <p className="panel-description muted">No tasks yet. Add a clear next step.</p>
         )}
       </details>
@@ -731,7 +764,9 @@ export function TodayPage({
           </form>
         </Modal>
       )}
-      {shutdown && <ShutdownModal date={date} planId={plan?.id} onClose={() => setShutdown(false)} />}
+      {shutdown && plan && (
+        <ShutdownModal key={plan.id} date={date} planId={plan.id} onClose={() => setShutdown(false)} />
+      )}
     </>
   );
 }
@@ -894,20 +929,22 @@ export function TaskModal({
     </Modal>
   );
 }
-function ShutdownModal({ date, planId, onClose }: { date: string; planId?: string; onClose: () => void }) {
+function ShutdownModal({ date, planId, onClose }: { date: string; planId: string; onClose: () => void }) {
   const preview = useResource<{
     completed_task_ids: string[];
     deferred_item_ids: string[];
     review_count: number;
-    workout_count: number;
     research_event_count: number;
+    papers_read_count?: number;
     rating_counts: Record<string, number>;
+    note: string;
   }>(`/today/shutdown?date=${date}`);
-  const [note, setNote] = useState('');
+  const [draft, setDraft] = useState<string | null>(null);
+  const note = draft ?? preview.data?.note ?? '';
   const [saved, setSaved] = useState(false);
   const action = useAction(() => setSaved(true));
   return (
-    <Modal title="Close today. Make space for tomorrow." onClose={onClose}>
+    <Modal title="Daily reflection" onClose={onClose}>
       <ErrorState error={preview.error} retry={preview.reload} />
       {preview.loading ? (
         <Loading />
@@ -918,8 +955,8 @@ function ShutdownModal({ date, planId, onClose }: { date: string; planId?: strin
               {[
                 [preview.data.completed_task_ids.length, 'Tasks completed'],
                 [preview.data.review_count, 'Review cards'],
-                [preview.data.workout_count, 'Workouts completed'],
                 [preview.data.research_event_count, 'Research updates'],
+                [preview.data.papers_read_count ?? 0, 'Papers read'],
               ].map(([v, l]) => (
                 <div key={l}>
                   <strong>{v}</strong>
@@ -930,8 +967,16 @@ function ShutdownModal({ date, planId, onClose }: { date: string; planId?: strin
             <p className="muted">
               {preview.data.deferred_item_ids.length} items deferred. Unfinished tasks remain available.
             </p>
-            <Field label="What did you learn? What comes next?">
-              <textarea rows={4} value={note} onChange={(e) => setNote(e.target.value)} />
+            <Field label="Where will you pick up tomorrow?">
+              <textarea
+                rows={3}
+                value={note}
+                placeholder="One sentence to get you started tomorrow."
+                onChange={(e) => {
+                  setDraft(e.target.value);
+                  setSaved(false);
+                }}
+              />
             </Field>
             {saved && <Notice>Daily reflection saved.</Notice>}
             {action.error && <Notice tone="error">{action.error}</Notice>}
@@ -941,7 +986,7 @@ function ShutdownModal({ date, planId, onClose }: { date: string; planId?: strin
               </button>
               <button
                 className="button primary"
-                disabled={!planId || saved || action.busy}
+                disabled={saved || action.busy}
                 onClick={() =>
                   void action.run(() =>
                     api(`/daily-plans/${planId}/shutdown`, { method: 'POST', body: { note } }),
@@ -951,7 +996,6 @@ function ShutdownModal({ date, planId, onClose }: { date: string; planId?: strin
                 {saved ? 'Saved' : 'Save reflection'}
               </button>
             </div>
-            {!planId && <p className="small-text muted">Generate today’s plan before saving a reflection.</p>}
           </>
         )
       )}

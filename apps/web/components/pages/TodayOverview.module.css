@@ -1,0 +1,274 @@
+.overview {
+  padding: var(--panel-padding);
+  margin-bottom: 20px;
+  container-type: inline-size;
+}
+
+.heading {
+  margin-bottom: 16px;
+}
+
+.heading h2 {
+  margin: 3px 0 0;
+  font-size: 1.22rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+}
+
+.metric {
+  min-width: 0;
+  padding: 15px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--surface-secondary) 42%, var(--panel));
+}
+
+.metric h3 {
+  margin: 0 0 8px;
+  font-size: 0.94rem;
+  font-weight: 600;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.ring {
+  display: grid;
+  place-items: center;
+  width: 74px;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.ring > * {
+  grid-area: 1 / 1;
+}
+
+.ring svg {
+  width: 100%;
+  fill: none;
+  stroke-width: 8;
+}
+
+.ringTrack {
+  stroke: var(--line);
+}
+
+.ringFill {
+  stroke: var(--accent);
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.25s var(--motion-out);
+}
+
+.ring strong {
+  font-size: 1.04rem;
+  font-weight: 600;
+}
+
+.progressDetail > strong {
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.legend {
+  display: grid;
+  gap: 2px;
+  padding: 0;
+  margin: 4px 0 0;
+  list-style: none;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.legend li,
+.legend button {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.legend button {
+  min-height: 24px;
+  color: inherit;
+  font: inherit;
+  background: transparent;
+  border: 0;
+  padding: 1px 4px;
+  margin-left: -4px;
+  text-align: start;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.legend button:hover {
+  color: var(--ink);
+  background: var(--surface-secondary);
+}
+
+.legend span {
+  width: 7px;
+  height: 7px;
+  flex: 0 0 auto;
+  border-radius: 2px;
+}
+
+.completed {
+  background: var(--accent);
+}
+
+.pending {
+  background: color-mix(in srgb, var(--accent) 40%, var(--panel));
+}
+
+.deferred {
+  background: var(--muted);
+}
+
+.unallocated {
+  background: var(--line);
+  outline: 1px solid color-mix(in srgb, var(--muted) 32%, transparent);
+}
+
+.figure {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.figure strong {
+  font-size: 1.28rem;
+  font-weight: 600;
+  color: var(--ink);
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+}
+
+.budgetChart {
+  position: relative;
+  display: flex;
+  height: 9px;
+  margin: 8px 0 12px;
+  overflow: hidden;
+  border-radius: 5px;
+  background: var(--line);
+}
+
+.budgetChart > span {
+  height: 100%;
+  transition: width 0.25s var(--motion-out);
+}
+
+.budgetChart > .budgetLimit {
+  position: absolute;
+  z-index: 1;
+  width: 2px;
+  background: var(--ink);
+  transition: left 0.25s var(--motion-out);
+}
+
+.budgetLegend {
+  row-gap: 3px;
+}
+
+.over {
+  color: var(--warm);
+}
+
+.over span {
+  background: var(--warm);
+}
+
+.reviewChart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.reviewChart li {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  font-size: 0.62rem;
+  color: var(--muted);
+}
+
+.dayCount {
+  font-variant-numeric: tabular-nums;
+}
+
+.barTrack {
+  display: flex;
+  align-items: flex-end;
+  width: min(70%, 17px);
+  height: 42px;
+  overflow: hidden;
+  border-bottom: 1px solid var(--line);
+}
+
+.barFill {
+  display: block;
+  width: 100%;
+  background: color-mix(in srgb, var(--accent) 65%, var(--panel));
+  border-radius: 4px 4px 0 0;
+  transition: height 0.25s var(--motion-out);
+}
+
+.reviewChart .currentDay {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.currentDay .barFill {
+  background: var(--accent);
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@container (min-width: 37rem) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric:nth-child(3) {
+    grid-column: 1 / -1;
+  }
+}
+
+@container (min-width: 54rem) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .metric:nth-child(3) {
+    grid-column: auto;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ringFill,
+  .budgetChart > span,
+  .budgetChart > .budgetLimit,
+  .barFill {
+    transition: none;
+  }
+}

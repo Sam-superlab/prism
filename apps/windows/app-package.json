@@ -1,0 +1,7 @@
+{
+  "name": "prism-desktop",
+  "productName": "PRISM",
+  "version": "0.2.5",
+  "private": true,
+  "main": "main.cjs"
+}

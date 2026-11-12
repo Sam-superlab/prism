@@ -1,5 +1,23 @@
 import { Temporal } from '@js-temporal/polyfill';
 
+function knowledgeTag(tags: readonly string[] | null | undefined, prefix: string): string {
+  return (
+    tags
+      ?.find((tag) => tag.startsWith(prefix))
+      ?.slice(prefix.length)
+      .trim() ?? ''
+  );
+}
+
+export function knowledgeChapter(tags?: readonly string[] | null): number | null {
+  const chapter = knowledgeTag(tags, 'chapter:');
+  return /^[1-9]\d{0,5}$/.test(chapter) ? Number(chapter) : null;
+}
+
+export function knowledgeChapterTitle(tags?: readonly string[] | null): string {
+  return knowledgeTag(tags, 'chapter-title:');
+}
+
 export function localDayRange(date: string, timezone: string): { start: string; end: string } {
   const day = Temporal.PlainDate.from(date);
   const start = day.toZonedDateTime({ timeZone: timezone, plainTime: '00:00' });

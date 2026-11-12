@@ -12,11 +12,21 @@ import { join } from 'node:path';
 import type { Database, Sql, Row } from '@prism/database';
 import { createCard, reviewCard, getRetrievability, schedulerConfig } from '@prism/fsrs';
 import { generatePlan, type PlannerTask, type PlannerItem } from '@prism/planner';
-import { localDayRange, localDate, validTimezone } from '@prism/shared-utils';
+import {
+  knowledgeChapter,
+  knowledgeChapterTitle,
+  localDayRange,
+  localDate,
+  validTimezone,
+} from '@prism/shared-utils';
 import { zipSync, strToU8 } from 'fflate';
 import { ApiError, notFound, validation } from './errors';
 import { models, tableKinds, protectedTables } from './models';
-import { rankSubscriptionMatches, type SubscriptionMatchRule } from './relevance';
+import { normalizeArxivCategory, rankSubscriptionMatches, subscriptionMatch } from './relevance';
+import { activeArxivSubscriptions, arxivSubscriptionKey, enqueueArxivIngestion } from './arxiv-jobs';
+import { buildArxivDeck } from './arxiv-for-you';
+import { arxivResearchContext } from './arxiv-research-context';
+import { DailyReviewDrafts } from './daily-review-drafts';
 import type { ApiConfig } from './config';
 export interface Command {
   userId: string;
@@ -84,6 +94,36 @@ function canonical(value: any): string {
 const hash = (v: any) => createHash('sha256').update(canonical(v)).digest('hex');
 const dateOnly = (v: any): string =>
   v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10);
+const arxivCardDone = (paper: Row) =>
+  Boolean(paper.for_you_reacted_at || paper.is_saved || paper.status !== 'unread');
+
+type ProofStep = { id: string; hint: string };
+
+function normalizeProofSteps(cardType: string, steps: ProofStep[]): ProofStep[] {
+  if (cardType !== 'proof' && steps.length)
+    throw validation('Proof steps can only be added to proof cards');
+  const normalized = steps.map(({ id, hint }) => ({ id: id.toLowerCase(), hint: hint.trim() }));
+  if (normalized.some((step) => !step.hint))
+    throw validation('Each proof step needs a hint');
+  if (new Set(normalized.map((step) => step.id)).size !== normalized.length)
+    throw validation('Proof step IDs must be distinct');
+  return normalized;
+}
+
+function chapterRangePredicate(tags: 'tags' | 'k.tags', query: Row, params: unknown[]) {
+  if (query.chapter_from === undefined && query.chapter_to === undefined) return;
+  const from = query.chapter_from ?? 1;
+  const to = query.chapter_to ?? 999999;
+  if (from > to) throw validation('The first chapter must be before or equal to the last chapter.');
+  params.push(from, to);
+  // Match the first chapter tag, with the same whitespace and number rules as the clients.
+  const space = '[\t-\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff]';
+  const firstTag = `(SELECT tag FROM unnest(${tags}) WITH ORDINALITY AS labels(tag, position)
+                     WHERE tag LIKE 'chapter:%' ORDER BY position LIMIT 1)`;
+  return `substring(${firstTag}, '^chapter:${space}*([1-9][0-9]{0,5})${space}*$')::integer
+          BETWEEN $${params.length - 1} AND $${params.length}`;
+}
+
 const commandHash = (command: Command) =>
   hash({
     method: command.method,
@@ -95,10 +135,17 @@ const commandHash = (command: Command) =>
   });
 export class PrismService {
   columns = new Map<string, Set<string>>();
+  private readonly reviewDrafts: DailyReviewDrafts;
   constructor(
     readonly db: Database,
     readonly config: ApiConfig,
-  ) {}
+  ) {
+    this.reviewDrafts = new DailyReviewDrafts(db, config.reviewDraftApiKey);
+  }
+  generateDailyReviewDrafts(userId: string, key: string, body: Row) {
+    if (!uuid.test(key)) throw validation('Idempotency-Key must be a UUID');
+    return this.reviewDrafts.generate(userId, body.date, key, body.retry === true);
+  }
   async initialize() {
     const cols = await this.db.query(
       "SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='prism'",
@@ -108,7 +155,7 @@ export class PrismService {
       set.add(r.column_name);
       this.columns.set(r.table_name, set);
     }
-    if (this.config.authMode === 'development')
+    if (this.config.authMode !== 'oidc')
       await this.db.transaction(this.config.userId, async (sql) => {
         await sql.query(
           "INSERT INTO users(id,oidc_subject,email,display_name) VALUES($1,$2,'local@prism.invalid','Researcher') ON CONFLICT(id) DO NOTHING",
@@ -226,6 +273,8 @@ export class PrismService {
       'template_snapshot',
       'previous_state',
       'resulting_state',
+      'proof_steps',
+      'proof_stuck_steps',
       'resolved_payload',
       'client_payload',
       'base_payload',
@@ -344,7 +393,14 @@ export class PrismService {
         .filter((x: Row) => x.completed_at && x.weight_kg !== null)
         .reduce((s: number, x: Row) => s + Number(x.weight_kg) * x.reps, 0);
     }
-    if (table === 'user_papers') row.paper = await this.paper(sql, raw.paper_id);
+    if (table === 'user_papers') {
+      delete row.for_you_day;
+      delete row.for_you_round;
+      delete row.for_you_position;
+      delete row.for_you_reason;
+      delete row.for_you_reacted_at;
+      row.paper = await this.paper(sql, raw.paper_id);
+    }
     if (table === 'daily_plans')
       row.items = await this.childRows(sql, userId, 'daily_plan_items', 'daily_plan_id', raw.id, 'position');
     if (table === 'daily_plan_items') {
@@ -666,7 +722,14 @@ export class PrismService {
   private async createEntity(ctx: Context, table: string, input: Row): Promise<Row> {
     const body = { ...input };
     delete body.base_snapshot;
+    if (table === 'research_knowledge_links' && Boolean(body.project_id) === Boolean(body.research_object_id))
+      throw validation('Choose one research project or research object.');
     await this.validateRefs(ctx, body);
+    if (table === 'arxiv_subscriptions' && body.subscription_type === 'category') {
+      const category = normalizeArxivCategory(body.subscription_value);
+      if (!category) throw validation('Enter an arXiv category such as math.AG');
+      body.subscription_value = category;
+    }
     if (table === 'devices') {
       if (body.push_token) {
         if (!this.config.pushEncryptionKey)
@@ -687,6 +750,8 @@ export class PrismService {
     let exercises = body.exercises;
     delete body.exercises;
     if (table === 'review_cards') {
+      if (body.proof_steps !== undefined)
+        body.proof_steps = normalizeProofSteps(body.card_type, body.proof_steps);
       const prefs = await ctx.sql.query('SELECT * FROM user_preferences WHERE user_id=$1', [ctx.userId]);
       const retention = Number(prefs.rows[0].desired_retention);
       const cfg = await schedulerConfig({ desired_retention: retention });
@@ -788,7 +853,27 @@ export class PrismService {
     this.version(old, ctx.expected);
     const body = { ...input };
     delete body.base_snapshot;
+    if (table === 'research_knowledge_links') {
+      const target = { ...old, ...body };
+      if (Boolean(target.project_id) === Boolean(target.research_object_id))
+        throw validation('Choose one research project or research object.');
+    }
     await this.validateRefs(ctx, body);
+    if (table === 'review_cards') {
+      if (body.proof_steps !== undefined)
+        body.proof_steps = normalizeProofSteps(body.card_type ?? old.card_type, body.proof_steps);
+      else if (body.card_type !== undefined && body.card_type !== 'proof')
+        body.proof_steps = [];
+    }
+    if (
+      table === 'arxiv_subscriptions' &&
+      (body.subscription_type ?? old.subscription_type) === 'category' &&
+      (body.subscription_value !== undefined || body.subscription_type !== undefined || body.enabled === true)
+    ) {
+      const category = normalizeArxivCategory(body.subscription_value ?? old.subscription_value);
+      if (!category) throw validation('Enter an arXiv category such as math.AG');
+      body.subscription_value = category;
+    }
     if (table === 'devices' && 'push_token' in body) {
       if (body.push_token) {
         if (!this.config.pushEncryptionKey) throw validation('Push token storage is not configured');
@@ -857,6 +942,7 @@ export class PrismService {
       research_projects: [
         ['research_objects', 'project_id'],
         ['research_paper_links', 'project_id'],
+        ['research_knowledge_links', 'project_id'],
       ],
       research_objects: [['research_knowledge_links', 'research_object_id']],
       workout_templates: [['workout_template_exercises', 'template_id']],
@@ -917,19 +1003,25 @@ export class PrismService {
           'SELECT * FROM daily_plan_items WHERE user_id=$1 AND daily_plan_id=$2 AND deleted_at IS NULL ORDER BY position,id',
           [ctx.userId, plan.id],
         );
+        const rows =
+          body.item_ids.length === all.rows.length
+            ? all.rows
+            : await this.workspacePlanItems(ctx.sql, ctx.userId, all.rows);
+        const ids: string[] = body.item_ids;
+        const requested = new Set(ids);
         if (
-          body.item_ids.length !== all.rows.length ||
-          new Set(body.item_ids).size !== all.rows.length ||
-          body.item_ids.some((id: string) => !all.rows.some((x) => x.id === id))
+          ids.length !== rows.length ||
+          requested.size !== rows.length ||
+          rows.some((x) => !requested.has(x.id))
         )
           throw validation('Reorder must contain every plan item exactly once');
         await ctx.sql.query(
-          'UPDATE daily_plan_items SET position=position+100000 WHERE user_id=$1 AND daily_plan_id=$2 AND deleted_at IS NULL',
-          [ctx.userId, plan.id],
+          'UPDATE daily_plan_items SET position=position+100000 WHERE user_id=$1 AND id=ANY($2::uuid[])',
+          [ctx.userId, ids],
         );
-        for (const [position, id] of body.item_ids.entries()) {
+        for (const [index, id] of ids.entries()) {
           const row = await this.update(ctx.sql, ctx.userId, 'daily_plan_items', id, {
-            position,
+            position: rows[index].position,
             manually_placed: true,
           });
           await this.change(ctx, 'daily_plan_items', row);
@@ -1041,6 +1133,13 @@ export class PrismService {
     }
     if (parts[0] === 'knowledge-items' && parts[2] === 'cards') {
       await this.row(ctx.sql, ctx.userId, 'knowledge_items', parts[1]);
+      if (parts[3] === 'batch') {
+        const items: Row[] = [];
+        for (const card of body.cards) {
+          items.push(await this.createEntity(ctx, 'review_cards', { ...card, knowledge_item_id: parts[1] }));
+        }
+        return { status: 201, body: { items } };
+      }
       return {
         status: 201,
         body: await this.createEntity(ctx, 'review_cards', { ...body, knowledge_item_id: parts[1] }),
@@ -1092,6 +1191,17 @@ export class PrismService {
           status: 201,
           body: await this.createEntity(ctx, table, { ...body, session_id: session.id }),
         };
+    }
+    if (path === 'arxiv/refresh') {
+      const job = await enqueueArxivIngestion(ctx.sql, ctx.userId, true);
+      if (!job) throw validation('Enable a valid arXiv subscription before refreshing the feed');
+      return { status: 202, body: await this.serialize(ctx.sql, ctx.userId, 'automation_jobs', job) };
+    }
+    if (path === 'arxiv/for-you/reaction') return this.reactToArxivDeck(ctx, body);
+    if (path === 'arxiv/for-you/keywords') return this.updateArxivKeyword(ctx, body);
+    if (path === 'arxiv/for-you/more') {
+      await this.arxivForYou(ctx.sql, ctx.userId, { date: body.date, round: body.round });
+      return { status: 204, body: null };
     }
     if (parts[0] === 'arxiv' && parts[1] === 'papers') return this.paperAction(ctx, parts[2], parts[3], body);
     if (parts[0] === 'sync' && parts[1] === 'conflicts' && parts[3] === 'resolve')
@@ -1280,6 +1390,11 @@ export class PrismService {
         },
       };
     }
+    const stuckIds = (body.proof_stuck_step_ids ?? []).map((id: string) => id.toLowerCase());
+    const markedSteps = new Set<string>(stuckIds);
+    const proofStuckSteps = (card.proof_steps as ProofStep[]).filter((step) => markedSteps.has(step.id));
+    if (proofStuckSteps.length !== stuckIds.length)
+      throw validation('Marked proof steps must be distinct steps on this card');
     let cfg = await this.row(ctx.sql, ctx.userId, 'scheduler_configs', card.scheduler_config_id);
     const prefs = (
       await ctx.sql.query('SELECT desired_retention FROM user_preferences WHERE user_id=$1', [ctx.userId])
@@ -1326,6 +1441,7 @@ export class PrismService {
         duration_ms: body.duration_ms,
         previous_state: card.fsrs_state,
         resulting_state: result.state,
+        proof_stuck_steps: proofStuckSteps,
         scheduler_config_id: cfg.id,
         idempotency_key: ctx.operationId,
         card_version_before: card.version,
@@ -1370,11 +1486,19 @@ export class PrismService {
   private async generate(ctx: Context, body: Row): Promise<Row> {
     if (!validTimezone(body.timezone)) throw validation('Invalid IANA timezone');
     const date = body.plan_date;
+    const prior = (
+      await ctx.sql.query(
+        'SELECT * FROM daily_plans WHERE user_id=$1 AND plan_date=$2 AND deleted_at IS NULL',
+        [ctx.userId, date],
+      )
+    ).rows[0];
+    // The caller already holds the user's write lock, including for simultaneous opens on two devices.
+    if (prior && body.if_missing) return this.serialize(ctx.sql, ctx.userId, 'daily_plans', prior);
     const prefs = (await ctx.sql.query('SELECT * FROM user_preferences WHERE user_id=$1', [ctx.userId]))
       .rows[0];
     const tasks = (
       await ctx.sql.query(
-        'SELECT t.*,coalesce(p.importance,3) project_importance FROM tasks t LEFT JOIN research_projects p ON p.user_id=t.user_id AND p.id=t.project_id WHERE t.user_id=$1 AND t.deleted_at IS NULL',
+        "SELECT t.*,coalesce(p.importance,3) project_importance FROM tasks t LEFT JOIN research_projects p ON p.user_id=t.user_id AND p.id=t.project_id WHERE t.user_id=$1 AND t.deleted_at IS NULL AND t.source_type<>'workout'",
         [ctx.userId],
       )
     ).rows.map((x) => ({
@@ -1388,12 +1512,6 @@ export class PrismService {
         [ctx.userId],
       )
     ).rows.map((x) => ({ id: x.id, due_at: new Date(x.due_at).toISOString() }));
-    const prior = (
-      await ctx.sql.query(
-        'SELECT * FROM daily_plans WHERE user_id=$1 AND plan_date=$2 AND deleted_at IS NULL',
-        [ctx.userId, date],
-      )
-    ).rows[0];
     const existing = prior
       ? await this.childRows(ctx.sql, ctx.userId, 'daily_plan_items', 'daily_plan_id', prior.id, 'position')
       : [];
@@ -1405,7 +1523,7 @@ export class PrismService {
       reviewLimit: prefs.daily_review_limit,
       tasks: tasks as PlannerTask[],
       cards,
-      existingItems: existing as PlannerItem[],
+      existingItems: (await this.workspacePlanItems(ctx.sql, ctx.userId, existing)) as PlannerItem[],
       overrideManual: !!body.override_manual,
     };
     const output = generatePlan(input);
@@ -1536,7 +1654,68 @@ export class PrismService {
     if (patch.status === 'read') patch.read_at = userPaper.read_at ?? new Date();
     const row = await this.update(ctx.sql, ctx.userId, 'user_papers', userPaper.id, patch);
     await this.change(ctx, 'user_papers', row);
+    if (patch.status === 'read') {
+      const { rows: tasks } = await ctx.sql.query(
+        "SELECT id FROM tasks WHERE user_id=$1 AND user_paper_id=$2 AND source_type='reading' AND deleted_at IS NULL AND status NOT IN('completed','archived')",
+        [ctx.userId, userPaper.id],
+      );
+      for (const task of tasks) {
+        await this.change(
+          ctx,
+          'tasks',
+          await this.update(ctx.sql, ctx.userId, 'tasks', task.id, {
+            status: 'completed',
+            completed_at: new Date(),
+          }),
+        );
+        await this.completePlanTask(ctx, task.id);
+      }
+    }
     return { status: 200, body: await this.serialize(ctx.sql, ctx.userId, 'user_papers', row) };
+  }
+
+  private async reactToArxivDeck(ctx: Context, body: Row): Promise<Result> {
+    const paper = (
+      await ctx.sql.query(
+        `SELECT id,for_you_reacted_at,status,is_saved FROM user_papers
+         WHERE user_id=$1 AND paper_id=$2 AND for_you_day IS NOT NULL AND deleted_at IS NULL`,
+        [ctx.userId, body.paper_id],
+      )
+    ).rows[0];
+    if (!paper) throw notFound();
+    if (!arxivCardDone(paper)) {
+      if (body.action === 'save') {
+        await this.paperAction(ctx, body.paper_id, 'save', {});
+        await ctx.sql.query('UPDATE user_papers SET for_you_reacted_at=now() WHERE id=$1', [paper.id]);
+      } else {
+        const row = await this.update(ctx.sql, ctx.userId, 'user_papers', paper.id, {
+          for_you_reaction: body.action,
+          for_you_reacted_at: new Date(),
+        });
+        await this.change(ctx, 'user_papers', row);
+      }
+    }
+    return { status: 204, body: null };
+  }
+
+  private async updateArxivKeyword(ctx: Context, body: Row): Promise<Result> {
+    const term = String(body.term).normalize('NFKC').toLocaleLowerCase('en').replace(/\s+/g, ' ').trim();
+    if (term.length > 100 || !/[\p{L}\p{N}]/u.test(term)) throw validation('Enter a word or phrase.');
+    const prefs = (
+      await ctx.sql.query('SELECT arxiv_for_you_keywords FROM user_preferences WHERE user_id=$1', [
+        ctx.userId,
+      ])
+    ).rows[0];
+    const keywords = prefs.arxiv_for_you_keywords.filter((rule: { term: string }) => rule.term !== term);
+    if (body.mode !== 'remove') {
+      if (keywords.length >= 100) throw validation('Remove a keyword before adding another.');
+      keywords.push({ term, mode: body.mode });
+    }
+    await ctx.sql.query('UPDATE user_preferences SET arxiv_for_you_keywords=$2::jsonb WHERE user_id=$1', [
+      ctx.userId,
+      JSON.stringify(keywords),
+    ]);
+    return { status: 204, body: null };
   }
   async list(sql: Sql, userId: string, table: string, query: Row = {}, fixed: Row = {}): Promise<Row> {
     const limit = Math.max(1, Math.min(500, Number(query.limit) || 50));
@@ -1546,6 +1725,8 @@ export class PrismService {
     if (table === 'inbox_entries')
       clauses.push('classified_task_id IS NULL AND classified_knowledge_id IS NULL');
     const filters = { ...fixed };
+    if (table === 'knowledge_items' && query.type !== undefined) filters.type = query.type;
+    if (table === 'research_paper_links' && query.paper_id !== undefined) filters.paper_id = query.paper_id;
     for (const key of [
       'project_id',
       'knowledge_item_id',
@@ -1575,6 +1756,10 @@ export class PrismService {
     if (query.tag && this.columns.get(table)?.has('tags')) {
       params.push(query.tag);
       clauses.push(`$${params.length}=ANY(tags)`);
+    }
+    if (table === 'knowledge_items') {
+      const chapters = chapterRangePredicate('tags', query, params);
+      if (chapters) clauses.push(chapters);
     }
     const time =
       table === 'review_events' ? 'reviewed_at' : table === 'workout_sessions' ? 'started_at' : 'created_at';
@@ -1610,6 +1795,7 @@ export class PrismService {
     };
   }
   async query(userId: string, path: string, query: Row = {}): Promise<any> {
+    if (path === '/today/review-drafts') return this.reviewDrafts.get(userId, query.date);
     return this.read(userId, async (sql) => {
       const p = path.replace(/^\/api\/v1/, '').replace(/^\//, ''),
         parts = p.split('/');
@@ -1623,6 +1809,27 @@ export class PrismService {
       }
       if (p === 'today') return this.today(sql, userId, query.date);
       if (p === 'today/shutdown') return this.shutdown(sql, userId, query.date);
+      if (p === 'knowledge-subjects') {
+        const { rows } = await sql.query(
+          'SELECT DISTINCT subject FROM knowledge_items WHERE user_id=$1 AND deleted_at IS NULL ORDER BY subject',
+          [userId],
+        );
+        return { items: rows.map((row) => row.subject) };
+      }
+      if (p === 'knowledge-chapters') {
+        const { rows } = await sql.query(
+          'SELECT tags FROM knowledge_items WHERE user_id=$1 AND subject=$2 AND deleted_at IS NULL ORDER BY created_at DESC,id DESC',
+          [userId, query.subject],
+        );
+        const titles = new Map<number, string>();
+        for (const { tags } of rows) {
+          const number = knowledgeChapter(tags);
+          if (number !== null && !titles.get(number)) titles.set(number, knowledgeChapterTitle(tags));
+        }
+        return {
+          items: [...titles].sort(([a], [b]) => a - b).map(([number, title]) => ({ number, title })),
+        };
+      }
       if (p === 'review/queue') {
         const asOf = query.as_of ?? new Date().toISOString();
         const limit = Math.min(500, Number(query.limit) || 50);
@@ -1631,10 +1838,19 @@ export class PrismService {
         if (query.cursor) {
           const c = this.decode(query.cursor, userId, 'review-queue');
           if (c.asOf !== asOf && query.as_of) throw validation('Review cursor time changed');
+          if (c.subject !== query.subject) throw validation('Review cursor subject changed');
+          if (c.chapterFrom !== query.chapter_from || c.chapterTo !== query.chapter_to)
+            throw validation('Review cursor chapter range changed');
           params[1] = c.asOf;
           params.push(c.due, c.id);
           after = ' AND (c.due_at,c.id)>($3::timestamptz,$4::uuid)';
         }
+        if (query.subject !== undefined) {
+          params.push(query.subject);
+          after += ` AND k.subject=$${params.length}`;
+        }
+        const chapters = chapterRangePredicate('k.tags', query, params);
+        if (chapters) after += ` AND ${chapters}`;
         params.push(limit + 1);
         const rows = (
           await sql.query(
@@ -1648,7 +1864,14 @@ export class PrismService {
           items: await Promise.all(slice.map((r) => this.serialize(sql, userId, 'review_cards', r))),
           next_cursor:
             rows.length > limit && last
-              ? this.cursor(userId, 'review-queue', { asOf: params[1], due: last.__cursor_time, id: last.id })
+              ? this.cursor(userId, 'review-queue', {
+                  asOf: params[1],
+                  due: last.__cursor_time,
+                  id: last.id,
+                  subject: query.subject,
+                  chapterFrom: query.chapter_from,
+                  chapterTo: query.chapter_to,
+                })
               : null,
         };
       }
@@ -1673,6 +1896,7 @@ export class PrismService {
       }
       if (p === 'fitness/progression') return this.progression(sql, userId, query);
       if (p === 'arxiv/feed') return this.feed(sql, userId, query);
+      if (p === 'arxiv/for-you') return this.arxivForYou(sql, userId);
       if (parts[0] === 'arxiv' && parts[1] === 'papers' && parts.length === 3)
         return this.paper(sql, parts[2]);
       if (p === 'sync/pull') return this.pull(sql, userId, query);
@@ -1688,9 +1912,148 @@ export class PrismService {
       throw notFound();
     });
   }
+  private async arxivForYou(
+    sql: Sql,
+    userId: string,
+    more?: { date: string; round: number },
+  ): Promise<Row | null> {
+    // Mutations already hold this lock through execute(). Reads can create the first round.
+    if (!more) await sql.query('SELECT revision FROM user_sync_state WHERE user_id=$1 FOR UPDATE', [userId]);
+    const prefs = (
+      await sql.query(
+        `SELECT u.timezone,p.arxiv_for_you_keywords FROM users u
+         JOIN user_preferences p ON p.user_id=u.id WHERE u.id=$1 AND u.deleted_at IS NULL`,
+        [userId],
+      )
+    ).rows[0];
+    if (!prefs) throw notFound();
+    const now = new Date();
+    const date = localDate(now, prefs.timezone);
+    let deck = (
+      await sql.query(
+        `SELECT * FROM user_papers WHERE user_id=$1 AND for_you_day=$2 AND for_you_round=(
+          SELECT max(for_you_round) FROM user_papers WHERE user_id=$1 AND for_you_day=$2
+        ) ORDER BY for_you_position`,
+        [userId, date],
+      )
+    ).rows;
+    let round = deck[0]?.for_you_round ?? 0;
+    const complete = deck.every((row) => row.deleted_at || arxivCardDone(row));
+    if (more) {
+      // A second device can submit the same transition with a different idempotency key.
+      if (more.date !== date || more.round !== round) return null;
+      if (!complete)
+        throw new ApiError(409, 'VALIDATION_ERROR', 'Finish this round before starting another.');
+    }
+    const keywords = prefs.arxiv_for_you_keywords;
+    const feedback = (
+      await sql.query(
+        `SELECT u.paper_id,p.title,p.abstract,u.is_saved,
+          CASE WHEN u.status='not_relevant' THEN 'not_interested' ELSE u.for_you_reaction END reaction,
+          COALESCE(GREATEST(u.for_you_reacted_at,u.saved_at),u.updated_at) AS updated_at
+         FROM user_papers u JOIN arxiv_papers p ON p.id=u.paper_id
+         WHERE u.user_id=$1 AND u.deleted_at IS NULL AND
+           (u.is_saved OR u.status='not_relevant' OR u.for_you_reaction IN ('interested','liked','not_interested'))
+         ORDER BY updated_at DESC,u.paper_id LIMIT 500`,
+        [userId],
+      )
+    ).rows.map((paper) => ({
+      paper_id: paper.paper_id,
+      title: paper.title,
+      abstract: paper.abstract,
+      is_saved: paper.is_saved,
+      reaction: paper.reaction,
+      updated_at: new Date(paper.updated_at).toISOString(),
+    }));
+    const subscriptions = complete ? await activeArxivSubscriptions(sql, userId) : [];
+    const candidates = subscriptions.length
+      ? (
+          await sql.query(
+            `SELECT p.id AS paper_id,p.title,p.abstract,p.authors,p.categories,p.updated_at
+             FROM user_papers u JOIN arxiv_papers p ON p.id=u.paper_id
+             WHERE u.user_id=$1 AND u.deleted_at IS NULL AND u.status='unread' AND NOT u.is_saved
+               AND u.for_you_day IS NULL AND p.updated_at >= $2 AND u.match_reasons ?| $3::text[]
+             ORDER BY p.updated_at DESC,p.id LIMIT 500`,
+            [
+              userId,
+              new Date(now.getTime() - 14 * 86400000),
+              subscriptions.map((rule) => subscriptionMatch(rule).reason),
+            ],
+          )
+        ).rows.flatMap((paper) => {
+          const subscription = rankSubscriptionMatches(
+            {
+              title: paper.title,
+              abstract: paper.abstract,
+              authors: paper.authors,
+              categories: paper.categories,
+            },
+            subscriptions,
+          );
+          if (!subscription.relevance_score) return [];
+          return [
+            {
+              paper_id: paper.paper_id,
+              title: paper.title,
+              abstract: paper.abstract,
+              categories: paper.categories,
+              updated_at: new Date(paper.updated_at).toISOString(),
+              subscription_score: subscription.relevance_score,
+            },
+          ];
+        })
+      : [];
+    const select = round === 0 || !!more;
+    const ranked = buildArxivDeck({
+      candidates: select ? candidates : [],
+      feedback,
+      keywords,
+      research: select && candidates.length ? await arxivResearchContext(sql, userId) : [],
+      now,
+      seed: `${userId}:${date}:${round + 1}`,
+    });
+    if (ranked.items.length) {
+      round += 1;
+      deck = (
+        await sql.query(
+          `UPDATE user_papers u SET for_you_day=$2,for_you_round=$3,for_you_position=p.position,for_you_reason=p.reason
+           FROM jsonb_to_recordset($4::jsonb) AS p(paper_id uuid,position smallint,reason text)
+           WHERE u.user_id=$1 AND u.paper_id=p.paper_id AND u.for_you_day IS NULL RETURNING u.*`,
+          [
+            userId,
+            date,
+            round,
+            JSON.stringify(ranked.items.map((item, index) => ({ ...item, position: index + 1 }))),
+          ],
+        )
+      ).rows.sort((a, b) => a.for_you_position - b.for_you_position);
+    }
+    if (more) return null;
+    return {
+      date,
+      round,
+      can_review_more: complete && !select && candidates.length > 0,
+      items: await Promise.all(
+        deck
+          .filter((row) => !row.deleted_at)
+          .map(async (row) => ({
+            paper: await this.serialize(sql, userId, 'user_papers', row),
+            reason: row.for_you_reason,
+            done: arxivCardDone(row),
+            reaction: row.for_you_reaction,
+          })),
+      ),
+      keywords,
+      suggestions: ranked.suggestions,
+    };
+  }
   private async feed(sql: Sql, userId: string, q: Row): Promise<Row> {
     const params: any[] = [userId];
     let where = 'u.user_id=$1 AND u.deleted_at IS NULL';
+    let join = '',
+      activeFields = '',
+      score = 'u.relevance_score',
+      subscriptionKey: string | undefined;
     if (q.status) {
       params.push(q.status);
       where += ` AND u.status=$${params.length}`;
@@ -1699,19 +2062,39 @@ export class PrismService {
       params.push(q.saved === true || q.saved === 'true');
       where += ` AND u.is_saved=$${params.length}`;
     }
-    const bind = hash({ status: q.status, saved: q.saved });
+    if (q.reaction) {
+      params.push(q.reaction);
+      where += ` AND u.for_you_reaction=$${params.length}`;
+    }
+    if (q.status === 'unread' && q.saved !== true && q.saved !== 'true') {
+      const subscriptions = await activeArxivSubscriptions(sql, userId);
+      subscriptionKey = arxivSubscriptionKey(subscriptions);
+      params.push(JSON.stringify(subscriptions.map(subscriptionMatch)));
+      // Reweight recorded matches before applying the cursor and limit. Saved and read views keep their history.
+      join = `CROSS JOIN LATERAL (
+        SELECT COALESCE(SUM(rule.score),0) score, COALESCE(jsonb_agg(rule.reason ORDER BY rule.reason),'[]'::jsonb) reasons
+        FROM jsonb_to_recordset($${params.length}::jsonb) AS rule(reason text, score integer)
+        WHERE u.match_reasons ? rule.reason
+      ) active_matches`;
+      activeFields = ',active_matches.score active_score,active_matches.reasons active_reasons';
+      score = 'active_matches.score';
+      where += ` AND ${score}>0`;
+    }
+    const bind = hash({ status: q.status, saved: q.saved, reaction: q.reaction, subscriptionKey });
     if (q.cursor) {
       const c = this.decode(q.cursor, userId, 'feed');
       if (c.binding !== bind) throw validation('Cursor filters changed');
       params.push(c.score, c.updated, c.arxivId);
       const n = params.length;
-      where += ` AND (u.relevance_score<$${n - 2} OR (u.relevance_score=$${n - 2} AND p.updated_at<$${n - 1}) OR (u.relevance_score=$${n - 2} AND p.updated_at=$${n - 1} AND p.arxiv_id>$${n}))`;
+      where += ` AND (${score}<$${n - 2} OR (${score}=$${n - 2} AND p.updated_at<$${n - 1}) OR (${score}=$${n - 2} AND p.updated_at=$${n - 1} AND p.arxiv_id>$${n}))`;
     }
     const limit = Math.min(500, Number(q.limit) || 50);
     params.push(limit + 1);
     const rows = (
       await sql.query(
-        `SELECT u.*,p.updated_at paper_updated,p.updated_at::text __cursor_time,p.arxiv_id FROM user_papers u JOIN arxiv_papers p ON p.id=u.paper_id WHERE ${where} ORDER BY u.relevance_score DESC,p.updated_at DESC,p.arxiv_id LIMIT $${params.length}`,
+        `SELECT u.*,p.updated_at paper_updated,p.updated_at::text __cursor_time,p.arxiv_id${activeFields}
+         FROM user_papers u JOIN arxiv_papers p ON p.id=u.paper_id ${join}
+         WHERE ${where} ORDER BY ${score} DESC,p.updated_at DESC,p.arxiv_id LIMIT $${params.length}`,
         params,
       )
     ).rows;
@@ -1720,16 +2103,18 @@ export class PrismService {
     return {
       items: await Promise.all(
         slice.map(async (raw) => {
-          const r = { ...raw };
-          delete r.paper_updated;
-          delete r.arxiv_id;
+          const { active_score, active_reasons, paper_updated, arxiv_id, ...r } = raw;
+          if (active_score !== undefined) {
+            r.relevance_score = active_score;
+            r.match_reasons = active_reasons;
+          }
           return this.serialize(sql, userId, 'user_papers', r);
         }),
       ),
       next_cursor:
         rows.length > limit && last
           ? this.cursor(userId, 'feed', {
-              score: Number(last.relevance_score),
+              score: Number(last.active_score ?? last.relevance_score),
               updated: last.__cursor_time,
               arxivId: last.arxiv_id,
               binding: bind,
@@ -1812,6 +2197,16 @@ export class PrismService {
           : null,
     };
   }
+  private async workspacePlanItems(sql: Sql, userId: string, items: Row[]): Promise<Row[]> {
+    const taskIds = items.flatMap((item) => (item.task_id ? [item.task_id] : []));
+    if (!taskIds.length) return items;
+    const retired = await sql.query(
+      "SELECT id FROM tasks WHERE user_id=$1 AND id=ANY($2::uuid[]) AND source_type='workout'",
+      [userId, taskIds],
+    );
+    const retiredIds = new Set(retired.rows.map((row) => row.id));
+    return items.filter((item) => !retiredIds.has(item.task_id));
+  }
   private async today(sql: Sql, userId: string, date: string): Promise<Row> {
     const user = await this.row(sql, userId, 'users', userId);
     const prefs = (await sql.query('SELECT * FROM user_preferences WHERE user_id=$1', [userId])).rows[0];
@@ -1821,16 +2216,22 @@ export class PrismService {
       'SELECT count(*) FILTER(WHERE c.due_at<=$2)::int now_count,count(*) FILTER(WHERE c.due_at<$3)::int day_count FROM review_cards c JOIN knowledge_items k ON k.id=c.knowledge_item_id AND k.user_id=c.user_id WHERE c.user_id=$1 AND c.deleted_at IS NULL AND NOT c.suspended AND k.deleted_at IS NULL',
       [userId, now, range.end],
     );
+    const reviewDays = Array.from({ length: 7 }, (_, index) => {
+      const day = new Date(`${date}T00:00:00Z`);
+      day.setUTCDate(day.getUTCDate() + index - 6);
+      return day.toISOString().slice(0, 10);
+    });
+    const reviewStart = localDayRange(reviewDays[0], user.timezone).start;
+    const reviewActivity = await sql.query(
+      `SELECT to_char(timezone($4::text, reviewed_at), 'YYYY-MM-DD') AS day, count(*)::int AS count
+       FROM review_events WHERE user_id=$1 AND reviewed_at>=$2 AND reviewed_at<$3 GROUP BY 1`,
+      [userId, reviewStart, range.end, user.timezone],
+    );
+    const reviewsByDay = new Map(reviewActivity.rows.map((row) => [row.day, row.count]));
     const research = await sql.query(
       "SELECT count(*)::int n FROM tasks WHERE user_id=$1 AND source_type='research' AND due_at<$2 AND status IN('ready','in_progress') AND deleted_at IS NULL",
       [userId, range.end],
     );
-    const workout = (
-      await sql.query(
-        "SELECT * FROM tasks WHERE user_id=$1 AND source_type='workout' AND planned_date=$2 AND status IN('ready','in_progress') AND deleted_at IS NULL ORDER BY pinned DESC,priority DESC,id LIMIT 1",
-        [userId, date],
-      )
-    ).rows[0];
     const papers = await sql.query(
       "SELECT count(*) FILTER(WHERE status='unread')::int unread,count(*) FILTER(WHERE is_saved)::int saved FROM user_papers WHERE user_id=$1 AND deleted_at IS NULL",
       [userId],
@@ -1842,15 +2243,30 @@ export class PrismService {
       ])
     ).rows[0];
     const serialized = plan ? await this.serialize(sql, userId, 'daily_plans', plan) : null;
-    const items = serialized?.items ?? [];
+    const continuation = (
+      await sql.query(
+        'SELECT s.note FROM daily_shutdowns s JOIN daily_plans p ON p.user_id=s.user_id AND p.id=s.daily_plan_id WHERE s.user_id=$1 AND p.plan_date=$2::date-1 AND s.deleted_at IS NULL AND p.deleted_at IS NULL',
+        [userId, date],
+      )
+    ).rows[0];
+    const storedItems: Row[] = serialized?.items ?? [];
+    const items = await this.workspacePlanItems(sql, userId, storedItems);
+    if (serialized && items.length !== storedItems.length) {
+      serialized.items = items;
+      const scheduledMinutes = items
+        .filter((item) => item.status === 'planned' || item.status === 'completed')
+        .reduce((total, item) => total + item.scheduled_minutes, 0);
+      serialized.overload_minutes = Math.max(0, scheduledMinutes - serialized.capacity_minutes);
+    }
     return {
       date,
       timezone: user.timezone,
       as_of: now,
       reviews_due_now: reviews.rows[0].now_count,
       reviews_due_by_end_of_day: reviews.rows[0].day_count,
+      review_activity: reviewDays.map((day) => ({ date: day, count: reviewsByDay.get(day) ?? 0 })),
       research_tasks_due: research.rows[0].n,
-      planned_workout: workout ? await this.serialize(sql, userId, 'tasks', workout) : null,
+      planned_workout: null,
       unread_papers: papers.rows[0].unread,
       saved_papers: papers.rows[0].saved,
       capacity_minutes: plan?.capacity_minutes ?? prefs.default_study_capacity_minutes,
@@ -1859,10 +2275,11 @@ export class PrismService {
         .reduce((s: number, x: Row) => s + x.scheduled_minutes, 0),
       completed_count: items.filter((x: Row) => x.status === 'completed').length,
       planned_count: items.filter((x: Row) => !['skipped', 'deferred'].includes(x.status)).length,
+      continuation_note: continuation?.note?.trim() || null,
       plan: serialized,
     };
   }
-  private async shutdown(sql: Sql, userId: string, date: string, note = ''): Promise<Row> {
+  private async shutdown(sql: Sql, userId: string, date: string, note?: string): Promise<Row> {
     const user = await this.row(sql, userId, 'users', userId),
       range = localDayRange(date, user.timezone);
     const plan = (
@@ -1872,36 +2289,54 @@ export class PrismService {
       ])
     ).rows[0];
     if (!plan) throw new ApiError(404, 'NOT_FOUND', 'Generate a daily plan before shutdown');
-    const items = await this.childRows(sql, userId, 'daily_plan_items', 'daily_plan_id', plan.id, 'position');
+    const saved =
+      note === undefined
+        ? (
+            await sql.query(
+              'SELECT note FROM daily_shutdowns WHERE user_id=$1 AND daily_plan_id=$2 AND deleted_at IS NULL',
+              [userId, plan.id],
+            )
+          ).rows[0]?.note
+        : note;
+    const items = await this.workspacePlanItems(
+      sql,
+      userId,
+      await this.childRows(sql, userId, 'daily_plan_items', 'daily_plan_id', plan.id, 'position'),
+    );
     const ratings = await sql.query(
       'SELECT rating,count(*)::int n FROM review_events WHERE user_id=$1 AND reviewed_at>=$2 AND reviewed_at<$3 GROUP BY rating',
       [userId, range.start, range.end],
     );
     const counts: Row = { again: 0, hard: 0, good: 0, easy: 0 };
     for (const r of ratings.rows) counts[r.rating] = r.n;
-    const workouts = await sql.query(
-      "SELECT count(*)::int n FROM workout_sessions WHERE user_id=$1 AND status='completed' AND ended_at>=$2 AND ended_at<$3 AND deleted_at IS NULL",
-      [userId, range.start, range.end],
-    );
     const research = await sql.query(
       'SELECT count(*)::int n FROM research_events WHERE user_id=$1 AND created_at>=$2 AND created_at<$3',
       [userId, range.start, range.end],
     );
+    const completed = await sql.query(
+      "SELECT id FROM tasks WHERE user_id=$1 AND source_type<>'workout' AND completed_at>=$2 AND completed_at<$3 ORDER BY completed_at,id",
+      [userId, range.start, range.end],
+    );
+    const papers = await sql.query(
+      'SELECT count(*)::int n FROM user_papers WHERE user_id=$1 AND deleted_at IS NULL AND read_at>=$2 AND read_at<$3',
+      [userId, range.start, range.end],
+    );
     const next = await sql.query(
-      "SELECT id FROM tasks WHERE user_id=$1 AND deleted_at IS NULL AND status IN('ready','in_progress') ORDER BY hard_deadline DESC,pinned DESC,due_at NULLS LAST,priority DESC,id LIMIT 5",
+      "SELECT id FROM tasks WHERE user_id=$1 AND deleted_at IS NULL AND source_type<>'workout' AND status IN('ready','in_progress') ORDER BY hard_deadline DESC,pinned DESC,due_at NULLS LAST,priority DESC,id LIMIT 5",
       [userId],
     );
     return {
       date,
       plan_id: plan.id,
-      completed_task_ids: items.filter((x) => x.status === 'completed' && x.task_id).map((x) => x.task_id),
+      completed_task_ids: completed.rows.map((task) => task.id),
       deferred_item_ids: items.filter((x) => x.status === 'deferred').map((x) => x.id),
       review_count: Object.values(counts).reduce((s: number, x) => s + Number(x), 0),
       rating_counts: counts,
-      workout_count: workouts.rows[0].n,
+      workout_count: 0,
       research_event_count: research.rows[0].n,
+      papers_read_count: papers.rows[0].n,
       next_day_task_ids: next.rows.map((x) => x.id),
-      note,
+      note: saved ?? '',
     };
   }
   private async snapshot(ctx: Context, body: Row): Promise<Result> {
@@ -2779,7 +3214,19 @@ export class PrismService {
     return this.execute(
       { userId, key, method: 'SYSTEM', path: 'arxiv/ingest', body: { papers } },
       async (ctx) => {
+        const subscriptions = await activeArxivSubscriptions(ctx.sql, userId);
+        let ingested = 0;
         for (const input of papers) {
+          const data = rankSubscriptionMatches(
+            {
+              title: input.title,
+              abstract: input.abstract,
+              authors: input.authors,
+              categories: input.categories,
+            },
+            subscriptions,
+          );
+          if (!data.relevance_score) continue;
           let paper = (await ctx.sql.query('SELECT * FROM arxiv_papers WHERE arxiv_id=$1', [input.arxiv_id]))
             .rows[0];
           const metadata = {
@@ -2827,16 +3274,13 @@ export class PrismService {
               paper.id,
             ])
           ).rows[0];
-          const data = {
-            relevance_score: Number(input.relevance_score ?? 0),
-            match_reasons: input.match_reasons ?? [],
-          };
           const state = old
             ? await this.update(ctx.sql, userId, 'user_papers', old.id, data)
             : await this.insert(ctx.sql, 'user_papers', { paper_id: paper.id, ...data }, userId);
           await this.change(ctx, 'user_papers', state);
+          ingested += 1;
         }
-        return { status: 200, body: { ingested: papers.length } };
+        return { status: 200, body: { ingested } };
       },
     );
   }
@@ -2882,12 +3326,7 @@ export class PrismService {
             'SELECT p.* FROM user_papers u JOIN arxiv_papers p ON p.id=u.paper_id WHERE u.user_id=$1 AND u.deleted_at IS NULL AND u.status<>$4 AND EXISTS(SELECT 1 FROM arxiv_paper_versions v WHERE v.paper_id=p.id AND v.created_at>=$2 AND v.created_at<$3)',
             [userId, range.start, range.end, 'not_relevant'],
           );
-          const subscriptions = (
-            await ctx.sql.query(
-              'SELECT subscription_type,subscription_value,enabled,weight FROM arxiv_subscriptions WHERE user_id=$1 AND enabled AND deleted_at IS NULL',
-              [userId],
-            )
-          ).rows as SubscriptionMatchRule[];
+          const subscriptions = await activeArxivSubscriptions(ctx.sql, userId);
           paperIds = rows.rows
             .map((paper) => ({
               paper,

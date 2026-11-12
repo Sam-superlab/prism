@@ -1,56 +1,182 @@
 'use client';
-import { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, datetime, localInputToInstant, useAction, useResource, uuid } from '../../lib/api';
-import type { Page, Project, Subscription, UserPaper } from '../../lib/types';
+import { ResearchLinkModal } from '../ResearchLinks';
+import type { Job, Page, Project, Subscription, UserPaper } from '../../lib/types';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, MathContent, Modal, Notice, label } from '../ui';
+import { DiscoverForYou } from './DiscoverForYou';
+import styles from './DiscoverForYou.module.css';
+
+const exploreFilters = {
+  unread: { label: 'Unread', query: '&status=unread' },
+  saved: { label: 'Saved', query: '&saved=true' },
+  liked: { label: 'Liked', query: '&reaction=liked' },
+  interested: { label: 'Interested', query: '&reaction=interested' },
+  read: { label: 'Read', query: '&status=read' },
+  all: { label: 'All', query: '' },
+};
+type ExploreFilter = keyof typeof exploreFilters;
+
+function exploreFeedPath(filter: ExploreFilter, cursor?: string) {
+  const pagination = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+  return `/arxiv/feed?limit=100${exploreFilters[filter].query}${pagination}`;
+}
 
 export function DiscoverPage() {
-  const [filter, setFilter] = useState('unread');
+  const [view, setView] = useState<'for-you' | 'explore'>('explore');
+  const [filter, setFilter] = useState<ExploreFilter>('unread');
   const [subscriptionEditor, setSubscriptionEditor] = useState(false);
   const [paperTask, setPaperTask] = useState<UserPaper | null>(null);
   const [projectPaper, setProjectPaper] = useState<UserPaper | null>(null);
   const [expanded, setExpanded] = useState<string | null>(null);
   const [message, setMessage] = useState('');
-  const feed = useResource<Page<UserPaper>>(
-    `/arxiv/feed?limit=100${filter === 'saved' ? '&saved=true' : filter === 'all' ? '' : `&status=${filter}`}`,
-  );
+  const [refreshJobId, setRefreshJobId] = useState<string | null>(null);
+  const feed = useResource<Page<UserPaper>>(exploreFeedPath(filter));
   const subscriptions = useResource<Page<Subscription>>('/arxiv/subscriptions?limit=100');
-  const refresh = () => {
+  const pagination = useAction();
+  const pageRequest = useRef<AbortController | null>(null);
+  const reloadFeed = useCallback(() => {
+    pageRequest.current?.abort();
+    pagination.setError(null);
     feed.reload();
+  }, [feed.reload, pagination.setError]);
+  const refresh = () => {
+    reloadFeed();
     subscriptions.reload();
   };
   const action = useAction(refresh);
+  const requestRefresh = useAction();
+  const jobStatus = useResource<Job>(refreshJobId ? `/automation/jobs/${refreshJobId}` : null);
+  const job = jobStatus.data?.id === refreshJobId ? jobStatus.data : null;
+  const refreshing = requestRefresh.busy || (!!refreshJobId && !jobStatus.error && job?.status !== 'dead');
+  function openExplore() {
+    if (view === 'explore') return;
+    setView('explore');
+    reloadFeed();
+  }
+
+  function selectFilter(next: ExploreFilter) {
+    if (next === filter) return;
+    pageRequest.current?.abort();
+    pagination.setError(null);
+    feed.setData(null);
+    setFilter(next);
+  }
+
+  function loadMore() {
+    const cursor = feed.data?.next_cursor;
+    if (!cursor || feed.loading || pageRequest.current) return;
+    const controller = new AbortController();
+    pageRequest.current = controller;
+    void pagination.run(async () => {
+      try {
+        const next = await api<Page<UserPaper>>(exploreFeedPath(filter, cursor), {
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) {
+          feed.setData((page) =>
+            page?.next_cursor === cursor ? { ...next, items: [...page.items, ...next.items] } : page,
+          );
+        }
+      } catch (error) {
+        if (!controller.signal.aborted) throw error;
+      } finally {
+        pageRequest.current = null;
+      }
+    });
+  }
+
+  useEffect(() => () => pageRequest.current?.abort(), []);
+
+  useEffect(() => {
+    if (!job || jobStatus.error || job.status === 'dead') return;
+    if (job.status === 'succeeded') {
+      reloadFeed();
+      setMessage('Feed refreshed.');
+      setRefreshJobId(null);
+      return;
+    }
+    const timer = setTimeout(jobStatus.reload, job.status === 'failed' ? 5000 : 1500);
+    return () => clearTimeout(timer);
+  }, [job, jobStatus.error, jobStatus.reload, reloadFeed]);
+
+  const reactionEmpty =
+    filter === 'liked'
+      ? { title: 'No liked papers yet', description: 'Papers you like in For You appear here.' }
+      : filter === 'interested'
+        ? {
+            title: 'No papers marked Interested',
+            description: 'Mark a paper Interested in For You to find it here.',
+          }
+        : null;
+
   return (
     <>
       <div className="page-heading">
         <div>
           <span className="eyebrow">ARXIV DIGEST</span>
-          <h1>Find research that speaks to your questions.</h1>
-          <p>Clear filters. A daily digest. Reading guided by your research interests.</p>
+          <h1>Discover</h1>
+          <p>
+            {view === 'for-you'
+              ? 'A short queue of papers chosen for your research interests.'
+              : 'Browse and filter recent arXiv papers.'}
+          </p>
         </div>
-        <div className="heading-actions">
-          <button className="button" onClick={feed.reload}>
-            <Icon name="refresh" size={16} />
-            Refresh feed
+        {view === 'explore' && (
+          <div className="heading-actions">
+            <button
+              className="button"
+              disabled={refreshing}
+              onClick={() => {
+                setMessage('');
+                setRefreshJobId(null);
+                void requestRefresh.run(async () => {
+                  const queued = await api<Job>('/arxiv/refresh', { method: 'POST' });
+                  setRefreshJobId(queued.id);
+                });
+              }}
+            >
+              <Icon name="refresh" size={16} />
+              {refreshing ? 'Refreshing feed…' : 'Refresh feed'}
+            </button>
+            <button className="button primary" onClick={() => setSubscriptionEditor(true)}>
+              <Icon name="plus" size={17} />
+              Add subscription
+            </button>
+          </div>
+        )}
+      </div>
+      <div className="collection-toolbar">
+        <div className="tabs" role="group" aria-label="Discover view">
+          <button
+            className={view === 'for-you' ? 'active' : ''}
+            aria-pressed={view === 'for-you'}
+            onClick={() => setView('for-you')}
+          >
+            For You
           </button>
-          <button className="button primary" onClick={() => setSubscriptionEditor(true)}>
-            <Icon name="plus" size={17} />
-            Add subscription
+          <button
+            className={view === 'explore' ? 'active' : ''}
+            aria-pressed={view === 'explore'}
+            onClick={openExplore}
+          >
+            Explore
           </button>
         </div>
       </div>
-      <div className="discover-layout">
+      {view === 'for-you' && <DiscoverForYou onExplore={openExplore} onLinkResearch={setProjectPaper} />}
+      <div className={`discover-layout ${styles.explore}`} hidden={view !== 'explore'}>
         <div>
           <div className="collection-toolbar">
-            <div className="tabs">
-              {[
-                ['unread', 'Unread'],
-                ['saved', 'Saved'],
-                ['read', 'Read'],
-                ['all', 'All'],
-              ].map(([v, l]) => (
-                <button key={v} className={filter === v ? 'active' : ''} onClick={() => setFilter(v)}>
-                  {l}
+            <div className="tabs inline-actions" role="group" aria-label="Explore filters">
+              {(Object.keys(exploreFilters) as ExploreFilter[]).map((value) => (
+                <button
+                  key={value}
+                  className={filter === value ? 'active' : ''}
+                  aria-pressed={filter === value}
+                  onClick={() => selectFilter(value)}
+                >
+                  {exploreFilters[value].label}
                 </button>
               ))}
             </div>
@@ -65,20 +191,42 @@ export function DiscoverPage() {
             </Notice>
           )}
           {action.error && <Notice tone="error">{action.error}</Notice>}
-          <ErrorState error={feed.error} retry={feed.reload} />
+          {requestRefresh.error && <Notice tone="error">{requestRefresh.error}</Notice>}
+          {refreshJobId && <ErrorState error={jobStatus.error} retry={jobStatus.reload} />}
+          <div role="status">
+            {refreshing && !job?.error_message && (
+              <Notice>Checking arXiv for your enabled subscriptions…</Notice>
+            )}
+            {job?.status === 'failed' && (
+              <Notice tone="warning">
+                arXiv refresh failed. Another attempt is scheduled for {datetime(job.scheduled_at)}.{' '}
+                {job.error_message}
+              </Notice>
+            )}
+            {job?.status === 'dead' && (
+              <Notice tone="error">The arXiv feed could not be refreshed. {job.error_message}</Notice>
+            )}
+          </div>
+          <ErrorState error={feed.error} retry={reloadFeed} />
+          {pagination.error && <Notice tone="error">{pagination.error}</Notice>}
           {feed.loading && !feed.data && <Loading />}
           {feed.data?.items.length === 0 && (
             <section className="panel">
               <Empty
                 icon="discover"
                 title={
-                  filter === 'saved'
-                    ? 'Keep papers worth reading'
-                    : 'Your next research discovery starts here'
+                  reactionEmpty?.title ??
+                  (filter === 'saved'
+                    ? 'No saved papers yet'
+                    : 'No papers yet')
                 }
                 action={
-                  filter === 'saved' ? (
-                    <button className="button" onClick={() => setFilter('unread')}>
+                  reactionEmpty ? (
+                    <button className="button" onClick={() => setView('for-you')}>
+                      Open For You
+                    </button>
+                  ) : filter === 'saved' ? (
+                    <button className="button" onClick={() => selectFilter('unread')}>
                       Browse unread papers
                     </button>
                   ) : (
@@ -88,9 +236,10 @@ export function DiscoverPage() {
                   )
                 }
               >
-                {filter === 'saved'
-                  ? 'Saved papers sync across devices. Turn any paper into a reading task.'
-                  : 'Add arXiv categories, keywords, or authors. Matching papers appear after the next background update.'}
+                {reactionEmpty?.description ??
+                  (filter === 'saved'
+                    ? 'Saved papers sync across devices. Turn any paper into a reading task.'
+                    : 'Add arXiv categories, keywords, or authors. Refresh the feed to check for matching papers.')}
               </Empty>
             </section>
           )}
@@ -109,6 +258,8 @@ export function DiscoverPage() {
                       ))}
                       <span className="small-text muted">v{p.latest_version}</span>
                       {up.status === 'read' && <Badge>Read</Badge>}
+                      {up.for_you_reaction === 'liked' && <Badge tone="purple">Liked</Badge>}
+                      {up.for_you_reaction === 'interested' && <Badge tone="purple">Interested</Badge>}
                     </div>
                     <span className="small-text muted">{datetime(p.updated_at, true)}</span>
                   </div>
@@ -126,7 +277,6 @@ export function DiscoverPage() {
                     {open ? 'Hide abstract' : 'Show abstract'}
                   </button>
                   <div className="paper-match">
-                    <span className="tiny-star">✧</span>
                     <details>
                       <summary>Why it matches · Score {up.relevance_score}</summary>
                       <ul>
@@ -173,7 +323,7 @@ export function DiscoverPage() {
                       Create reading task
                     </button>
                     <button className="button small" onClick={() => setProjectPaper(up)}>
-                      Link project
+                      Link to research
                     </button>
                     <a className="text-link paper-pdf" href={p.pdf_url} target="_blank" rel="noreferrer">
                       PDF
@@ -221,16 +371,8 @@ export function DiscoverPage() {
             })}
           </div>
           {feed.data?.next_cursor && (
-            <button
-              className="button"
-              onClick={async () => {
-                const next = await api<Page<UserPaper>>(
-                  `/arxiv/feed?limit=100&cursor=${encodeURIComponent(feed.data!.next_cursor!)}${filter === 'saved' ? '&saved=true' : filter === 'all' ? '' : `&status=${filter}`}`,
-                );
-                feed.setData({ ...next, items: [...feed.data!.items, ...next.items] });
-              }}
-            >
-              Load more
+            <button className="button" disabled={pagination.busy || feed.loading} onClick={loadMore}>
+              {pagination.busy ? 'Loading more…' : 'Load more'}
             </button>
           )}
         </div>
@@ -291,12 +433,7 @@ export function DiscoverPage() {
             ))}
           </section>
           <section className="quiet-card small">
-            <span className="eyebrow">A QUIETER WAY TO DISCOVER</span>
-            <p>
-              One digest a day.
-              <br />
-              Stay close to what matters.
-            </p>
+            <span className="eyebrow">DAILY DIGEST</span>
             <small>
               Categories, keywords, and authors determine matches. Set notification times and quiet hours in
               Settings.
@@ -328,13 +465,10 @@ export function DiscoverPage() {
         />
       )}{' '}
       {projectPaper && (
-        <PaperProjectModal
-          paper={projectPaper}
+        <ResearchLinkModal
+          key={projectPaper.paper_id}
+          material={{ kind: 'paper', id: projectPaper.paper_id, title: projectPaper.paper.title }}
           onClose={() => setProjectPaper(null)}
-          onSaved={() => {
-            setProjectPaper(null);
-            setMessage('Paper linked to the research project.');
-          }}
         />
       )}
     </>
@@ -454,7 +588,7 @@ function PaperTaskModal({
   const [due, setDue] = useState('');
   const a = useAction(onSaved);
   return (
-    <Modal title="Make reading your next step" onClose={onClose}>
+    <Modal title="Create a reading task" onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
@@ -505,53 +639,6 @@ function PaperTaskModal({
         <div className="modal-footer">
           <button className="button primary" disabled={a.busy}>
             Create reading task
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-function PaperProjectModal({
-  paper,
-  onClose,
-  onSaved,
-}: {
-  paper: UserPaper;
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [creationId] = useState(uuid);
-  const projects = useResource<Page<Project>>('/research/projects?limit=100');
-  const [project, setProject] = useState('');
-  const a = useAction(onSaved);
-  return (
-    <Modal title="Link a research project" onClose={onClose}>
-      <p className="modal-description">{paper.paper.title}</p>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          void a.run(() =>
-            api('/research/paper-links', {
-              method: 'POST',
-              body: { id: creationId, project_id: project, paper_id: paper.paper_id },
-            }),
-          );
-        }}
-      >
-        <Field label="Research project">
-          <select required value={project} onChange={(e) => setProject(e.target.value)}>
-            <option value="">Choose a project</option>
-            {projects.data?.items.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </select>
-        </Field>
-        {a.error && <Notice tone="error">{a.error}</Notice>}
-        <div className="modal-footer">
-          <button className="button primary" disabled={a.busy}>
-            Create link
           </button>
         </div>
       </form>

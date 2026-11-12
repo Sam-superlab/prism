@@ -19,6 +19,10 @@ export interface Knowledge extends Entity {
   source_reference: string | null;
   verification_status: string;
 }
+export interface ProofStep {
+  id: string;
+  hint: string;
+}
 export interface Card extends Entity {
   knowledge_item_id: string;
   card_type: string;
@@ -29,6 +33,7 @@ export interface Card extends Entity {
   review_count: number;
   lapse_count: number;
   suspended: boolean;
+  proof_steps?: ProofStep[];
 }
 export interface ReviewEvent {
   id: string;
@@ -37,6 +42,7 @@ export interface ReviewEvent {
   reviewed_at: string;
   duration_ms: number;
   resulting_state: Record<string, unknown>;
+  proof_stuck_steps?: ProofStep[];
 }
 export interface Project extends Entity {
   title: string;
@@ -113,6 +119,7 @@ export interface Today {
   as_of: string;
   reviews_due_now: number;
   reviews_due_by_end_of_day: number;
+  review_activity?: { date: string; count: number }[];
   research_tasks_due: number;
   planned_workout: Task | null;
   unread_papers: number;
@@ -121,6 +128,7 @@ export interface Today {
   estimated_remaining_minutes: number;
   completed_count: number;
   planned_count: number;
+  continuation_note?: string | null;
   plan: Plan | null;
 }
 export interface Exercise extends Entity {
@@ -198,6 +206,7 @@ export interface Paper {
 }
 export interface UserPaper extends Entity {
   paper_id: string;
+  for_you_reaction?: 'interested' | 'liked' | 'not_interested' | 'skip' | null;
   status: string;
   is_saved: boolean;
   saved_at: string | null;

@@ -3,6 +3,7 @@ import {
   Children,
   cloneElement,
   isValidElement,
+  memo,
   useEffect,
   useId,
   useRef,
@@ -10,7 +11,10 @@ import {
   type ReactNode,
 } from 'react';
 import katex from 'katex';
+import Markdown from 'react-markdown';
+import remarkMath from 'remark-math';
 import { ApiError } from '../lib/api';
+import markdownStyles from './KnowledgeMarkdown.module.css';
 
 const icons: Record<string, ReactNode> = {
   today: (
@@ -219,7 +223,7 @@ export function Modal({
       'input:not([disabled]), textarea:not([disabled]), select:not([disabled])',
     )?.focus({ preventScroll: true });
     const handler = (e: Event) => {
-      // Dismissing a file picker can dispatch a bubbling cancel event.
+      // A dismissed file picker dispatches its own bubbling cancel event.
       if (e.target !== el) return;
       e.preventDefault();
       close.current();
@@ -258,27 +262,71 @@ export function MathContent({ content, className = '' }: { content: string; clas
         const display = part.startsWith('$$') && part.endsWith('$$');
         const inline = !display && part.startsWith('$') && part.endsWith('$');
         if (!display && !inline) return <span key={i}>{part}</span>;
-        try {
-          const html = katex.renderToString(part.slice(display ? 2 : 1, display ? -2 : -1), {
-            displayMode: display,
-            throwOnError: false,
-            trust: false,
-            strict: 'warn',
-          });
-          return (
-            <span
-              key={i}
-              className={display ? 'math-block' : 'math-inline'}
-              dangerouslySetInnerHTML={{ __html: html }}
-            />
-          );
-        } catch {
-          return <code key={i}>{part}</code>;
-        }
+        const delimiterLength = display ? 2 : 1;
+        return <Formula key={i} latex={part.slice(delimiterLength, -delimiterLength)} display={display} />;
       })}
     </div>
   );
 }
+function Formula({ latex, display }: { latex: string; display: boolean }) {
+  try {
+    const html = katex.renderToString(latex, {
+      displayMode: display,
+      throwOnError: false,
+      trust: false,
+      strict: 'warn',
+    });
+    return (
+      <span className={display ? 'math-block' : 'math-inline'} dangerouslySetInnerHTML={{ __html: html }} />
+    );
+  } catch {
+    const delimiter = display ? '$$' : '$';
+    return <code>{delimiter + latex + delimiter}</code>;
+  }
+}
+
+const sourceImagePath = /^\/knowledge-sources\/(?:[\w-]+\/)*[\w-]+\.(?:png|jpe?g|webp|gif|avif)$/i;
+
+export const KnowledgeMarkdown = memo(function KnowledgeMarkdown({
+  content,
+  className = '',
+}: {
+  content: string;
+  className?: string;
+}) {
+  return (
+    <div className={['math-content', markdownStyles.prose, className].filter(Boolean).join(' ')}>
+      <Markdown
+        remarkPlugins={[remarkMath]}
+        components={{
+          code({ className, children, node }) {
+            const classes = className?.split(' ') || [];
+            if (!classes.includes('math-inline') && !classes.includes('math-display')) {
+              return <code className={className}>{children}</code>;
+            }
+            const start = node?.position?.start.offset;
+            const display =
+              classes.includes('math-display') || (start !== undefined && content.startsWith('$$', start));
+            return <Formula latex={String(children).replace(/\n$/, '')} display={display} />;
+          },
+          pre({ children, node }) {
+            const code = node?.children[0];
+            const classes = code?.type === 'element' ? code.properties.className : undefined;
+            if (Array.isArray(classes) && classes.includes('math-display')) return children;
+            return <pre>{children}</pre>;
+          },
+          img({ src, alt }) {
+            if (typeof src === 'string' && sourceImagePath.test(src))
+              return <img src={src} alt={alt || ''} />;
+            return alt || null;
+          },
+        }}
+      >
+        {content}
+      </Markdown>
+    </div>
+  );
+});
 export const knowledgeTypes = [
   'definition',
   'theorem',

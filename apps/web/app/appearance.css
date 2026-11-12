@@ -37,6 +37,10 @@
   --panel-padding: 24px;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.025), 0 12px 36px rgba(0, 0, 0, 0.025);
   --motion-out: cubic-bezier(0.2, 0.65, 0.3, 1);
+  --motion-feedback: 160ms var(--motion-out);
+  --motion-surface: 220ms var(--motion-out);
+  --hover-tint: color-mix(in srgb, var(--ink) 7%, transparent);
+  --active-tint: color-mix(in srgb, var(--ink) 12%, transparent);
 }
 :root[data-theme='dark'] {
   color-scheme: dark;
@@ -190,8 +194,8 @@ html {
 }
 body {
   transition:
-    background-color 0.22s ease,
-    color 0.22s ease;
+    background-color var(--motion-surface),
+    color var(--motion-surface);
 }
 ::selection {
   background: color-mix(in srgb, var(--accent) 20%, transparent);
@@ -269,10 +273,14 @@ summary:focus-visible {
 }
 @media (min-width: 801px) {
   .sidebar {
+    /* Keep the same painted material when sliding in either direction. */
+    --material-filter: none;
     inset: var(--sidebar-inset, 0) auto var(--sidebar-inset, 0) var(--sidebar-inset, 0);
     width: calc(232px - 2 * var(--sidebar-inset, 0px));
     border-radius: var(--sidebar-radius, 0);
     overflow-y: auto;
+    transform: translateX(0);
+    transition: transform var(--motion-surface);
   }
   .sidebar .profile {
     padding-inline: calc(13px - var(--sidebar-inset, 0px));
@@ -280,31 +288,34 @@ summary:focus-visible {
   .sidebar-toggle {
     display: inline-flex;
   }
+  .workspace {
+    transition: margin-left var(--motion-surface);
+  }
   .sidebar-collapsed > .workspace {
     margin-left: 0;
   }
-  .sidebar-collapsed > .sidebar-region {
+  .sidebar-region {
     display: block;
     position: fixed;
     inset: 0 auto 0 0;
-    width: 8px;
+    width: 232px;
     z-index: 50;
   }
-  .sidebar-collapsed > .sidebar-region.is-peeking {
-    width: 232px;
+  .sidebar-collapsed > .sidebar-region:not(.is-peeking) {
+    width: 8px;
   }
   .sidebar-collapsed .sidebar {
-    /* Sliding a backdrop-filtered layer can briefly hide its text and icons. */
-    --material-filter: none;
-    transform: translateX(-100%);
+    transform: translateX(calc(-100% - var(--sidebar-inset, 0px)));
     visibility: hidden;
+    pointer-events: none;
     transition:
-      transform 0.2s var(--motion-out),
-      visibility 0s linear 0.2s;
+      transform var(--motion-surface),
+      visibility 0s linear 220ms;
   }
   .sidebar-collapsed .is-peeking > .sidebar {
     transform: translateX(0);
     visibility: visible;
+    pointer-events: auto;
     transition-delay: 0s;
     background-color: var(--glass-over-content, var(--surface-secondary));
     box-shadow: var(--sidebar-rim, 0 0 transparent), var(--shadow);
@@ -347,12 +358,9 @@ summary:focus-visible {
   font-size: calc(14px * var(--text-scale));
   color: var(--muted);
   gap: 11px;
-  transition:
-    background 0.18s,
-    color 0.18s;
 }
-.nav-link:hover {
-  background: color-mix(in srgb, var(--ink) 5%, transparent);
+.nav-link:is(:hover, :focus-visible) {
+  background: var(--hover-tint);
   color: var(--ink);
 }
 .nav-link.active {
@@ -360,6 +368,9 @@ summary:focus-visible {
   color: var(--accent-ink);
   box-shadow: var(--selected-rim, none);
   font-weight: 550;
+}
+.nav-link.active:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--accent-soft) 92%, var(--accent-ink));
 }
 .nav-link.active > svg {
   color: inherit;
@@ -379,7 +390,7 @@ summary:focus-visible {
   color: var(--muted);
   font-size: calc(12px * var(--text-scale));
 }
-.project-shortcuts a:hover {
+.project-shortcuts a:is(:hover, :focus-visible) {
   color: var(--ink);
   text-decoration: underline;
   text-underline-offset: 0.2em;
@@ -425,19 +436,26 @@ summary:focus-visible {
   align-items: center;
   gap: inherit;
 }
-.breadcrumb-path > a:last-child:not(.muted) {
+.breadcrumb-path > a:where(:last-child:not(.muted)) {
   color: var(--ink);
   font-weight: 500;
 }
+.breadcrumb-path > a {
+  padding: 3px 5px;
+  margin-inline: -5px;
+  border-radius: 6px;
+}
 .breadcrumb-path > a:is(:hover, :focus-visible) {
-  text-decoration: underline;
-  text-underline-offset: 0.2em;
+  background: var(--hover-tint);
+  color: var(--ink);
+}
+.breadcrumb-path > a:active {
+  background: var(--active-tint);
 }
 .main-content {
   padding: 36px 36px 40px;
   max-width: 1520px;
   margin: auto;
-  animation: prism-enter 0.26s var(--motion-out) backwards;
 }
 .page-heading {
   margin-bottom: 28px;
@@ -520,25 +538,9 @@ summary:focus-visible {
   background: var(--panel);
   border: 1px solid var(--line);
   box-shadow: var(--shadow);
-  animation: prism-detail-in 0.24s var(--motion-out) backwards;
-  transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s ease;
-}
-.summary-card:nth-child(2) {
-  animation-delay: 35ms;
-}
-.summary-card:nth-child(3) {
-  animation-delay: 70ms;
 }
 .summary-arrow {
-  transition: translate 0.18s var(--motion-out);
-}
-.summary-card:hover {
-  transform: translateY(-2px);
-  border-color: color-mix(in srgb, var(--accent) 28%, var(--line));
-  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.06);
+  transition: translate var(--motion-feedback);
 }
 .summary-card strong {
   font-size: calc(24px * var(--text-scale));
@@ -577,39 +579,28 @@ summary:focus-visible {
   border: 1px solid var(--line);
   color: var(--ink);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.035);
-  transition:
-    background 0.16s ease,
-    transform 0.16s ease,
-    box-shadow 0.16s ease;
 }
-.button:hover:not(:disabled) {
+.button:is(:hover, :focus-visible):not(:disabled) {
   background: var(--surface-secondary);
   border-color: color-mix(in srgb, var(--ink) 20%, var(--line));
 }
-.button:active:not(:disabled),
-.icon-button:active {
-  transform: scale(0.98);
-}
 .button.primary {
-  background: var(--accent);
-  color: #fff;
+  background: var(--accent-ink);
+  color: var(--panel);
   border-color: transparent;
   box-shadow: 0 2px 5px color-mix(in srgb, var(--accent) 15%, transparent);
 }
-.button.primary:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--accent) 87%, #000);
-  border-color: transparent;
-}
-.topbar .button.primary {
-  background: var(--accent-ink);
-  color: var(--panel);
-}
-.topbar .button.primary:hover:not(:disabled) {
+.button.primary:is(:hover, :focus-visible):not(:disabled) {
   background: color-mix(in srgb, var(--accent-ink) 88%, var(--ink));
+  border-color: transparent;
 }
 .button.soft {
   background: var(--accent-soft);
   color: var(--accent-ink);
+  border-color: transparent;
+}
+.button.soft:is(:hover, :focus-visible):not(:disabled) {
+  background: color-mix(in srgb, var(--accent-soft) 90%, var(--accent-ink));
   border-color: transparent;
 }
 .button.small {
@@ -618,21 +609,22 @@ summary:focus-visible {
   padding: 6px 11px;
 }
 .text-link {
-  color: var(--accent);
+  color: var(--accent-ink);
+  text-decoration: underline;
+  text-decoration-color: transparent;
+  text-underline-offset: 0.2em;
 }
-.text-link:hover {
-  color: var(--accent);
+.text-link:is(:hover, :focus-visible) {
+  color: var(--accent-ink);
+  text-decoration-color: currentColor;
 }
 .icon-button {
   color: var(--muted);
   border-radius: 8px;
-  transition:
-    background 0.16s,
-    transform 0.16s;
 }
-.icon-button:hover {
+.icon-button:is(:hover, :focus-visible):not(:disabled) {
   color: var(--ink);
-  background: var(--surface-secondary);
+  background: var(--hover-tint);
 }
 .field > span {
   font-size: calc(12px * var(--text-scale));
@@ -651,6 +643,9 @@ summary:focus-visible {
   border-radius: 9px;
   box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.02);
   font-size: calc(14px * var(--text-scale));
+  transition:
+    background-color var(--motion-feedback),
+    border-color var(--motion-feedback);
 }
 .field input:focus,
 .field textarea:focus,
@@ -682,8 +677,22 @@ textarea::placeholder {
   color: var(--accent-ink);
   border-color: currentColor;
 }
-.tabs > button.active::after {
+.tabs > button:not(:disabled):is(:hover, :focus-visible) {
+  color: var(--accent-ink);
+}
+.tabs > button::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 2px;
+  border-radius: 1px;
   background: currentColor;
+  opacity: 0;
+  transition: opacity var(--motion-feedback);
+}
+.tabs > button.active::after {
+  opacity: 1;
 }
 .segmented {
   background: var(--surface-secondary);
@@ -701,8 +710,22 @@ textarea::placeholder {
   color: var(--ink);
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
 }
-.task-list > .task-row {
-  transition: background 0.16s;
+.segmented > button:not(.active, :disabled):is(:hover, :focus-visible),
+.search-trigger:is(:hover, :focus-visible),
+.row-menu > summary:is(:hover, :focus-visible),
+.row-menu :is(a, button):not(:disabled):is(:hover, :focus-visible) {
+  background: var(--hover-tint);
+  color: var(--ink);
+}
+.row-menu > summary {
+  border-radius: 6px;
+}
+.row-menu[open] > div {
+  animation: prism-detail-in var(--motion-feedback) backwards;
+}
+.task-list > .task-row,
+.inbox-row {
+  transition: background-color var(--motion-feedback);
 }
 .task-list > .task-row:hover,
 .inbox-row:hover {
@@ -855,20 +878,48 @@ textarea::placeholder {
   letter-spacing: -0.5px;
   color: var(--ink);
 }
-.knowledge-card,
-.project-card,
-.template-card {
+/* Shared feedback for controls across the workspace and settings. */
+:is(
+  .button,
+  .icon-button,
+  .nav-link,
+  .breadcrumb-path > a,
+  .project-shortcuts a,
+  .text-link,
+  .search-trigger,
+  .tabs > button,
+  .segmented > button,
+  .row-menu > summary,
+  .row-menu button,
+  .row-menu a,
+  .theme-option,
+  .accent-swatch,
+  .rating-button,
+  .task-check
+) {
   transition:
-    transform 0.2s ease,
-    box-shadow 0.2s ease,
-    border-color 0.2s;
+    background-color var(--motion-feedback),
+    border-color var(--motion-feedback),
+    color var(--motion-feedback),
+    box-shadow var(--motion-feedback),
+    text-decoration-color var(--motion-feedback),
+    scale var(--motion-feedback);
 }
-.knowledge-card:hover,
-.project-card:hover,
-.template-card:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.06);
-  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+:is(.summary-card, .knowledge-card, .project-card, .template-card, .paper-card) {
+  transition:
+    box-shadow var(--motion-surface),
+    border-color var(--motion-surface);
+}
+:is(.summary-card, .knowledge-card, .project-card, .template-card):is(:hover, :focus-visible),
+.paper-card:focus-within {
+  box-shadow: 0 5px 18px color-mix(in srgb, var(--ink) 8%, transparent);
+  border-color: color-mix(in srgb, var(--accent-ink) 26%, var(--line));
+}
+:is(.theme-option, .rating-button):not(:disabled):is(:hover, :focus-visible) {
+  background-color: color-mix(in srgb, var(--accent-ink) 7%, var(--panel));
+}
+.theme-option:not(.selected):is(:hover, :focus-visible) {
+  border-color: color-mix(in srgb, var(--accent-ink) 24%, var(--line));
 }
 .code-editor {
   background: var(--surface-secondary);
@@ -884,13 +935,13 @@ textarea::placeholder {
   max-width: min(600px, calc(100vw - 32px));
 }
 .modal[open] {
-  animation: prism-modal 0.24s var(--motion-out) backwards;
+  animation: prism-modal var(--motion-surface) backwards;
 }
 .modal::backdrop {
   background: rgba(20, 24, 32, 0.24);
   -webkit-backdrop-filter: blur(5px);
   backdrop-filter: blur(5px);
-  animation: prism-fade 0.18s ease both;
+  animation: prism-fade var(--motion-feedback) both;
 }
 .modal header h2 {
   font-size: calc(20px * var(--text-scale));
@@ -906,6 +957,8 @@ textarea::placeholder {
 .search-trigger {
   color: var(--muted);
   border-radius: 8px;
+  padding-inline: 6px;
+  margin-inline: -6px;
 }
 kbd {
   border-color: var(--line);
@@ -1095,7 +1148,7 @@ kbd {
   border: 0;
   border-radius: 20px;
   position: relative;
-  transition: background 0.18s;
+  transition: background-color var(--motion-feedback);
   cursor: pointer;
 }
 .switch-row input:after {
@@ -1108,7 +1161,7 @@ kbd {
   left: 2px;
   top: 2px;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
-  transition: transform 0.18s;
+  transition: transform var(--motion-surface);
 }
 .switch-row input:checked {
   background: var(--accent);
@@ -1150,43 +1203,33 @@ kbd {
     backdrop-filter: none;
   }
 }
-@keyframes prism-enter {
-  from {
-    opacity: 0.87;
-    transform: translateY(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
 @keyframes prism-detail-in {
   from {
-    opacity: 0.78;
-    translate: 0 5px;
+    opacity: 0.9;
+    translate: 0 3px;
   }
 }
 .recall-prompt,
 .recall-answer,
 .rating-actions {
-  animation: prism-detail-in 0.22s var(--motion-out) backwards;
+  animation: prism-detail-in var(--motion-surface) backwards;
 }
 .rating-actions {
-  animation-delay: 35ms;
+  animation-delay: 20ms;
 }
 .task-check.checked > svg {
-  animation: prism-check-in 0.18s var(--motion-out) backwards;
+  animation: prism-check-in var(--motion-feedback) backwards;
 }
 @keyframes prism-check-in {
   from {
     opacity: 0;
-    scale: 0.7;
+    scale: 0.88;
   }
 }
 @keyframes prism-modal {
   from {
     opacity: 0.96;
-    transform: translateY(6px) scale(0.985);
+    transform: translateY(4px) scale(0.99);
   }
   to {
     opacity: 1;
@@ -1203,10 +1246,11 @@ kbd {
 }
 @media (prefers-reduced-motion: no-preference) {
   :root:not([data-reduced-motion='true']) .summary-card:is(:focus-visible, :hover) .summary-arrow {
-    translate: 3px 0;
+    translate: 2px 0;
   }
-  :root:not([data-reduced-motion='true']) .summary-card:active {
-    transform: scale(0.99);
+  :root:not([data-reduced-motion='true'])
+    :is(.button, .icon-button, .theme-option, .rating-button, .accent-swatch):active:not(:disabled) {
+    scale: 0.98;
   }
 }
 @media (max-width: 1100px) {
@@ -1235,7 +1279,7 @@ kbd {
     --material-filter: none;
     transform: translateX(-100%);
     visibility: hidden;
-    transition: transform 0.2s ease;
+    transition: transform var(--motion-surface);
     width: 232px;
   }
   .sidebar.is-open {
@@ -1345,21 +1389,25 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *,
   *:before,
-  *:after {
+  *:after,
+  .modal::backdrop {
     animation-duration: 0.01ms !important;
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
     scroll-behavior: auto !important;
   }
 }
 :root[data-reduced-motion='true'] *,
 :root[data-reduced-motion='true'] *:before,
-:root[data-reduced-motion='true'] *:after {
+:root[data-reduced-motion='true'] *:after,
+:root[data-reduced-motion='true'] .modal::backdrop {
   animation-duration: 0.01ms !important;
   animation-delay: 0ms !important;
   animation-iteration-count: 1 !important;
   transition-duration: 0.01ms !important;
+  transition-delay: 0ms !important;
   scroll-behavior: auto !important;
 }
 /* Keep supporting copy neutral; use the accent to indicate interaction, not body text. */
@@ -1390,26 +1438,6 @@ kbd {
 .session-card h2 {
   font-family: inherit;
   color: var(--ink);
-}
-.main-content {
-  animation-fill-mode: none;
-}
-.task-row,
-.paper-card,
-.object-card {
-  animation: prism-enter 0.24s ease-out backwards;
-}
-.task-row:nth-child(2),
-.paper-card:nth-child(2) {
-  animation-delay: 25ms;
-}
-.task-row:nth-child(3),
-.paper-card:nth-child(3) {
-  animation-delay: 50ms;
-}
-.task-row:nth-child(n + 4),
-.paper-card:nth-child(n + 4) {
-  animation-delay: 75ms;
 }
 .app-shell {
   background-color: var(--bg);

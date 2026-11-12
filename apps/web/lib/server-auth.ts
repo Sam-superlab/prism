@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import Redis from 'ioredis';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import type { NextRequest, NextResponse } from 'next/server';
@@ -26,6 +26,33 @@ export interface AuthFlow {
 }
 export function apiBase() {
   return process.env.PRISM_API_URL || 'http://127.0.0.1:4000';
+}
+export function desktopMode() {
+  return process.env.PRISM_AUTH_MODE === 'desktop';
+}
+export function desktopTokenFor(request: NextRequest): string | null | undefined {
+  const origin = request.headers.get('origin');
+  const site = request.headers.get('sec-fetch-site');
+  const webOrigin = process.env.PRISM_WEB_ORIGIN ?? '';
+  const apiOrigin = process.env.PRISM_API_URL ?? '';
+  const localOrigin = /^http:\/\/127\.0\.0\.1:[1-9][0-9]{0,4}$/;
+  if (
+    !localOrigin.test(webOrigin) ||
+    !localOrigin.test(apiOrigin) ||
+    apiOrigin === webOrigin ||
+    request.headers.get('host') !== webOrigin.slice('http://'.length) ||
+    (origin !== null && origin !== webOrigin) ||
+    (site !== null && site !== 'same-origin' && site !== 'none')
+  )
+    return null;
+  const token = process.env.PRISM_DESKTOP_TOKEN ?? '';
+  const cookie = request.cookies.get('prism_desktop')?.value ?? '';
+  if (
+    /^[a-f0-9]{64}$/.test(token) &&
+    /^[a-f0-9]{64}$/.test(cookie) &&
+    timingSafeEqual(Buffer.from(cookie), Buffer.from(token))
+  )
+    return token;
 }
 function key() {
   const secret = process.env.PRISM_SESSION_SECRET;

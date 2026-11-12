@@ -1,5 +1,5 @@
 import { XMLParser, XMLValidator } from 'fast-xml-parser';
-import { rankSubscriptionMatches } from '@prism/core';
+import { normalizeArxivCategory, rankSubscriptionMatches } from '@prism/core';
 
 export interface ArxivPaper {
   arxiv_id: string;
@@ -91,13 +91,13 @@ export function arxivQuery(subscriptions: Subscription[]): string {
   const quote = (s: string) => `"${s.replace(/["\\]/g, ' ').trim()}"`;
   return subscriptions
     .filter((sub) => sub.enabled)
-    .map((sub) => {
+    .flatMap((sub) => {
       if (sub.subscription_type === 'category') {
-        if (!/^[A-Za-z][A-Za-z.-]*$/.test(sub.subscription_value)) throw new Error('Invalid arXiv category');
-        return `cat:${sub.subscription_value}`;
+        const value = normalizeArxivCategory(sub.subscription_value);
+        return value ? [`cat:${value}`] : [];
       }
-      if (sub.subscription_type === 'author') return `au:${quote(sub.subscription_value)}`;
-      return `(ti:${quote(sub.subscription_value)} OR abs:${quote(sub.subscription_value)})`;
+      if (sub.subscription_type === 'author') return [`au:${quote(sub.subscription_value)}`];
+      return [`(ti:${quote(sub.subscription_value)} OR abs:${quote(sub.subscription_value)})`];
     })
     .join(' OR ');
 }
@@ -123,6 +123,7 @@ export async function fetchRecentPapers(
 ): Promise<{ papers: RankedPaper[]; quarantined: string[] }> {
   if (!subscriptions.some((sub) => sub.enabled)) return { papers: [], quarantined: [] };
   const query = arxivQuery(subscriptions);
+  if (!query) return { papers: [], quarantined: [] };
   if (query.length > 6000)
     throw new Error('Subscription query too broad; split subscriptions before ingestion');
   const cutoff = Math.min(

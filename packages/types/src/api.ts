@@ -85,6 +85,40 @@ export interface paths {
         patch: operations["patch_devices_id"];
         trace?: never;
     };
+    "/knowledge-subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Distinct subjects used by active knowledge items. An empty string represents unassigned items. */
+        get: operations["get_knowledge_subjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge-chapters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Numbered chapters used by active knowledge items in the selected subject. */
+        get: operations["get_knowledge_chapters"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/knowledge-items": {
         parameters: {
             query?: never;
@@ -161,6 +195,23 @@ export interface paths {
         get: operations["get_knowledge_items_id_cards"];
         put?: never;
         post: operations["post_knowledge_items_id_cards"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge-items/{id}/cards/batch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Create up to 50 review cards for a knowledge item in one transaction. */
+        post: operations["post_knowledge_items_id_cards_batch"];
         delete?: never;
         options?: never;
         head?: never;
@@ -759,6 +810,91 @@ export interface paths {
         patch: operations["patch_arxiv_subscriptions_id"];
         trace?: never;
     };
+    "/arxiv/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Queue an ingestion job for the enabled subscriptions, or return a recent job for the same subscriptions. Poll GET /automation/jobs/{id} before reloading the feed. */
+        post: operations["post_arxiv_refresh"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arxiv/for-you": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Get the current local day's active round of up to six papers. Create the first round when papers are available. */
+        get: operations["get_arxiv_for_you"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arxiv/for-you/more": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Start another round after the specified round is complete. A stale request has no effect. */
+        post: operations["post_arxiv_for_you_more"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arxiv/for-you/reaction": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Record the first decision on a deck card. Save also adds the paper to the saved library. */
+        post: operations["post_arxiv_for_you_reaction"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/arxiv/for-you/keywords": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Follow, downrank, or remove a keyword rule for future rounds. */
+        post: operations["post_arxiv_for_you_keywords"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/arxiv/feed": {
         parameters: {
             query?: never;
@@ -935,6 +1071,24 @@ export interface paths {
         get: operations["get_today"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/today/review-drafts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read the local draft status for a date without requesting generation. */
+        get: operations["get_today_review_drafts"];
+        put?: never;
+        /** @description Generate a single batch from opted-in notes created on the previous local day. */
+        post: operations["post_today_review_drafts"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1378,6 +1532,11 @@ export interface components {
             /** @constant */
             fuzz_enabled: false;
         };
+        ProofStep: {
+            /** Format: uuid */
+            id: string;
+            hint: string;
+        };
         ReviewCard: {
             /** Format: uuid */
             id: string;
@@ -1393,6 +1552,8 @@ export interface components {
             card_type: "statement" | "hypotheses" | "proof" | "example" | "counterexample" | "application" | "custom";
             prompt: string;
             answer: string;
+            /** @description Hints in the order they appear on a proof card. */
+            proof_steps?: components["schemas"]["ProofStep"][];
             suspended: boolean;
             scheduler_config: components["schemas"]["SchedulerConfig"];
             fsrs_state: {
@@ -1413,6 +1574,8 @@ export interface components {
             card_type: "statement" | "hypotheses" | "proof" | "example" | "counterexample" | "application" | "custom";
             prompt: string;
             answer: string;
+            /** @description Up to twelve ordered hints for proof cards, with distinct step IDs. */
+            proof_steps?: components["schemas"]["ProofStep"][];
             suspended?: boolean;
         };
         ReviewCardPatch: {
@@ -1420,6 +1583,8 @@ export interface components {
             card_type?: "statement" | "hypotheses" | "proof" | "example" | "counterexample" | "application" | "custom";
             prompt?: string;
             answer?: string;
+            /** @description Replacement hints for a proof card. Omit to preserve them or send an empty array to clear them. */
+            proof_steps?: components["schemas"]["ProofStep"][];
             suspended?: boolean;
         };
         ReviewCardPage: {
@@ -1438,6 +1603,8 @@ export interface components {
             duration_ms: number;
             base_version: string;
             depends_on_operation_id?: string | null;
+            /** @description IDs of the steps on this proof card where recall was difficult. */
+            proof_stuck_step_ids?: string[];
             /** Format: uuid */
             idempotency_key: string;
         };
@@ -1455,6 +1622,8 @@ export interface components {
             /** Format: date-time */
             effective_at: string;
             duration_ms: number;
+            /** @description Snapshots of the proof steps marked difficult during this review. */
+            proof_stuck_steps?: components["schemas"]["ProofStep"][];
             previous_state: {
                 [key: string]: unknown;
             };
@@ -1610,24 +1779,26 @@ export interface components {
             updated_at: string;
             version: string;
             deleted_at: string | null;
-            /** Format: uuid */
-            research_object_id: string;
+            research_object_id: string | null;
             /** Format: uuid */
             knowledge_item_id: string;
+            project_id: string | null;
         };
         ResearchKnowledgeLinkCreate: {
             /** Format: uuid */
             id: string;
             /** Format: uuid */
-            research_object_id: string;
-            /** Format: uuid */
-            knowledge_item_id: string;
-        };
-        ResearchKnowledgeLinkPatch: {
-            /** Format: uuid */
             research_object_id?: string;
             /** Format: uuid */
+            knowledge_item_id: string;
+            /** Format: uuid */
+            project_id?: string;
+        } & (unknown | unknown);
+        ResearchKnowledgeLinkPatch: {
+            research_object_id?: string | null;
+            /** Format: uuid */
             knowledge_item_id?: string;
+            project_id?: string | null;
         };
         ResearchKnowledgeLinkPage: {
             items: components["schemas"]["ResearchKnowledgeLink"][];
@@ -2144,6 +2315,11 @@ export interface components {
             /** @enum {string} */
             status: "unread" | "read" | "not_relevant";
             is_saved: boolean;
+            /**
+             * @description The recorded For You reaction. Saving a paper is tracked separately.
+             * @enum {unknown}
+             */
+            for_you_reaction?: "interested" | "liked" | "not_interested" | "skip" | null;
             saved_at: string | null;
             read_at: string | null;
             relevance_score: number;
@@ -2284,6 +2460,8 @@ export interface components {
             /** Format: date-time */
             as_of?: string;
             capacity_minutes: number;
+            /** @description Return the existing plan without changing it when one already exists for this date. */
+            if_missing?: boolean;
             /** @default false */
             override_manual: boolean;
         };
@@ -2298,6 +2476,12 @@ export interface components {
             as_of: string;
             reviews_due_now: number;
             reviews_due_by_end_of_day: number;
+            /** @description Review event counts for seven calendar days in the account timezone, ending on the requested date. */
+            review_activity?: {
+                /** Format: date */
+                date: string;
+                count: number;
+            }[];
             research_tasks_due: number;
             planned_workout: components["schemas"]["Task"] | null;
             unread_papers: number;
@@ -2306,7 +2490,31 @@ export interface components {
             estimated_remaining_minutes: number;
             completed_count: number;
             planned_count: number;
+            /** @description The previous local day's saved continuation note. */
+            continuation_note?: string | null;
             plan: components["schemas"]["DailyPlan"] | null;
+        };
+        DailyReviewDrafts: {
+            /** Format: date */
+            date: string;
+            /** @enum {string} */
+            status: "disabled" | "idle" | "running" | "ready" | "paused" | "failed";
+            items: components["schemas"]["DailyReviewDraftGroup"][];
+            message?: string;
+        };
+        DailyReviewDraftGroup: {
+            /** Format: uuid */
+            knowledge_id: string;
+            title: string;
+            cards: components["schemas"]["DailyReviewDraftCard"][];
+        };
+        DailyReviewDraftCard: {
+            /** Format: uuid */
+            id: string;
+            /** @enum {string} */
+            card_type: "statement" | "hypotheses" | "proof" | "example" | "counterexample" | "application" | "custom";
+            prompt: string;
+            answer: string;
         };
         Shutdown: {
             /** Format: date */
@@ -2324,6 +2532,7 @@ export interface components {
             };
             workout_count: number;
             research_event_count: number;
+            papers_read_count?: number;
             next_day_task_ids: string[];
             note: string;
         };
@@ -2908,6 +3117,10 @@ export interface components {
         Idempotency: string;
         IfMatch: string;
         Cursor: string;
+        /** @description Inclusive lower bound on the numbered chapter of the knowledge item. */
+        ChapterFrom: number;
+        /** @description Inclusive upper bound on the numbered chapter of the knowledge item. */
+        ChapterTo: number;
         Limit: number;
     };
     requestBodies: never;
@@ -3194,14 +3407,73 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    get_knowledge_subjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: string[];
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_knowledge_chapters: {
+        parameters: {
+            query: {
+                /** @description Exact subject. Pass an empty string for unassigned items. */
+                subject: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            number: number;
+                            title: string;
+                        }[];
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     get_knowledge_items: {
         parameters: {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
                 q?: string;
+                /** @description Exact subject. Pass an empty string for unassigned items. */
                 subject?: string;
+                /** @description Only return knowledge items of this type. */
+                type?: "definition" | "theorem" | "lemma" | "proposition" | "corollary" | "proof" | "example" | "counterexample" | "exercise" | "note";
                 tag?: string;
+                /** @description Inclusive lower bound on the numbered chapter of the knowledge item. */
+                chapter_from?: components["parameters"]["ChapterFrom"];
+                /** @description Inclusive upper bound on the numbered chapter of the knowledge item. */
+                chapter_to?: components["parameters"]["ChapterTo"];
             };
             header?: never;
             path?: never;
@@ -3543,6 +3815,39 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    post_knowledge_items_id_cards_batch: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    cards: components["schemas"]["ReviewCardCreate"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Created cards */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["ReviewCard"][];
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     get_review_cards_id: {
         parameters: {
             query?: never;
@@ -3636,6 +3941,12 @@ export interface operations {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
                 as_of?: string;
+                /** @description Exact subject of the parent knowledge item. Pass an empty string for unassigned items. */
+                subject?: string;
+                /** @description Inclusive lower bound on the numbered chapter of the knowledge item. */
+                chapter_from?: components["parameters"]["ChapterFrom"];
+                /** @description Inclusive upper bound on the numbered chapter of the knowledge item. */
+                chapter_to?: components["parameters"]["ChapterTo"];
             };
             header?: never;
             path?: never;
@@ -4039,6 +4350,9 @@ export interface operations {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
+                project_id?: string;
+                knowledge_item_id?: string;
+                research_object_id?: string;
             };
             header?: never;
             path?: never;
@@ -4182,6 +4496,8 @@ export interface operations {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
+                project_id?: string;
+                paper_id?: string;
             };
             header?: never;
             path?: never;
@@ -5569,6 +5885,156 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    post_arxiv_refresh: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Refresh job accepted */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomationJob"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_arxiv_for_you: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Active round and ranking preferences */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** Format: date */
+                        date: string;
+                        round: number;
+                        can_review_more: boolean;
+                        items: {
+                            paper: components["schemas"]["UserPaper"];
+                            reason: string;
+                            done: boolean;
+                            /** @enum {unknown} */
+                            reaction: "interested" | "liked" | "not_interested" | "skip" | null;
+                        }[];
+                        keywords: {
+                            term: string;
+                            /** @enum {unknown} */
+                            mode: "follow" | "less";
+                        }[];
+                        suggestions: string[];
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_arxiv_for_you_more: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    date: string;
+                    round: number;
+                };
+            };
+        };
+        responses: {
+            /** @description Round request processed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_arxiv_for_you_reaction: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    paper_id: string;
+                    /** @enum {unknown} */
+                    action: "interested" | "liked" | "save" | "not_interested" | "skip";
+                };
+            };
+        };
+        responses: {
+            /** @description Card decision recorded */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_arxiv_for_you_keywords: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    term: string;
+                    /** @enum {unknown} */
+                    mode: "follow" | "less" | "remove";
+                };
+            };
+        };
+        responses: {
+            /** @description Keyword rule updated */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     get_arxiv_feed: {
         parameters: {
             query?: {
@@ -5576,6 +6042,8 @@ export interface operations {
                 limit?: components["parameters"]["Limit"];
                 status?: "unread" | "read" | "not_relevant";
                 saved?: boolean;
+                /** @description Filter by a positive For You reaction, independently of saved and read status. */
+                reaction?: "liked" | "interested";
             };
             header?: never;
             path?: never;
@@ -5926,6 +6394,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Today"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_today_review_drafts: {
+        parameters: {
+            query: {
+                date: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Daily review draft status and any unapproved cards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyReviewDrafts"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_today_review_drafts: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: date */
+                    date: string;
+                    retry?: boolean;
+                };
+            };
+        };
+        responses: {
+            /** @description Daily review draft status and any unapproved cards. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DailyReviewDrafts"];
                 };
             };
             default: components["responses"]["Error"];

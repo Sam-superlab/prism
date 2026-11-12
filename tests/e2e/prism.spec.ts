@@ -5,14 +5,14 @@ import { readFile } from 'node:fs/promises';
  * The only external transport fixture is arXiv Atom metadata; product operations use the real API.
  */
 const prefix = '浏览器验收';
+const legacyKnowledgeContent = '浏览器验收记录，未验证。LaTeX rendering: $\\dim V=n$.';
 async function createKnowledge(page: Page, title: string) {
   await page.goto('/knowledge');
   await page.getByRole('button', { name: 'New knowledge', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Title', { exact: true }).fill(title);
-  await dialog
-    .getByLabel('Mathematical content')
-    .fill('浏览器验收记录，未验证。LaTeX rendering: $\\dim V=n$.');
+  await dialog.getByLabel('Mathematical content').fill(legacyKnowledgeContent);
+  await expect(dialog.getByRole('region', { name: 'Content preview' }).locator('.katex')).toBeVisible();
   await dialog.getByRole('button', { name: 'Save knowledge', exact: true }).click();
   await expect(page).toHaveURL(/\/knowledge\/[0-9a-f-]+$/);
   await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
@@ -43,6 +43,48 @@ test.describe.serial('PRISM complete product workflows', () => {
     page,
   }) => {
     const id = await createKnowledge(page, `${prefix} · 数学知识`);
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
+    const editor = page.getByRole('dialog');
+    const contentInput = editor.getByLabel('Mathematical content');
+    await expect(contentInput).toHaveValue(legacyKnowledgeContent);
+    const markdown = [
+      legacyKnowledgeContent,
+      '',
+      '## Statement preview',
+      '',
+      '- A Markdown list item with `$literal$`.',
+      '',
+      'Legacy display: $$x^2$$',
+      '',
+      '$$',
+      'y^2',
+      '$$',
+      '',
+      '![External image](https://example.invalid/remote.png)',
+      '',
+      'Raw markup: <img src="https://example.invalid/raw.png">',
+    ].join('\n');
+    const proof = '*Proof detail* with $x=y$.';
+    await contentInput.fill(markdown);
+    const contentPreview = editor.getByRole('region', { name: 'Content preview' });
+    await expect(contentPreview.getByRole('heading', { name: 'Statement preview' })).toBeVisible();
+    await expect(contentPreview.getByRole('listitem').locator('code')).toHaveText('$literal$');
+    await expect(contentPreview.locator('.katex-display')).toHaveCount(2);
+    await expect(contentPreview.getByText('External image', { exact: true })).toBeVisible();
+    await expect(contentPreview.getByText('Raw markup: <img', { exact: false })).toBeVisible();
+    await expect(contentPreview.locator('img')).toHaveCount(0);
+    await editor.getByLabel('Proof / explanation (optional)', { exact: true }).fill(proof);
+    const proofPreview = editor.getByRole('region', { name: 'Proof preview' });
+    await expect(proofPreview.locator('em')).toHaveText('Proof detail');
+    await expect(proofPreview.locator('.katex')).toBeVisible();
+    await editor.getByRole('button', { name: 'Save knowledge', exact: true }).click();
+    await expect(editor).not.toBeVisible();
+    const savedContent = page.locator('.content-panel');
+    await expect(savedContent.getByRole('heading', { name: 'Statement preview' })).toBeVisible();
+    await expect(savedContent.locator('em')).toHaveText('Proof detail');
+    const saved = await (await page.request.get(`/api/v1/knowledge-items/${id}`)).json();
+    expect(saved.content).toBe(markdown);
+    expect(saved.proof_content).toBe(proof);
     await addCard(page, 'Statement — browser workflow');
     await addCard(page, 'Proof — independent schedule', 'proof');
     await page.goto('/review/session');
@@ -151,97 +193,38 @@ test.describe.serial('PRISM complete product workflows', () => {
     await expect(page.getByRole('dialog')).toContainText('Test-only parameters n=1..3');
   });
 
-  test('exercise/template → real sets/cardio → complete → edit preserved workout history', async ({
-    page,
-  }) => {
-    await page.goto('/fitness');
-    await page.getByRole('button', { name: 'Exercise library', exact: true }).click();
-    await page.getByRole('button', { name: 'Add exercise', exact: true }).first().click();
-    let dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Exercise name').fill(`${prefix} · Bench Press`);
-    await dialog.getByRole('button', { name: 'Save exercise', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    await page.getByRole('button', { name: 'Templates', exact: true }).click();
-    await page.getByRole('button', { name: 'Create template', exact: true }).first().click();
-    dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Template name').fill(`${prefix} · Upper`);
-    await dialog.getByRole('button', { name: 'Add exercise', exact: true }).click();
-    await dialog.getByLabel('Exercise 1', { exact: true }).selectOption({ label: `${prefix} · Bench Press` });
-    await dialog.getByLabel('Weight (kg)', { exact: true }).fill('20');
-    await dialog.getByRole('button', { name: 'Save template', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    await page
-      .locator('.template-card')
-      .filter({ hasText: `${prefix} · Upper` })
-      .getByRole('button', { name: 'Start workout', exact: true })
-      .click();
-    await expect(page).toHaveURL(/\/fitness\/[0-9a-f-]+$/);
-    const sessionId = page.url().split('/').at(-1)!;
-    await expect(
-      page
-        .locator('.session-exercise')
-        .getByRole('heading', { name: `${prefix} · Bench Press`, exact: true }),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Add set', exact: true }).click();
-    dialog = page.getByRole('dialog');
-    await dialog.getByLabel('External weight').fill('100');
-    await dialog.getByLabel('Weight unit').selectOption('lb');
-    await dialog.getByLabel('Repetitions').fill('5');
-    await dialog.getByLabel('RPE').fill('7');
-    await dialog.getByRole('button', { name: 'Save set', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    await expect(page.getByText('100 lb', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Cardio', exact: true }).click();
-    dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Activity type').fill('Test Run');
-    await dialog.getByLabel('Minutes', { exact: true }).fill('20');
-    await dialog.getByLabel('Distance', { exact: true }).fill('2');
-    await dialog.getByLabel('Average heart rate').fill('145');
-    await dialog.getByRole('button', { name: 'Save cardio entry', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    await page.getByRole('button', { name: 'Complete workout', exact: true }).click();
-    await expect(
-      page.getByText('Workout saved. You can still edit exercises, sets, and notes; statistics will update.'),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Edit set', exact: true }).click();
-    dialog = page.getByRole('dialog');
-    await dialog.getByLabel('External weight').fill('110');
-    await dialog.getByRole('button', { name: 'Save set', exact: true }).click();
-    await expect(dialog).not.toBeVisible();
-    await expect(page.getByText('110 lb', { exact: true })).toBeVisible();
-    const session = await (await page.request.get(`/api/v1/fitness/sessions/${sessionId}`)).json();
-    expect(session.status).toBe('completed');
-    expect(session.sets).toHaveLength(1);
-    expect(Number(session.sets[0].weight_kg)).toBeCloseTo(49.8951607, 5);
-    expect(Number(session.cardio[0].distance_meters)).toBe(2000);
-    await page.getByRole('link', { name: '← Workout history', exact: true }).click();
-    await expect(
-      page
-        .locator('.session-card')
-        .filter({ hasText: `${prefix} · Upper` })
-        .getByText('Completed', { exact: true }),
-    ).toBeVisible();
-    await page.getByRole('button', { name: 'Progress', exact: true }).click();
-    await page.getByLabel('Compare exercise').selectOption({ label: `${prefix} · Bench Press` });
-    await expect(
-      page.getByRole('img', { name: 'Maximum weight progression for this exercise, in kg' }),
-    ).toBeVisible();
+  test('retires Fitness entry points and respects reduced motion', async ({ page }) => {
+    await page.goto('/fitness/old-session');
+    await expect(page).toHaveURL(/\/today$/);
+    await expect(page.getByRole('navigation', { name: 'Main navigation' }).getByText('Fitness')).toHaveCount(
+      0,
+    );
+    await expect(page.getByText('Planned workout')).toHaveCount(0);
+    await expect(page.getByRole('link', { name: /Paper updates/ })).toBeVisible();
+    await page.getByRole('button', { name: 'Quick capture' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText('Log a workout')).toHaveCount(0);
+    await expect(dialog).toHaveCSS('animation-name', 'prism-modal');
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await expect
+      .poll(() => dialog.evaluate((element) => parseFloat(getComputedStyle(element).animationDuration)))
+      .toBeLessThan(0.001);
   });
 
-  test('category subscription → scheduled ingestion → save/read → reading task', async ({ page }) => {
+  test('category subscription → refresh changed subscriptions → save/read and reading task history', async ({
+    page,
+  }) => {
     await page.goto('/discover');
     await page.getByRole('button', { name: 'Add subscription', exact: true }).first().click();
     let dialog = page.getByRole('dialog');
     await dialog.getByLabel('Match value').fill('math.AC');
     await dialog.getByRole('button', { name: 'Save subscription', exact: true }).click();
     await expect(dialog).not.toBeVisible();
-    await expect(async () => {
-      await page.getByRole('button', { name: 'Refresh feed', exact: true }).click();
-      await expect(
-        page.locator('.paper-card').filter({ hasText: 'PRISM E2E metadata fixture' }),
-      ).toBeVisible();
-    }).toPass({ timeout: 25000, intervals: [1000, 2000] });
+    await page.getByRole('button', { name: 'Refresh feed', exact: true }).click();
     const paper = page.locator('.paper-card').filter({ hasText: 'PRISM E2E metadata fixture' });
+    await expect(paper).toBeVisible();
+    await expect(page.getByText('Feed refreshed.', { exact: true })).toBeVisible();
     await expect(paper.getByRole('link', { name: 'PDF', exact: true })).toHaveAttribute(
       'href',
       /https:\/\/arxiv.org\/pdf\//,
@@ -265,7 +248,93 @@ test.describe.serial('PRISM complete product workflows', () => {
         (t: { title: string; source_type: string }) =>
           t.title === `${prefix} · 读论文` && t.source_type === 'reading',
       ),
-    ).toHaveLength(1);
+    ).toEqual([expect.objectContaining({ status: 'completed' })]);
+
+    await page.getByRole('switch', { name: 'Disable math.AC', exact: true }).click();
+    await expect(page.getByRole('switch', { name: 'Enable math.AC', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Add subscription', exact: true }).first().click();
+    dialog = page.getByRole('dialog');
+    await dialog.getByLabel('Match value').fill('math,AG');
+    await dialog.getByRole('button', { name: 'Save subscription', exact: true }).click();
+    await expect(dialog).not.toBeVisible();
+    await expect(page.getByRole('switch', { name: 'Disable math.AG', exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Unread', exact: true }).click();
+    await page.getByRole('button', { name: 'Refresh feed', exact: true }).click();
+    await expect(
+      page.locator('.paper-card').filter({ hasText: 'PRISM E2E algebraic geometry fixture' }),
+    ).toBeVisible();
+    await expect(page.getByText('Feed refreshed.', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Saved', exact: true }).first().click();
+    await expect(saved.getByRole('button', { name: 'Read', exact: true })).toBeDisabled();
+
+    const exploreFilters = page.getByRole('group', { name: 'Explore filters' });
+    await exploreFilters.getByRole('button', { name: 'Liked', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'No liked papers yet', exact: true })).toBeVisible();
+    await exploreFilters.getByRole('button', { name: 'Interested', exact: true }).click();
+    await expect(
+      page.getByRole('heading', { name: 'No papers marked Interested', exact: true }),
+    ).toBeVisible();
+    await exploreFilters.getByRole('button', { name: 'Saved', exact: true }).click();
+
+    const discoverViews = page.getByRole('group', { name: 'Discover view' });
+    await discoverViews.getByRole('button', { name: 'For You', exact: true }).click();
+    const recommendation = page.getByRole('article', { name: 'Recommended paper' });
+    await expect(recommendation).toBeVisible();
+    await expect(recommendation).toContainText('WHY THIS PAPER');
+    await expect(page.getByText('0 of 3 reviewed', { exact: true })).toBeVisible();
+
+    const interests = page.getByRole('complementary', { name: 'Research interests' });
+    await interests.getByLabel('Keyword', { exact: true }).fill('Monomial ideals');
+    await interests.getByRole('button', { name: 'Follow', exact: true }).click();
+    const rule = interests.getByRole('listitem').filter({ hasText: 'monomial ideals' });
+    await expect(rule.getByText('Following', { exact: true })).toBeVisible();
+    await rule.getByRole('button', { name: 'Show less of monomial ideals', exact: true }).click();
+    await expect(rule.getByText('Showing less', { exact: true })).toBeVisible();
+    await rule.getByRole('button', { name: 'Remove keyword monomial ideals', exact: true }).click();
+    await expect(rule).toHaveCount(0);
+
+    const likedTitle = 'Commutative algebra and graded ideals';
+    const interestedTitle = 'Commutative algebra in projective geometry';
+    const responses = new Map([
+      ['PRISM E2E algebraic geometry fixture', 'Save'],
+      [likedTitle, 'Like'],
+      [interestedTitle, 'Interested'],
+    ]);
+    for (let reviewed = 1; reviewed <= 3; reviewed++) {
+      const title = await recommendation.getByRole('heading').innerText();
+      const response = responses.get(title);
+      expect(response, `Unexpected recommendation: ${title}`).toBeDefined();
+      responses.delete(title);
+      await recommendation.getByRole('button', { name: response!, exact: true }).click();
+      await expect(page.getByText(`${reviewed} of 3 reviewed`, { exact: true })).toBeVisible();
+    }
+    await expect(page.getByRole('heading', { name: 'You’re caught up', exact: true })).toBeVisible();
+    await expect(interests.getByRole('heading', { name: 'Suggested keywords' })).toBeVisible();
+    await expect(
+      interests.getByRole('button', { name: 'Follow commutative algebra', exact: true }),
+    ).toBeVisible();
+    await discoverViews.getByRole('button', { name: 'Explore', exact: true }).click();
+    const savedRecommendation = page
+      .locator('.paper-card')
+      .filter({ hasText: 'PRISM E2E algebraic geometry fixture' });
+    await expect(savedRecommendation.getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
+
+    await exploreFilters.getByRole('button', { name: 'Liked', exact: true }).click();
+    const liked = page.locator('.paper-card').filter({ hasText: likedTitle });
+    await expect(liked.getByText('Liked', { exact: true })).toBeVisible();
+    await expect(page.locator('.paper-card')).toHaveCount(1);
+    await liked.getByRole('button', { name: 'Save', exact: true }).click();
+    await expect(liked.getByRole('button', { name: 'Saved', exact: true })).toBeVisible();
+    await liked.getByRole('button', { name: 'Mark as read', exact: true }).click();
+    await expect(liked.getByRole('button', { name: 'Read', exact: true })).toBeDisabled();
+
+    await exploreFilters.getByRole('button', { name: 'Interested', exact: true }).click();
+    const interested = page.locator('.paper-card').filter({ hasText: interestedTitle });
+    await expect(interested.getByText('Interested', { exact: true })).toBeVisible();
+    await expect(page.locator('.paper-card')).toHaveCount(1);
+    await expect(liked).toHaveCount(0);
+    await discoverViews.getByRole('button', { name: 'For You', exact: true }).click();
+    await expect(page.getByText('3 of 3 reviewed', { exact: true })).toBeVisible();
   });
 
   test('capacity, pin, manual reorder, completion and overloaded schedule stay explicit', async ({

@@ -5,7 +5,7 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import { readFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { createDatabase, type Database } from '@prism/database';
 import { loadConfig, type ApiConfig } from './config';
 import { PrismService, type Command } from './service';
@@ -23,6 +23,7 @@ export interface BuildOptions {
   db?: Database;
   config?: ApiConfig;
   logger?: boolean;
+  rateLimitMax?: number;
 }
 export async function buildApp(options: BuildOptions = {}): Promise<FastifyInstance> {
   const config = options.config ?? loadConfig();
@@ -43,12 +44,13 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     genReqId: () => randomUUID(),
   });
   app.decorate('prism', { db, config, service });
-  await app.register(cors, {
-    origin: config.webOrigin,
-    credentials: true,
-    allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'If-Match'],
-  });
-  await app.register(rateLimit, { max: 300, timeWindow: '1 minute' });
+  if (config.authMode !== 'desktop')
+    await app.register(cors, {
+      origin: config.webOrigin,
+      credentials: true,
+      allowedHeaders: ['Content-Type', 'Authorization', 'Idempotency-Key', 'If-Match'],
+    });
+  await app.register(rateLimit, { max: options.rateLimitMax ?? 300, timeWindow: '1 minute' });
   let oidc: Record<string, string> | undefined, jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
   if (config.authMode === 'oidc') {
     if (config.production && !config.issuer?.startsWith('https://'))
@@ -62,6 +64,21 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
     jwks = createRemoteJWKSet(new URL(oidc.jwks_uri));
   }
   app.addHook('onRequest', async (request) => {
+    if (config.authMode === 'desktop') {
+      const { host, origin, authorization } = request.headers;
+      if (
+        request.ip !== '127.0.0.1' ||
+        host !== `127.0.0.1:${config.port}` ||
+        (origin !== undefined && origin !== config.webOrigin)
+      )
+        throw new ApiError(403, 'FORBIDDEN', 'Desktop requests are restricted to the local app.');
+      const expected = Buffer.from(`Bearer ${config.desktopToken}`);
+      const received = Buffer.from(authorization ?? '');
+      if (!config.desktopToken || received.length !== expected.length || !timingSafeEqual(received, expected))
+        throw new ApiError(401, 'UNAUTHENTICATED', 'Open PRISM from the desktop app.');
+      request.prismUser = config.userId;
+      return;
+    }
     if (request.url.split('?')[0] === '/api/v1/auth/config' || request.url === '/health') return;
     if (config.authMode === 'development') {
       // Listener is forced to loopback by configuration, and requests cannot elevate the user.
@@ -213,6 +230,10 @@ export async function buildApp(options: BuildOptions = {}): Promise<FastifyInsta
           if (path === '/sync/push') {
             const result = await service.pushBatch(request.prismUser, key, request.body as any);
             return result;
+          }
+          if (path === '/today/review-drafts') {
+            const body = request.body as { date: string; retry?: boolean };
+            return service.generateDailyReviewDrafts(request.prismUser, key, body);
           }
           const command: Command = {
             userId: request.prismUser,

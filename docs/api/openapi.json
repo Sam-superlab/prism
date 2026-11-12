@@ -469,6 +469,80 @@
         }
       }
     },
+    "/knowledge-subjects": {
+      "get": {
+        "operationId": "get_knowledge_subjects",
+        "tags": ["knowledge-items"],
+        "description": "Distinct subjects used by active knowledge items. An empty string represents unassigned items.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": { "type": "string" }
+                    }
+                  },
+                  "required": ["items"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/knowledge-chapters": {
+      "get": {
+        "operationId": "get_knowledge_chapters",
+        "tags": ["knowledge-items"],
+        "description": "Numbered chapters used by active knowledge items in the selected subject.",
+        "parameters": [
+          {
+            "name": "subject",
+            "in": "query",
+            "required": true,
+            "description": "Exact subject. Pass an empty string for unassigned items.",
+            "schema": { "type": "string", "maxLength": 200000 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "number": { "type": "integer", "minimum": 1, "maximum": 999999 },
+                          "title": { "type": "string" }
+                        },
+                        "required": ["number", "title"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["items"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/knowledge-items": {
       "get": {
         "operationId": "get_knowledge_items",
@@ -497,10 +571,22 @@
             "name": "subject",
             "in": "query",
             "required": false,
+            "description": "Exact subject. Pass an empty string for unassigned items.",
             "schema": {
               "type": "string",
-              "minLength": 1,
-              "maxLength": 300
+              "maxLength": 200000
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "description": "Only return knowledge items of this type.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "definition", "theorem", "lemma", "proposition", "corollary", "proof",
+                "example", "counterexample", "exercise", "note"
+              ]
             }
           },
           {
@@ -512,6 +598,12 @@
               "minLength": 1,
               "maxLength": 300
             }
+          },
+          {
+            "$ref": "#/components/parameters/ChapterFrom"
+          },
+          {
+            "$ref": "#/components/parameters/ChapterTo"
           }
         ],
         "responses": {
@@ -1081,6 +1173,60 @@
         }
       }
     },
+    "/knowledge-items/{id}/cards/batch": {
+      "post": {
+        "operationId": "post_knowledge_items_id_cards_batch",
+        "tags": ["knowledge-items"],
+        "description": "Create up to 50 review cards for a knowledge item in one transaction.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": { "type": "string", "format": "uuid" }
+          },
+          { "$ref": "#/components/parameters/Idempotency" }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "cards": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 50,
+                    "items": { "$ref": "#/components/schemas/ReviewCardCreate" }
+                  }
+                },
+                "required": ["cards"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Created cards",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "items": { "type": "array", "items": { "$ref": "#/components/schemas/ReviewCard" } }
+                  },
+                  "required": ["items"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/review/cards/{id}": {
       "get": {
         "operationId": "get_review_cards_id",
@@ -1253,6 +1399,22 @@
               "type": "string",
               "format": "date-time"
             }
+          },
+          {
+            "name": "subject",
+            "in": "query",
+            "required": false,
+            "description": "Exact subject of the parent knowledge item. Pass an empty string for unassigned items.",
+            "schema": {
+              "type": "string",
+              "maxLength": 200000
+            }
+          },
+          {
+            "$ref": "#/components/parameters/ChapterFrom"
+          },
+          {
+            "$ref": "#/components/parameters/ChapterTo"
           }
         ],
         "responses": {
@@ -1953,6 +2115,30 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "knowledge_item_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "research_object_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -2191,6 +2377,22 @@
           },
           {
             "$ref": "#/components/parameters/Limit"
+          },
+          {
+            "name": "project_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
+          {
+            "name": "paper_id",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
           }
         ],
         "responses": {
@@ -4580,6 +4782,166 @@
         }
       }
     },
+    "/arxiv/refresh": {
+      "post": {
+        "operationId": "post_arxiv_refresh",
+        "tags": ["arxiv"],
+        "description": "Queue an ingestion job for the enabled subscriptions, or return a recent job for the same subscriptions. Poll GET /automation/jobs/{id} before reloading the feed.",
+        "parameters": [
+          { "$ref": "#/components/parameters/Idempotency" }
+        ],
+        "responses": {
+          "202": {
+            "description": "Refresh job accepted",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/AutomationJob" }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/arxiv/for-you": {
+      "get": {
+        "operationId": "get_arxiv_for_you",
+        "tags": ["arxiv"],
+        "description": "Get the current local day's active round of up to six papers. Create the first round when papers are available.",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Active round and ranking preferences",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "date": { "type": "string", "format": "date" },
+                    "round": { "type": "integer", "minimum": 0 },
+                    "can_review_more": { "type": "boolean" },
+                    "items": {
+                      "type": "array", "maxItems": 6,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "paper": { "$ref": "#/components/schemas/UserPaper" },
+                          "reason": { "type": "string" },
+                          "done": { "type": "boolean" },
+                          "reaction": { "enum": ["interested", "liked", "not_interested", "skip", null] }
+                        },
+                        "required": ["paper", "reason", "done", "reaction"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "keywords": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "term": { "type": "string" },
+                          "mode": { "enum": ["follow", "less"] }
+                        },
+                        "required": ["term", "mode"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "suggestions": { "type": "array", "items": { "type": "string" } }
+                  },
+                  "required": ["date", "round", "can_review_more", "items", "keywords", "suggestions"],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/arxiv/for-you/more": {
+      "post": {
+        "operationId": "post_arxiv_for_you_more",
+        "tags": ["arxiv"],
+        "description": "Start another round after the specified round is complete. A stale request has no effect.",
+        "parameters": [{ "$ref": "#/components/parameters/Idempotency" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "date": { "type": "string", "format": "date" },
+                  "round": { "type": "integer", "minimum": 1 }
+                },
+                "required": ["date", "round"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Round request processed" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/arxiv/for-you/reaction": {
+      "post": {
+        "operationId": "post_arxiv_for_you_reaction",
+        "tags": ["arxiv"],
+        "description": "Record the first decision on a deck card. Save also adds the paper to the saved library.",
+        "parameters": [{ "$ref": "#/components/parameters/Idempotency" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "paper_id": { "type": "string", "format": "uuid" },
+                  "action": { "enum": ["interested", "liked", "save", "not_interested", "skip"] }
+                },
+                "required": ["paper_id", "action"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Card decision recorded" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/arxiv/for-you/keywords": {
+      "post": {
+        "operationId": "post_arxiv_for_you_keywords",
+        "tags": ["arxiv"],
+        "description": "Follow, downrank, or remove a keyword rule for future rounds.",
+        "parameters": [{ "$ref": "#/components/parameters/Idempotency" }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "term": { "type": "string", "minLength": 1, "maxLength": 100 },
+                  "mode": { "enum": ["follow", "less", "remove"] }
+                },
+                "required": ["term", "mode"],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": { "description": "Keyword rule updated" },
+          "default": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
     "/arxiv/feed": {
       "get": {
         "operationId": "get_arxiv_feed",
@@ -4613,6 +4975,19 @@
             "required": false,
             "schema": {
               "type": "boolean"
+            }
+          },
+          {
+            "name": "reaction",
+            "in": "query",
+            "required": false,
+            "description": "Filter by a positive For You reaction, independently of saved and read status.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "liked",
+                "interested"
+              ]
             }
           }
         ],
@@ -5252,6 +5627,91 @@
           },
           "default": {
             "$ref": "#/components/responses/Error"
+          }
+        }
+      }
+    },
+    "/today/review-drafts": {
+      "get": {
+        "operationId": "get_today_review_drafts",
+        "tags": [
+          "today"
+        ],
+        "description": "Read the local draft status for a date without requesting generation.",
+        "parameters": [
+          {
+            "name": "date",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily review draft status and any unapproved cards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyReviewDrafts"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        }
+      },
+      "post": {
+        "operationId": "post_today_review_drafts",
+        "tags": [
+          "today"
+        ],
+        "description": "Generate a single batch from opted-in notes created on the previous local day.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/Idempotency"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Daily review draft status and any unapproved cards.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DailyReviewDrafts"
+                }
+              }
+            }
+          },
+          "default": {
+            "$ref": "#/components/responses/Error"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "date": {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  "retry": {
+                    "type": "boolean"
+                  }
+                },
+                "required": [
+                  "date"
+                ],
+                "additionalProperties": false
+              }
+            }
           }
         }
       }
@@ -6845,6 +7305,22 @@
         ],
         "additionalProperties": false
       },
+      "ProofStep": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "hint": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4000
+          }
+        },
+        "required": ["id", "hint"],
+        "additionalProperties": false
+      },
       "ReviewCard": {
         "type": "object",
         "properties": {
@@ -6898,6 +7374,14 @@
           "answer": {
             "type": "string",
             "maxLength": 200000
+          },
+          "proof_steps": {
+            "description": "Hints in the order they appear on a proof card.",
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/ProofStep"
+            }
           },
           "suspended": {
             "type": "boolean"
@@ -7007,6 +7491,14 @@
             "type": "string",
             "maxLength": 200000
           },
+          "proof_steps": {
+            "description": "Up to twelve ordered hints for proof cards, with distinct step IDs.",
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/ProofStep"
+            }
+          },
           "suspended": {
             "type": "boolean"
           }
@@ -7041,6 +7533,14 @@
           "answer": {
             "type": "string",
             "maxLength": 200000
+          },
+          "proof_steps": {
+            "description": "Replacement hints for a proof card. Omit to preserve them or send an empty array to clear them.",
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/ProofStep"
+            }
           },
           "suspended": {
             "type": "boolean"
@@ -7121,6 +7621,16 @@
               }
             ]
           },
+          "proof_stuck_step_ids": {
+            "description": "IDs of the steps on this proof card where recall was difficult.",
+            "type": "array",
+            "maxItems": 12,
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "format": "uuid"
+            }
+          },
           "idempotency_key": {
             "type": "string",
             "format": "uuid"
@@ -7173,6 +7683,14 @@
             "type": "integer",
             "minimum": 0,
             "maximum": 86400000
+          },
+          "proof_stuck_steps": {
+            "description": "Snapshots of the proof steps marked difficult during this review.",
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "$ref": "#/components/schemas/ProofStep"
+            }
           },
           "previous_state": {
             "type": "object",
@@ -7935,12 +8453,30 @@
             ]
           },
           "research_object_id": {
-            "type": "string",
-            "format": "uuid"
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "knowledge_item_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -7950,7 +8486,8 @@
           "version",
           "deleted_at",
           "research_object_id",
-          "knowledge_item_id"
+          "knowledge_item_id",
+          "project_id"
         ],
         "additionalProperties": false
       },
@@ -7968,25 +8505,58 @@
           "knowledge_item_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "project_id": {
+            "type": "string",
+            "format": "uuid"
           }
         },
         "required": [
           "id",
-          "research_object_id",
           "knowledge_item_id"
         ],
-        "additionalProperties": false
+        "additionalProperties": false,
+        "oneOf": [
+          {
+            "required": [
+              "research_object_id"
+            ]
+          },
+          {
+            "required": [
+              "project_id"
+            ]
+          }
+        ]
       },
       "ResearchKnowledgeLinkPatch": {
         "type": "object",
         "properties": {
           "research_object_id": {
-            "type": "string",
-            "format": "uuid"
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "knowledge_item_id": {
             "type": "string",
             "format": "uuid"
+          },
+          "project_id": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "uuid"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [],
@@ -10632,6 +11202,16 @@
           "is_saved": {
             "type": "boolean"
           },
+          "for_you_reaction": {
+            "description": "The recorded For You reaction. Saving a paper is tracked separately.",
+            "enum": [
+              "interested",
+              "liked",
+              "not_interested",
+              "skip",
+              null
+            ]
+          },
           "saved_at": {
             "anyOf": [
               {
@@ -11362,6 +11942,10 @@
             "minimum": 0,
             "maximum": 1440
           },
+          "if_missing": {
+            "type": "boolean",
+            "description": "Return the existing plan without changing it when one already exists for this date."
+          },
           "override_manual": {
             "type": "boolean",
             "default": false
@@ -11417,6 +12001,31 @@
             "minimum": 0,
             "maximum": 2147483647
           },
+          "review_activity": {
+            "description": "Review event counts for seven calendar days in the account timezone, ending on the requested date.",
+            "type": "array",
+            "minItems": 7,
+            "maxItems": 7,
+            "items": {
+              "type": "object",
+              "properties": {
+                "date": {
+                  "type": "string",
+                  "format": "date"
+                },
+                "count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 2147483647
+                }
+              },
+              "required": [
+                "date",
+                "count"
+              ],
+              "additionalProperties": false
+            }
+          },
           "research_tasks_due": {
             "type": "integer",
             "minimum": 0,
@@ -11462,6 +12071,10 @@
             "minimum": 0,
             "maximum": 2147483647
           },
+          "continuation_note": {
+            "type": ["string", "null"],
+            "description": "The previous local day's saved continuation note."
+          },
           "plan": {
             "anyOf": [
               {
@@ -11488,6 +12101,99 @@
           "completed_count",
           "planned_count",
           "plan"
+        ],
+        "additionalProperties": false
+      },
+      "DailyReviewDrafts": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "disabled",
+              "idle",
+              "running",
+              "ready",
+              "paused",
+              "failed"
+            ]
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyReviewDraftGroup"
+            }
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "date",
+          "status",
+          "items"
+        ],
+        "additionalProperties": false
+      },
+      "DailyReviewDraftGroup": {
+        "type": "object",
+        "properties": {
+          "knowledge_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "title": {
+            "type": "string"
+          },
+          "cards": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DailyReviewDraftCard"
+            }
+          }
+        },
+        "required": [
+          "knowledge_id",
+          "title",
+          "cards"
+        ],
+        "additionalProperties": false
+      },
+      "DailyReviewDraftCard": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "card_type": {
+            "type": "string",
+            "enum": [
+              "statement",
+              "hypotheses",
+              "proof",
+              "example",
+              "counterexample",
+              "application",
+              "custom"
+            ]
+          },
+          "prompt": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "card_type",
+          "prompt",
+          "answer"
         ],
         "additionalProperties": false
       },
@@ -11559,6 +12265,11 @@
             "maximum": 2147483647
           },
           "research_event_count": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 2147483647
+          },
+          "papers_read_count": {
             "type": "integer",
             "minimum": 0,
             "maximum": 2147483647
@@ -14389,6 +15100,18 @@
           "type": "string",
           "maxLength": 4096
         }
+      },
+      "ChapterFrom": {
+        "name": "chapter_from",
+        "in": "query",
+        "description": "Inclusive lower bound on the numbered chapter of the knowledge item.",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 999999 }
+      },
+      "ChapterTo": {
+        "name": "chapter_to",
+        "in": "query",
+        "description": "Inclusive upper bound on the numbered chapter of the knowledge item.",
+        "schema": { "type": "integer", "minimum": 1, "maximum": 999999 }
       },
       "Limit": {
         "name": "limit",

@@ -1,0 +1,16 @@
+.toolbar {
+  flex-wrap: wrap;
+}
+
+.chapterRange {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  gap: 10px 15px;
+}
+
+.chapterRange > label {
+  flex: 1 1 180px;
+  max-width: 310px;
+  margin-bottom: 0;
+}

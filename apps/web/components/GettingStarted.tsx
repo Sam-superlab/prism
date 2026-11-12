@@ -10,7 +10,7 @@ import {
   type GuideLanguage,
 } from '../lib/getting-started-copy';
 import type { Knowledge, Page, ReviewEvent } from '../lib/types';
-import { Icon, MathContent, Modal, Notice } from './ui';
+import { Icon, KnowledgeMarkdown, Modal, Notice } from './ui';
 import { CardEditor, KnowledgeEditor } from './pages/Knowledge';
 import styles from './GettingStarted.module.css';
 
@@ -408,7 +408,7 @@ function Example({
         {step === 'card' ? (
           <p className="muted">{copy.sampleRecall}</p>
         ) : (
-          <MathContent content={example.content} />
+          <KnowledgeMarkdown content={example.content} />
         )}
         {step === 'answer' && (
           <div className="inline-actions">

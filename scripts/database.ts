@@ -36,8 +36,33 @@ try {
         checksum,
       ]);
     }
+    for (const migrationId of [
+      '002_arxiv_for_you',
+      '003_arxiv_for_you_rounds',
+      '004_ai_review_drafts',
+      '005_proof_recall',
+      '006_research_project_knowledge',
+    ]) {
+      const migrationDdl = await readFile(
+        new URL(`../database/migrations/${migrationId}.sql`, import.meta.url),
+        'utf8',
+      );
+      const migrationChecksum = createHash('sha256').update(migrationDdl).digest('hex');
+      const applied = await client.query('SELECT checksum FROM public.prism_migrations WHERE id=$1', [
+        migrationId,
+      ]);
+      if (!applied.rows.length) {
+        await client.query(migrationDdl);
+        await client.query('INSERT INTO public.prism_migrations(id,checksum) VALUES($1,$2)', [
+          migrationId,
+          migrationChecksum,
+        ]);
+      } else if (applied.rows[0].checksum !== migrationChecksum) {
+        throw new Error(`Migration ${migrationId} checksum changed. Do not rewrite applied history.`);
+      }
+    }
     await client.query('COMMIT');
-    console.log('PRISM initial migration applied or already current.');
+    console.log('PRISM database migrations are current.');
   } else if (command === 'provision') {
     const id = process.env.PRISM_USER_ID,
       subject = process.env.PRISM_ALLOWED_SUBJECT;

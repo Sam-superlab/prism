@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { apiBase, clearCookie, sameOrigin, sessionFor, SESSION_COOKIE } from '../../../../lib/server-auth';
+import {
+  apiBase,
+  clearCookie,
+  desktopMode,
+  desktopTokenFor,
+  sameOrigin,
+  sessionFor,
+  SESSION_COOKIE,
+} from '../../../../lib/server-auth';
 import { BodyLimitError, readLimitedBody } from '../../../../lib/request-body';
 
 export const runtime = 'nodejs';
@@ -25,24 +33,28 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     if (value) headers.set(name, value);
   }
   try {
-    const auth = await sessionFor(request);
+    const desktop = desktopMode();
+    const token = desktop ? desktopTokenFor(request) : undefined;
+    const auth = desktop ? { session: null, changed: false } : await sessionFor(request);
     const publicEndpoint = request.method === 'GET' && path.join('/') === 'auth/config';
-    if (process.env.NODE_ENV === 'production' && !auth.session && !publicEndpoint) {
+    if (desktop ? !token : process.env.NODE_ENV === 'production' && !auth.session && !publicEndpoint) {
+      const forbidden = token === null;
       const response = NextResponse.json(
         {
           error: {
-            code: 'UNAUTHENTICATED',
-            message: 'Sign in to PRISM to continue.',
+            code: forbidden ? 'FORBIDDEN' : 'UNAUTHENTICATED',
+            message: desktop ? 'Open PRISM from the desktop app.' : 'Sign in to PRISM to continue.',
             details: {},
             request_id: crypto.randomUUID(),
           },
         },
-        { status: 401 },
+        { status: forbidden ? 403 : 401 },
       );
       if (auth.changed) clearCookie(response, SESSION_COOKIE);
       return response;
     }
-    if (auth.session) headers.set('authorization', `Bearer ${auth.session.accessToken}`);
+    const accessToken = token ?? auth.session?.accessToken;
+    if (accessToken) headers.set('authorization', `Bearer ${accessToken}`);
     const body = ['GET', 'HEAD'].includes(request.method) ? undefined : await readLimitedBody(request);
     const upstream = await fetch(target, {
       method: request.method,
@@ -53,6 +65,7 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
       signal: AbortSignal.timeout(60000),
     });
     const responseHeaders = new Headers({ 'Cache-Control': 'no-store' });
+    if (desktop) responseHeaders.set('Cross-Origin-Resource-Policy', 'same-origin');
     for (const name of ['content-type', 'content-disposition', 'etag', 'retry-after']) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);

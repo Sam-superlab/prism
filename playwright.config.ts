@@ -46,6 +46,7 @@ export default defineConfig({
         PRISM_AUTH_MODE: 'development',
         PRISM_WEB_ORIGIN: 'http://127.0.0.1:3100',
         PRISM_NEXT_DIST_DIR: '.next-e2e',
+        NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS: 'true',
       },
     },
   ],

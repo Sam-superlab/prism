@@ -1,34 +1,46 @@
 'use client';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { api, useAction, useResource, uuid } from '../lib/api';
+import { scopedPath, type StudyScope } from '../lib/knowledge-scope';
+import { shortcutPlatform, workspaceShortcutFor } from '../lib/workspace-shortcuts';
 import type { Page, Project, Today, User } from '../lib/types';
-import { Field, Icon, Modal, Notice } from './ui';
+import { ErrorState, Field, Icon, Loading, Modal, Notice } from './ui';
 import { TodayPage } from './pages/Today';
 import { KnowledgePage, ReviewPage } from './pages/Knowledge';
 import { ResearchPage } from './pages/Research';
-import { FitnessPage } from './pages/Fitness';
 import { DiscoverPage } from './pages/Discover';
-import { PracticePage } from './pages/Practice';
 import { SettingsPage } from './pages/Settings';
+import { PracticePage } from './pages/Practice';
 import { GettingStarted, useGettingStarted } from './GettingStarted';
 
 const navigation = [
   { path: 'today', label: 'Today', icon: 'today' },
   { path: 'knowledge', label: 'Knowledge', icon: 'knowledge' },
-  { path: 'research', label: 'Research', icon: 'research' },
   { path: 'practice', label: 'Practice', icon: 'check' },
-  { path: 'fitness', label: 'Fitness', icon: 'fitness' },
+  { path: 'research', label: 'Research', icon: 'research' },
   { path: 'discover', label: 'Discover', icon: 'discover' },
 ];
-export default function Workspace({ route, reviewCardId }: { route: string; reviewCardId?: string }) {
+const sidebarPreference = 'prism.sidebar.pinned';
+export default function Workspace({
+  route,
+  studyScope,
+  reviewCardId,
+}: {
+  route: string;
+  studyScope: StudyScope;
+  reviewCardId?: string;
+}) {
   const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
+  const [sidebarPinned, setSidebarPinned] = useState(true);
+  const [sidebarPeek, setSidebarPeek] = useState(false);
   const [capture, setCapture] = useState(false);
   const [search, setSearch] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const [online, setOnline] = useState(true);
+  const [searchKeys, setSearchKeys] = useState('⌘ K');
   const me = useResource<User>('/me');
   const guide = useGettingStarted(me.data?.id, route === 'today');
   const projects = useResource<Page<Project>>('/research/projects?limit=5');
@@ -39,116 +51,201 @@ export default function Workspace({ route, reviewCardId }: { route: string; revi
     { path: 'settings', label: 'Settings', icon: 'settings' },
   ].find((x) => x.path === active);
   useEffect(() => {
+    try {
+      setSidebarPinned(window.localStorage.getItem(sidebarPreference) !== 'false');
+    } catch {
+      // The sidebar can still be toggled when storage is unavailable.
+    }
     const update = () => setOnline(navigator.onLine);
     update();
+    setSearchKeys(shortcutPlatform(navigator.userAgent) === 'apple' ? '⌘ K' : 'Ctrl K');
     window.addEventListener('online', update);
     window.addEventListener('offline', update);
-    const key = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
-        e.preventDefault();
-        setSearch(true);
-      }
-    };
-    window.addEventListener('keydown', key);
     return () => {
       window.removeEventListener('online', update);
       window.removeEventListener('offline', update);
-      window.removeEventListener('keydown', key);
     };
   }, []);
+  const toggleSidebar = useCallback(() => {
+    const pinned = !sidebarPinned;
+    setSidebarPinned(pinned);
+    setSidebarPeek(false);
+    try {
+      window.localStorage.setItem(sidebarPreference, String(pinned));
+    } catch {
+      // Keep the choice for this view even if it cannot be persisted.
+    }
+  }, [sidebarPinned]);
+  useEffect(() => {
+    const openSettings = () => {
+      if (document.querySelector('dialog[open]')) return;
+      setMobileNav(false);
+      setSidebarPeek(false);
+      router.push('/settings');
+    };
+    const handleKey = (event: KeyboardEvent) => {
+      const action = workspaceShortcutFor(event);
+      if (!action) return;
+      if (action === 'escape') {
+        setSidebarPeek(false);
+        setMobileNav(false);
+        return; // Native dialog cancellation handles Escape.
+      }
+      if (document.querySelector('dialog[open]')) return;
+      event.preventDefault();
+      switch (action) {
+        case 'settings':
+          openSettings();
+          break;
+        case 'search':
+          setSearch(true);
+          break;
+        case 'capture':
+          setCapture(true);
+          break;
+        case 'sidebar':
+          if (window.matchMedia('(max-width: 800px)').matches) setMobileNav((open) => !open);
+          else toggleSidebar();
+          break;
+      }
+    };
+    window.addEventListener('keydown', handleKey);
+    window.addEventListener('prism:open-settings', openSettings);
+    return () => {
+      window.removeEventListener('keydown', handleKey);
+      window.removeEventListener('prism:open-settings', openSettings);
+    };
+  }, [router, toggleSidebar]);
   return (
-    <div className="app-shell">
+    <div className={`app-shell ${sidebarPinned ? '' : 'sidebar-collapsed'}`}>
       {mobileNav && (
         <button className="nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNav(false)} />
       )}
-      <aside className={`sidebar ${mobileNav ? 'is-open' : ''}`}>
-        <Link href="/today" className="brand" aria-label="PRISM Today">
-          <span className="prism-symbol">
-            <img src="/prism-mark.svg" width={36} height={36} alt="" />
-          </span>
-          <span>
-            PRISM<small>PERSONAL OPERATING SYSTEM</small>
-          </span>
-        </Link>
-        <div className="sidebar-caption">WORKSPACE</div>
-        <nav aria-label="Main navigation">
-          {navigation.map((item) => (
-            <Link
-              key={item.path}
-              href={`/${item.path}`}
-              className={`nav-link ${active === item.path ? 'active' : ''}`}
-              onClick={() => setMobileNav(false)}
-            >
-              <Icon name={item.icon} />
-              <span>{item.label}</span>
-              {active === item.path && <i />}
-            </Link>
-          ))}
-        </nav>
-        <div className="sidebar-divider" />
-        <Link className={`nav-link ${active === 'planner' ? 'active' : ''}`} href="/planner">
-          <Icon name="planner" />
-          <span>Planner</span>
-        </Link>
-        <div className="sidebar-caption project-caption">
-          ACTIVE PROJECTS
-          <Link href="/research" aria-label="Manage research projects">
-            <Icon name="plus" size={16} />
+      <div
+        className={`sidebar-region ${sidebarPeek ? 'is-peeking' : ''}`}
+        onPointerEnter={(event) => {
+          if (!sidebarPinned && event.pointerType === 'mouse' && event.currentTarget.clientWidth)
+            setSidebarPeek(true);
+        }}
+        onPointerLeave={() => setSidebarPeek(false)}
+      >
+        <aside
+          id="workspace-sidebar"
+          className={`sidebar ${mobileNav ? 'is-open' : ''}`}
+          onClick={(event) => {
+            if (event.target instanceof Element && event.target.closest('a')) {
+              setSidebarPeek(false);
+              setMobileNav(false);
+            }
+          }}
+        >
+          <Link href="/today" className="brand" aria-label="PRISM Today">
+            <span className="prism-symbol">
+              <img src="/prism-mark.svg" width={36} height={36} alt="" />
+            </span>
+            <span>
+              PRISM
+            </span>
           </Link>
-        </div>
-        <div className="project-shortcuts">
-          {projects.data?.items
-            .filter((x) => x.status === 'active')
-            .map((p) => (
-              <Link key={p.id} href={`/research/${p.id}`}>
-                <span className="project-dot" />
-                {p.title}
-                <Icon name="chevron" size={13} />
+          <div className="sidebar-caption">WORKSPACE</div>
+          <nav aria-label="Main navigation">
+            {navigation.map((item) => (
+              <Link
+                key={item.path}
+                href={`/${item.path}`}
+                className={`nav-link ${active === item.path ? 'active' : ''}`}
+              >
+                <Icon name={item.icon} />
+                <span>{item.label}</span>
+                {active === item.path && <i />}
               </Link>
             ))}
-          {projects.data?.items.length === 0 && (
-            <span className="sidebar-empty">Create a project to move your research forward.</span>
-          )}
-        </div>
-        <div className="sidebar-bottom">
-          <div className="sidebar-note">
-            <span className="tiny-star">✧</span>
-            <p>
-              Keep the important
-              <br />
-              things in focus.
-            </p>
-          </div>
-          <Link
-            href="/settings"
-            className={`nav-link settings-link ${active === 'settings' ? 'active' : ''}`}
-          >
-            <Icon name="settings" />
-            <span>Settings</span>
+          </nav>
+          <div className="sidebar-divider" />
+          <Link className={`nav-link ${active === 'planner' ? 'active' : ''}`} href="/planner">
+            <Icon name="planner" />
+            <span>Planner</span>
           </Link>
-          <div className="profile">
-            <span className="avatar">{me.data?.display_name?.slice(0, 1).toUpperCase() || 'P'}</span>
-            <div>
-              <strong>{me.data?.display_name || 'My workspace'}</strong>
-              <small>Personal workspace</small>
-            </div>
-            <span className="status-dot" />
+          <div className="sidebar-caption project-caption">
+            ACTIVE PROJECTS
+            <Link href="/research" aria-label="Manage research projects">
+              <Icon name="plus" size={16} />
+            </Link>
           </div>
-        </div>
-      </aside>
+          <div className="project-shortcuts">
+            {projects.data?.items
+              .filter((x) => x.status === 'active')
+              .map((p) => (
+                <Link key={p.id} href={`/research/${p.id}`}>
+                  <span className="project-dot" />
+                  {p.title}
+                  <Icon name="chevron" size={13} />
+                </Link>
+              ))}
+            {projects.data?.items.length === 0 && (
+              <span className="sidebar-empty">No active projects.</span>
+            )}
+          </div>
+          <div className="sidebar-bottom">
+            <Link
+              href="/settings"
+              className={`nav-link settings-link ${active === 'settings' ? 'active' : ''}`}
+            >
+              <Icon name="settings" />
+              <span>Settings</span>
+            </Link>
+            <div className="profile">
+              <span className="avatar">{me.data?.display_name?.slice(0, 1).toUpperCase() || 'P'}</span>
+              <div>
+                <strong>{me.data?.display_name || 'My workspace'}</strong>
+                <small>Personal workspace</small>
+              </div>
+              <span className="status-dot" />
+            </div>
+          </div>
+        </aside>
+      </div>
       <div className="workspace">
         <header className="topbar">
           <div className="breadcrumb">
             <button
+              className="icon-button sidebar-toggle"
+              aria-label={sidebarPinned ? 'Collapse sidebar' : 'Pin sidebar open'}
+              title={sidebarPinned ? 'Collapse sidebar' : 'Pin sidebar open'}
+              aria-controls="workspace-sidebar"
+              aria-expanded={sidebarPinned || sidebarPeek}
+              onClick={toggleSidebar}
+            >
+              <Icon name="menu" />
+            </button>
+            <button
               className="icon-button mobile-only"
               aria-label="Open navigation"
+              aria-controls="workspace-sidebar"
+              aria-expanded={mobileNav}
               onClick={() => setMobileNav(true)}
             >
               <Icon name="menu" />
             </button>
-            <span className="muted">Workspace</span>
-            <span className="breadcrumb-slash">/</span>
-            <span>{section?.label || 'Review'}</span>
+            <nav className="breadcrumb-path" aria-label="Breadcrumb">
+              <Link className="muted" href="/today" aria-label="Workspace home">
+                Workspace
+              </Link>
+              {section && (
+                <>
+                  <span className="breadcrumb-slash" aria-hidden="true">
+                    /
+                  </span>
+                  <Link
+                    href={`/${section.path}`}
+                    aria-label={`Open ${section.label} overview`}
+                    aria-current={route === section.path ? 'page' : undefined}
+                  >
+                    {section.label}
+                  </Link>
+                </>
+              )}
+            </nav>
           </div>
           <div className="topbar-actions">
             <span className={`connection-status ${online ? '' : 'offline'}`}>
@@ -162,7 +259,7 @@ export default function Workspace({ route, reviewCardId }: { route: string; revi
             >
               <Icon name="search" size={17} />
               <span>Search workspace</span>
-              <kbd>⌘ K</kbd>
+              <kbd>{searchKeys}</kbd>
             </button>
             <button
               className="button primary small"
@@ -197,11 +294,21 @@ export default function Workspace({ route, reviewCardId }: { route: string; revi
             />
           )}
           {active === 'planner' && <TodayPage planner />}
-          {active === 'knowledge' && route !== 'review/session' && <KnowledgePage id={route.split('/')[1]} />}
-          {route === 'review/session' && <ReviewPage key={reviewCardId} cardId={reviewCardId} />}
+          {active === 'knowledge' && route !== 'review/session' && (
+            <KnowledgePage id={route.split('/')[1]} scope={studyScope} />
+          )}
+          {route === 'review/session' && (
+            <ReviewPage
+              key={reviewCardId || scopedPath('/review/session', studyScope)}
+              scope={studyScope}
+              cardId={reviewCardId}
+            />
+          )}
+          {active === 'practice' && (
+            me.data ? <PracticePage key={me.data.id} userId={me.data.id} /> :
+              me.error ? <ErrorState error={me.error} retry={me.reload} /> : <Loading />
+          )}
           {active === 'research' && <ResearchPage id={route.split('/')[1]} />}
-          {active === 'practice' && me.data && <PracticePage userId={me.data.id} />}
-          {active === 'fitness' && <FitnessPage id={route.split('/')[1]} />}
           {active === 'discover' && <DiscoverPage />}
           {active === 'settings' && (
             <SettingsPage
@@ -226,12 +333,6 @@ export default function Workspace({ route, reviewCardId }: { route: string; revi
             </div>
           )}
         </main>
-        <footer className="workspace-footer">
-          <span>
-            PRISM <i /> Bring learning, research, and life together.
-          </span>
-          <span>Personal Research, Intelligence & Self-Management</span>
-        </footer>
       </div>
       {capture && (
         <QuickCapture
@@ -282,7 +383,6 @@ function QuickCapture({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   }
   return (
     <Modal title="Capture a thought" onClose={onClose}>
-      <p className="modal-description">Capture it now. Find its place later.</p>
       <div className="segmented">
         {[
           ['inbox', 'Inbox'],
@@ -349,9 +449,6 @@ function QuickCapture({ onClose, onSaved }: { onClose: () => void; onSaved: () =
         )}
         {action.error && <Notice tone="error">{action.error}</Notice>}
         <div className="modal-footer">
-          <a href="/fitness" className="text-link">
-            Log a workout →
-          </a>
           <button className="button primary" disabled={action.busy}>
             {action.busy ? 'Saving…' : 'Save capture'}
           </button>

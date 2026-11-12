@@ -1,7 +1,11 @@
 import type { NextConfig } from 'next';
+import { resolve } from 'node:path';
 const config: NextConfig = {
   devIndicators: false,
   distDir: process.env.PRISM_NEXT_DIST_DIR || '.next',
+  ...(process.env.PRISM_NEXT_STANDALONE === 'true'
+    ? { output: 'standalone', outputFileTracingRoot: resolve('../..'), images: { unoptimized: true } }
+    : {}),
   async headers() {
     return [
       {

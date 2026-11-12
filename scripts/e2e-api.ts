@@ -15,11 +15,20 @@ const config = loadConfig({
   PRISM_DATA_DIR: dataDir,
   PRISM_WEB_ORIGIN: 'http://127.0.0.1:3100',
 });
-const app = await buildApp({ db, config });
-const fixtureFetch: typeof fetch = async () => {
+// The entire suite shares one loopback client and server for all workflows.
+const app = await buildApp({ db, config, rateLimitMax: 1000 });
+const fixtureFetch: typeof fetch = async (input) => {
   const now = new Date().toISOString();
+  const url = new URL(input instanceof Request ? input.url : input);
+  const categories = (url.searchParams.get('search_query') ?? '').split(' OR ');
+  const entries = [
+    { category: 'math.AC', id: '2611.99998', title: 'PRISM E2E metadata fixture' },
+    { category: 'math.AG', id: '2611.99999', title: 'PRISM E2E algebraic geometry fixture' },
+    { category: 'math.AG', id: '2611.99997', title: 'Commutative algebra and graded ideals' },
+    { category: 'math.AG', id: '2611.99996', title: 'Commutative algebra in projective geometry' },
+  ].filter(({ category }) => categories.includes(`cat:${category}`));
   return new Response(
-    `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>1</opensearch:totalResults><entry><id>http://arxiv.org/abs/2611.99998v1</id><title>PRISM E2E metadata fixture</title><summary>Test-only fixture about monomial ideals for validating the digest workflow.</summary><author><name>Test Fixture Author</name></author><category term="math.AC"/><published>${now}</published><updated>${now}</updated></entry></feed>`,
+    `<?xml version="1.0"?><feed xmlns="http://www.w3.org/2005/Atom" xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"><opensearch:totalResults>${entries.length}</opensearch:totalResults>${entries.map(({ category, id, title }) => `<entry><id>http://arxiv.org/abs/${id}v1</id><title>${title}</title><summary>Test-only paper for the digest workflow.</summary><author><name>Test Fixture Author</name></author><category term="${category}"/><published>${now}</published><updated>${now}</updated></entry>`).join('')}</feed>`,
     { headers: { 'Content-Type': 'application/atom+xml' } },
   );
 };

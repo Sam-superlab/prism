@@ -21,6 +21,17 @@ export async function createTestPostgres() {
   runtimeUrl.pathname = '/' + name;
   const owner = new pg.Pool({ connectionString: adminUrl.toString() });
   await owner.query(await readFile(new URL('../../../database/schema.sql', import.meta.url), 'utf8'));
+  for (const migration of [
+    '002_arxiv_for_you',
+    '003_arxiv_for_you_rounds',
+    '004_ai_review_drafts',
+    '005_proof_recall',
+    '006_research_project_knowledge',
+  ]) {
+    await owner.query(
+      await readFile(new URL(`../../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'),
+    );
+  }
   const role = decodeURIComponent(runtimeUrl.username);
   if (!/^[a-z_][a-z0-9_]*$/.test(role)) throw new Error('Invalid test role');
   await owner.query(

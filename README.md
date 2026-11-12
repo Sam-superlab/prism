@@ -143,3 +143,5 @@ Open Practice → Import exercises to select a text PDF and page range. Review t
 Settings → Appearance → Translucent surfaces controls the frosted navigation. The reading and editing surfaces use solid backgrounds. The macOS app also honors the system Reduce Transparency setting.
 
 Open **Settings → Getting Started** to view the tutorial in English, Simplified Chinese, or Japanese. The guide covers creating a note, making and reviewing a card, importing PDF exercises, and adjusting the frosted appearance. Switching tutorial languages preserves your checklist progress.
+
+Link notes and papers to active projects to guide new For You recommendations. The matching runs locally. In Settings, the keyboard shortcut table shows keys for your platform. Desktop apps check for updates once an hour while open.

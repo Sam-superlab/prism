@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { Queue, Worker as QueueWorker } from 'bullmq';
 import { Redis } from 'ioredis';
+import { activeArxivSubscriptions, arxivSubscriptionKey, enqueueArxivIngestion } from '@prism/core';
 import type { Database, Row, Sql } from '@prism/database';
 import { inQuietHours, localDate, nextLocalTime } from '@prism/shared-utils';
-import { ArxivFetchError, fetchRecentPapers, type RankedPaper, type Subscription } from './arxiv';
+import { ArxivFetchError, fetchRecentPapers, type RankedPaper } from './arxiv';
 export * from './arxiv';
 
 export interface WorkerBackend {
@@ -92,26 +93,18 @@ export function startWorker(options: WorkerOptions) {
     const preferences = (await sql.query('SELECT * FROM user_preferences WHERE user_id=$1', [userId]))
       .rows[0];
     if (!user || !preferences) throw new Error('Worker user not initialized');
-    const subscriptions = (
-      await sql.query(
-        'SELECT * FROM arxiv_subscriptions WHERE user_id=$1 AND enabled AND deleted_at IS NULL',
-        [userId],
-      )
-    ).rows as Subscription[];
+    const subscriptions = await activeArxivSubscriptions(sql, userId);
     return { user, preferences, subscriptions };
   };
 
   async function enqueue(kind: string, date: string, scheduledAt: string) {
     const dedupe = `${kind}:${date}:v1`;
     await db.transaction(userId, async (sql) => {
-      const conflict =
-        kind === 'arxiv_ingest'
-          ? 'DO NOTHING'
-          : `DO UPDATE SET scheduled_at=EXCLUDED.scheduled_at,payload=EXCLUDED.payload,updated_at=now(),version=automation_jobs.version+1
-        WHERE automation_jobs.status='pending' AND automation_jobs.scheduled_at IS DISTINCT FROM EXCLUDED.scheduled_at`;
       await sql.query(
         `INSERT INTO automation_jobs(id,user_id,job_type,scheduled_at,idempotency_key,payload)
-        VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT(user_id,idempotency_key) ${conflict}`,
+        VALUES($1,$2,$3,$4,$5,$6::jsonb) ON CONFLICT(user_id,idempotency_key)
+        DO UPDATE SET scheduled_at=EXCLUDED.scheduled_at,payload=EXCLUDED.payload,updated_at=now(),version=automation_jobs.version+1
+        WHERE automation_jobs.status='pending' AND automation_jobs.scheduled_at IS DISTINCT FROM EXCLUDED.scheduled_at`,
         [randomUUID(), userId, kind, scheduledAt, dedupe, JSON.stringify({ local_date: date })],
       );
     });
@@ -119,10 +112,17 @@ export function startWorker(options: WorkerOptions) {
 
   async function execute(jobId: string) {
     const job = await db.transaction(userId, async (sql) => {
+      // Multiple consumers may see different jobs for one account. Claim one ingestion at a time.
+      await sql.query('SELECT id FROM users WHERE id=$1 FOR UPDATE', [userId]);
       const claim = await sql.query(
-        `SELECT * FROM automation_jobs WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL
+        `SELECT * FROM automation_jobs j WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL
         AND job_type IN('arxiv_ingest','digest','plan','shutdown')
-        AND attempts<5 AND scheduled_at<=now() AND (status IN('pending','failed') OR (status='running' AND lease_expires_at<now())) FOR UPDATE SKIP LOCKED`,
+        AND attempts<5 AND scheduled_at<=now() AND (status IN('pending','failed') OR (status='running' AND lease_expires_at<now()))
+        AND (job_type<>'arxiv_ingest' OR NOT EXISTS (
+          SELECT 1 FROM automation_jobs active WHERE active.user_id=j.user_id AND active.id<>j.id
+          AND active.job_type='arxiv_ingest' AND active.status='running' AND active.lease_expires_at>=now()
+          AND active.deleted_at IS NULL
+        )) FOR UPDATE OF j SKIP LOCKED`,
         [jobId, userId],
       );
       if (!claim.rows[0]) return null;
@@ -150,7 +150,14 @@ export function startWorker(options: WorkerOptions) {
     try {
       const ctx = await db.transaction(userId, context);
       const payload = typeof job.payload === 'string' ? JSON.parse(job.payload) : job.payload;
-      if (payload.local_date !== localDate(new Date(), ctx.user.timezone)) {
+      const outdatedSubscriptions =
+        job.job_type === 'arxiv_ingest' &&
+        payload.subscription_key &&
+        payload.subscription_key !== arxivSubscriptionKey(ctx.subscriptions);
+      if (
+        !payload.manual &&
+        (payload.local_date !== localDate(new Date(), ctx.user.timezone) || outdatedSubscriptions)
+      ) {
         await db.transaction(userId, (sql) =>
           sql.query(
             "UPDATE automation_jobs SET status='succeeded',finished_at=now(),lease_expires_at=NULL,payload=payload||'{\"skipped_stale\":true}'::jsonb WHERE id=$1",
@@ -162,26 +169,32 @@ export function startWorker(options: WorkerOptions) {
       }
       if (job.job_type === 'arxiv_ingest') {
         if (!Array.isArray(payload.papers)) {
+          const subscriptionKey = arxivSubscriptionKey(ctx.subscriptions);
           const previous = await db.transaction(
             userId,
             async (sql) =>
               (
                 await sql.query(
                   `SELECT max(finished_at) finished FROM automation_jobs
-            WHERE user_id=$1 AND job_type='arxiv_ingest' AND status='succeeded' AND coalesce((payload->>'skipped_stale')::boolean,false)=false`,
-                  [userId],
+            WHERE user_id=$1 AND job_type='arxiv_ingest' AND status='succeeded' AND payload->>'subscription_key'=$2
+            AND coalesce((payload->>'skipped_stale')::boolean,false)=false`,
+                  [userId, subscriptionKey],
                 )
               ).rows[0]?.finished,
           );
-          const since = previous ? new Date(new Date(previous).getTime() - 7 * 86400000) : undefined;
-          const result = await fetchRecentPapers(ctx.subscriptions, {
-            fetch: remoteFetch,
-            userAgent: options.userAgent,
-            withRateLimit,
-            since,
-          });
+          const previousTime = previous ? new Date(previous).getTime() : 0;
+          const result =
+            payload.manual && Date.now() - previousTime < 60000
+              ? { papers: [], quarantined: [] }
+              : await fetchRecentPapers(ctx.subscriptions, {
+                  fetch: remoteFetch,
+                  userAgent: options.userAgent,
+                  withRateLimit,
+                  since: previousTime ? new Date(previousTime - 7 * 86400000) : undefined,
+                });
           payload.papers = result.papers;
           payload.quarantined = result.quarantined;
+          payload.subscription_key = subscriptionKey;
           // Freeze an ingested command across retries: source updates cannot change an already committed idempotency hash.
           await db.transaction(userId, (sql) =>
             sql.query('UPDATE automation_jobs SET payload=$2::jsonb WHERE id=$1', [
@@ -315,12 +328,22 @@ export function startWorker(options: WorkerOptions) {
     if (stopped || ticking) return;
     ticking = true;
     try {
+      await db.transaction(userId, (sql) =>
+        sql.query(
+          `UPDATE automation_jobs SET status='dead',finished_at=now(),lease_expires_at=NULL,
+           error_message='The final arXiv refresh attempt was interrupted',updated_at=now(),version=version+1
+           WHERE user_id=$1 AND job_type='arxiv_ingest' AND status='running' AND attempts=5
+           AND lease_expires_at<now() AND deleted_at IS NULL`,
+          [userId],
+        ),
+      );
       const { user, preferences, subscriptions } = await db.transaction(userId, context);
       const now = new Date(),
         date = localDate(now, user.timezone);
       const digest = preferences.digest_preferences ?? {},
         notifications = preferences.notification_preferences ?? {};
-      if (subscriptions.length) await enqueue('arxiv_ingest', date, now.toISOString());
+      if (subscriptions.length)
+        await db.transaction(userId, (sql) => enqueueArxivIngestion(sql, userId, false));
       if (digest.enabled !== false)
         await enqueue('digest', date, nextLocalTime(date, digest.time ?? '08:00', user.timezone));
       await enqueue('plan', date, nextLocalTime(date, '00:05', user.timezone));
@@ -388,7 +411,7 @@ export function startWorker(options: WorkerOptions) {
   }
   const timer = setInterval(() => {
     void tick();
-  }, options.intervalMs ?? 60000);
+  }, options.intervalMs ?? 5000);
   timer.unref();
   const first = setTimeout(() => {
     void tick();

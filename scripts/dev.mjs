@@ -14,6 +14,7 @@ import { createServer } from 'node:net';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadEnvFile } from 'node:process';
+import { createMacUpdateServer, macUpdateHost, macUpdatePort } from './serve-macos-updates.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 try {
@@ -26,8 +27,9 @@ if (process.env.NODE_ENV === 'production')
 const apiPort = Number(process.env.PRISM_PORT ?? 4000);
 if (!Number.isInteger(apiPort) || apiPort < 1 || apiPort > 65535 || apiPort === 3000)
   throw new Error('PRISM_PORT must be an available API port distinct from Web port 3000.');
+const { OPENAI_API_KEY: openaiApiKey, ...launcherEnv } = process.env;
 const env = {
-  ...process.env,
+  ...launcherEnv,
   PATH: `${dirname(process.execPath)}:${process.env.PATH ?? ''}`,
   NODE_ENV: 'development',
   PRISM_AUTH_MODE: 'development',
@@ -69,6 +71,7 @@ const owner = {
   phase: 'starting',
 };
 const children = [];
+let macUpdateServer;
 let ownsLock = false;
 let stopping = false;
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
@@ -174,6 +177,8 @@ function signalChild(child, signal) {
 async function stop(code = 0) {
   if (stopping) return;
   stopping = true;
+  macUpdateServer?.close();
+  macUpdateServer?.closeAllConnections();
   try {
     setPhase('stopping');
   } catch (error) {
@@ -186,9 +191,10 @@ async function stop(code = 0) {
   process.exit(code);
 }
 function start(name) {
-  const child = spawn('pnpm', ['--filter', name, 'dev'], {
+  // Starting PRISM from Finder has no terminal for pnpm's automatic reinstall prompt.
+  const child = spawn('pnpm', ['--config.verify-deps-before-run=false', '--filter', name, 'dev'], {
     cwd: root,
-    env,
+    env: name === '@prism/api' && openaiApiKey ? { ...env, OPENAI_API_KEY: openaiApiKey } : env,
     stdio: 'inherit',
     detached: process.platform !== 'win32',
   });
@@ -255,7 +261,7 @@ function showReady(reused = false) {
     `\n${reused ? 'PRISM 已在运行，已复用现有实例。' : 'PRISM 已启动。'}\nWeb ${webUrl}\nAPI ${env.PRISM_API_URL}\n`,
   );
   if (process.env.PRISM_OPEN_BROWSER === '1' && process.platform === 'darwin') {
-    const browser = spawn('open', [webUrl], { stdio: 'ignore' });
+    const browser = spawn('open', [webUrl], { env, stdio: 'ignore' });
     browser.on('error', () => console.error(`请在浏览器打开 ${webUrl}`));
     browser.unref();
   }
@@ -280,6 +286,13 @@ try {
   } else {
     await assertPortFree(3000);
     await assertPortFree(apiPort);
+    if (process.platform === 'darwin') {
+      macUpdateServer = createMacUpdateServer(root);
+      macUpdateServer.on('error', (error) => {
+        console.error(`PRISM 本机更新服务不可用（${error.code ?? 'IO_ERROR'}）。`);
+      });
+      macUpdateServer.listen(macUpdatePort, macUpdateHost);
+    }
     start('@prism/api');
     if (!(await waitReady(false))) throw new Error('API 未能就绪，请查看上方启动输出。');
     if (!stopping) start('@prism/web');
