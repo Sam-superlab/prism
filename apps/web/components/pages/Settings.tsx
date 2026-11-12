@@ -445,9 +445,9 @@ function ProfileForm({ user, onSaved }: { user: User; onSaved: () => void }) {
   );
 }
 function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences; onSaved: () => void }) {
-  const [retention, setRetention] = useState(p.desired_retention);
-  const [limit, setLimit] = useState(p.daily_review_limit);
-  const [capacity, setCapacity] = useState(p.default_study_capacity_minutes);
+  const [retention, setRetention] = useState(String(p.desired_retention));
+  const [limit, setLimit] = useState(String(p.daily_review_limit));
+  const [capacity, setCapacity] = useState(String(p.default_study_capacity_minutes));
   const [digest, setDigest] = useState(p.digest_preferences.enabled);
   const [digestTime, setDigestTime] = useState(p.digest_preferences.time || '08:00');
   const [push, setPush] = useState(p.notification_preferences.push_enabled);
@@ -464,9 +464,9 @@ function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences
             method: 'PATCH',
             version: p.version,
             body: {
-              desired_retention: retention,
-              daily_review_limit: limit,
-              default_study_capacity_minutes: capacity,
+              desired_retention: Number(retention),
+              daily_review_limit: Number(limit),
+              default_study_capacity_minutes: Number(capacity),
               notification_preferences: {
                 push_enabled: push,
                 quiet_start: quietStart,
@@ -491,7 +491,7 @@ function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences
             max="0.99"
             step="0.01"
             value={retention}
-            onChange={(e) => setRetention(Number(e.target.value))}
+            onChange={(e) => setRetention(e.target.value)}
           />
         </Field>
         <Field label="Daily review limit">
@@ -501,7 +501,7 @@ function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences
             min="0"
             max="1000"
             value={limit}
-            onChange={(e) => setLimit(Number(e.target.value))}
+            onChange={(e) => setLimit(e.target.value)}
           />
         </Field>
       </div>
@@ -512,7 +512,7 @@ function PreferencesForm({ preferences: p, onSaved }: { preferences: Preferences
           min="0"
           max="1440"
           value={capacity}
-          onChange={(e) => setCapacity(Number(e.target.value))}
+          onChange={(e) => setCapacity(e.target.value)}
         />
       </Field>
       <div className="content-divider" />

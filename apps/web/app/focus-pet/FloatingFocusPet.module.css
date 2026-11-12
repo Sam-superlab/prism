@@ -5,6 +5,7 @@
 }
 
 .shell {
+  position: relative;
   display: grid;
   grid-template-rows: 18px minmax(0, 1fr) auto;
   inline-size: 100%;
@@ -16,8 +17,8 @@
   justify-items: center;
   align-items: center;
   color: var(--accent-ink, var(--accent));
-  -webkit-app-region: drag;
   user-select: none;
+  touch-action: none;
 }
 
 .shell[data-phase='break'] {
@@ -33,9 +34,42 @@
   cursor: grab;
 }
 
-.shell > button {
-  max-inline-size: 160px;
+.runner {
+  inline-size: min(100%, 144px);
   filter: drop-shadow(0 4px 6px #142c6235);
+}
+
+.shell[data-motion='running'] :is(.handle, .runner button) {
+  cursor: grabbing;
+}
+
+.context {
+  position: absolute;
+  inset-inline: 8px;
+  inset-block-end: 56px;
+  z-index: 1;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 6px 18px #16203c40;
+  color: var(--ink);
+}
+
+.context button {
+  inline-size: 100%;
+  padding: 7px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-align: start;
+}
+
+.context button:hover,
+.context button:focus-visible {
+  background: var(--surface-secondary);
 }
 
 .tray {

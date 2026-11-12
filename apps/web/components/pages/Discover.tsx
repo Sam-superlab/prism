@@ -488,7 +488,7 @@ function SubscriptionModal({ onClose, onSaved }: { onClose: () => void; onSaved:
   const [creationId] = useState(uuid);
   const [type, setType] = useState('category');
   const [value, setValue] = useState('');
-  const [weight, setWeight] = useState(1);
+  const [weight, setWeight] = useState('1');
   const a = useAction(onSaved);
   return (
     <Modal title="Follow your research interests" onClose={onClose}>
@@ -502,7 +502,7 @@ function SubscriptionModal({ onClose, onSaved }: { onClose: () => void; onSaved:
                 id: creationId,
                 subscription_type: type,
                 subscription_value: value.trim(),
-                weight,
+                weight: Number(weight),
                 enabled: true,
               },
             }),
@@ -558,7 +558,7 @@ function SubscriptionModal({ onClose, onSaved }: { onClose: () => void; onSaved:
             max="10"
             required
             value={weight}
-            onChange={(e) => setWeight(Number(e.target.value))}
+            onChange={(e) => setWeight(e.target.value)}
           />
         </Field>
         {a.error && <Notice tone="error">{a.error}</Notice>}
@@ -584,7 +584,7 @@ function PaperTaskModal({
   const projects = useResource<Page<Project>>('/research/projects?limit=100');
   const [project, setProject] = useState('');
   const [title, setTitle] = useState(`Read: ${paper.paper.title}`.slice(0, 300));
-  const [minutes, setMinutes] = useState(45);
+  const [minutes, setMinutes] = useState('45');
   const [due, setDue] = useState('');
   const a = useAction(onSaved);
   return (
@@ -598,7 +598,7 @@ function PaperTaskModal({
               body: {
                 id: creationId,
                 title,
-                estimated_minutes: minutes,
+                estimated_minutes: Number(minutes),
                 project_id: project || null,
                 due_at: due ? localInputToInstant(due) : null,
               },
@@ -617,7 +617,7 @@ function PaperTaskModal({
               max="1440"
               required
               value={minutes}
-              onChange={(e) => setMinutes(Number(e.target.value))}
+              onChange={(e) => setMinutes(e.target.value)}
             />
           </Field>
           <Field label="Linked project (optional)">

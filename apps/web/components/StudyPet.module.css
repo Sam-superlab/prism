@@ -74,6 +74,171 @@
   animation: heart-rise 620ms var(--motion-out, ease-out);
 }
 
+.idle {
+  transition: opacity 120ms ease-out;
+}
+
+.dash {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.dashFacing {
+  transform-box: view-box;
+  transform-origin: center;
+  transition: transform 110ms cubic-bezier(0.38, 0.06, 0.24, 1);
+}
+
+.pet[data-direction='left'] .dashFacing {
+  transform: scaleX(-1);
+}
+
+.dashBody,
+.dashTail,
+.dashShadow,
+.nearPaw,
+.farPaw {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+}
+
+.dashTail {
+  transform-origin: right center;
+}
+
+.pet[data-motion='running'] .idle {
+  opacity: 0;
+  transition-duration: 52ms;
+}
+
+.pet[data-motion='running'] .dash {
+  animation: dash-in 78ms 28ms ease-out both;
+}
+
+.pet[data-motion='running'] .dashBody {
+  animation: bound 350ms ease-in-out infinite;
+}
+
+.pet[data-motion='running'] .dashTail {
+  animation: trail-tail 350ms ease-in-out infinite;
+}
+
+.pet[data-motion='running'] :is(.nearPaw, .farPaw) {
+  animation: gallop-paw 350ms ease-in-out infinite;
+}
+
+.pet[data-motion='running'] .farPaw {
+  animation-delay: -175ms;
+}
+
+.pet[data-motion='running'] .dashShadow {
+  animation: bound-shadow 350ms ease-in-out infinite;
+}
+
+.pet[data-motion='settling'] .idle {
+  transition-delay: 135ms;
+}
+
+.pet[data-motion='settling'] .dash {
+  animation: dash-out 225ms ease-in both;
+}
+
+.pet[data-motion='settling'] .dashBody {
+  animation: land 225ms ease-out both;
+}
+
+@keyframes dash-in {
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes dash-out {
+  0%,
+  42% {
+    opacity: 1;
+  }
+  85%,
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes bound {
+  0%,
+  100% {
+    transform: translateY(1px) scale(1.04, 0.95);
+  }
+  26% {
+    transform: translateY(-6px) scale(0.98, 1.035);
+  }
+  56% {
+    transform: translateY(-9px) scale(1.025, 0.99);
+  }
+  83% {
+    transform: translateY(-1px) scale(0.99, 1.02);
+  }
+}
+
+@keyframes gallop-paw {
+  0%,
+  100% {
+    transform: translate(7px, -1px) rotate(-16deg);
+  }
+  27% {
+    transform: translate(-11px, 1px) rotate(17deg);
+  }
+  51% {
+    transform: translate(-8px, -6px) rotate(35deg);
+  }
+  76% {
+    transform: translate(5px, -5px) rotate(-28deg);
+  }
+}
+
+@keyframes trail-tail {
+  50% {
+    transform: rotate(14deg);
+  }
+}
+
+@keyframes bound-shadow {
+  0%,
+  100% {
+    opacity: 0.2;
+    transform: scaleX(1);
+  }
+  56% {
+    opacity: 0.1;
+    transform: scaleX(0.76);
+  }
+}
+
+@keyframes land {
+  0% {
+    transform: translateY(-4px);
+  }
+  33% {
+    transform: translateY(2px) scale(1.075, 0.91);
+  }
+  74% {
+    transform: translateY(-1px) scale(0.99, 1.02);
+  }
+}
+
+.dashShadow {
+  opacity: 0.2;
+}
+
+:global([data-reduced-motion='true']) .pet[data-motion] .idle {
+  opacity: 1;
+  transition: none;
+}
+
+:global([data-reduced-motion='true']) .pet[data-motion] .dash {
+  display: none;
+}
+
 @keyframes breathe {
   50% {
     transform: translateY(-3px);
@@ -145,5 +310,14 @@
 
   .art {
     transition: none;
+  }
+
+  .pet[data-motion] .idle {
+    opacity: 1;
+    transition: none;
+  }
+
+  .pet[data-motion] .dash {
+    display: none;
   }
 }

@@ -1,6 +1,15 @@
 import { randomUUID } from 'node:crypto';
 import { expect, test } from '@playwright/test';
 
+test('lets a numeric draft stay empty while replacing its value', async ({ page }) => {
+  await page.goto('/today');
+  const capacity = page.getByRole('spinbutton', { name: 'Daily capacity in minutes' });
+  await capacity.fill('');
+  await expect(capacity).toHaveValue('');
+  await capacity.press('2');
+  await expect(capacity).toHaveValue('2');
+});
+
 test('refreshes an existing Today plan when a task is added and explains deferrals', async ({
   page,
   request,

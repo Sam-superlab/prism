@@ -70,7 +70,7 @@ export function TodayPage({
   const inbox = useResource<Page<InboxEntry>>('/inbox?limit=100');
   const [editingTask, setEditingTask] = useState<Task | undefined>();
   const [poolFilter, setPoolFilter] = useState('pending');
-  const [capacity, setCapacity] = useState<number | null>(null);
+  const [capacityDraft, setCapacityDraft] = useState<string | null>(null);
   const [tab, setTab] = useState('pending');
   const [addTask, setAddTask] = useState(false);
   const [savedTask, setSavedTask] = useState<Task | null>(null);
@@ -102,6 +102,9 @@ export function TodayPage({
   };
   const action = useAction(refresh);
   const d = today.data?.date === date ? today.data : null;
+  const capacity = capacityDraft === null ? (d?.capacity_minutes ?? 180) : Number(capacityDraft);
+  const capacityValid =
+    capacityDraft !== '' && Number.isInteger(capacity) && capacity >= 0 && capacity <= 1440;
   const draftDate =
     process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d && !planner ? previousDate(d.date) : null;
   const reloadToday = today.reload;
@@ -183,6 +186,7 @@ export function TodayPage({
   const workspaceTasks = tasks.data?.items.filter((t) => t.source_type !== 'workout') ?? [];
   const taskById = new Map(workspaceTasks.map((t) => [t.id, t]));
   async function generate() {
+    if (!capacityValid) return;
     setAutoError('');
     await action.run(() =>
       api('/daily-plans/generate', {
@@ -190,7 +194,7 @@ export function TodayPage({
         body: {
           plan_date: date,
           timezone: me.data?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-          capacity_minutes: capacity ?? d?.capacity_minutes ?? 180,
+          capacity_minutes: capacity,
           override_manual: false,
         },
       }),
@@ -428,7 +432,11 @@ export function TodayPage({
                   icon="planner"
                   title="Give today a clear plan"
                   action={
-                    <button className="button primary" onClick={() => void generate()} disabled={action.busy}>
+                    <button
+                      className="button primary"
+                      onClick={() => void generate()}
+                      disabled={action.busy || !capacityValid}
+                    >
                       Plan today
                       <Icon name="arrow" size={16} />
                     </button>
@@ -601,8 +609,8 @@ export function TodayPage({
                     type="number"
                     min="0"
                     max="1440"
-                    value={capacity ?? d.capacity_minutes}
-                    onChange={(e) => setCapacity(Number(e.target.value))}
+                    value={capacityDraft ?? d.capacity_minutes}
+                    onChange={(e) => setCapacityDraft(e.target.value)}
                   />
                   <span>Minutes</span>
                 </div>
@@ -610,8 +618,8 @@ export function TodayPage({
                   {[60, 120, 180, 240].map((n) => (
                     <button
                       key={n}
-                      className={(capacity ?? d.capacity_minutes) === n ? 'selected' : ''}
-                      onClick={() => setCapacity(n)}
+                      className={capacityValid && capacity === n ? 'selected' : ''}
+                      onClick={() => setCapacityDraft(String(n))}
                     >
                       {n / 60} h
                     </button>
@@ -625,15 +633,17 @@ export function TodayPage({
                 ) : (
                   <div className="capacity-hint">
                     <span className="status-dot" />
-                    {d.estimated_remaining_minutes <= (capacity ?? d.capacity_minutes)
-                      ? 'Your workload fits the available time'
-                      : 'Generate a plan to see which tasks need more time'}
+                    {!capacityValid
+                      ? 'Enter a whole number from 0 to 1440 minutes'
+                      : d.estimated_remaining_minutes <= capacity
+                        ? 'Your workload fits the available time'
+                        : 'Generate a plan to see which tasks need more time'}
                   </div>
                 )}
                 <button
                   className="button primary full"
                   onClick={() => void generate()}
-                  disabled={action.busy || autoPlanning}
+                  disabled={action.busy || autoPlanning || !capacityValid}
                 >
                   {action.busy ? 'Planning…' : plan ? 'Replan' : 'Generate plan'}
                   <Icon name="refresh" size={15} />
@@ -918,7 +928,7 @@ export function TaskModal({
   const [creationId] = useState(uuid);
   const [title, setTitle] = useState(task?.title || '');
   const [description, setDescription] = useState(task?.description || '');
-  const [minutes, setMinutes] = useState(task?.estimated_minutes || 30);
+  const [minutes, setMinutes] = useState(String(task?.estimated_minutes ?? 30));
   const [priority, setPriority] = useState(task?.priority || 3);
   const [due, setDue] = useState(instantToLocalInput(task?.due_at));
   const [dueChanged, setDueChanged] = useState(false);
@@ -943,7 +953,7 @@ export function TaskModal({
               }),
           title,
           description,
-          estimated_minutes: minutes,
+          estimated_minutes: Number(minutes),
           priority,
           ...(!task || dueChanged ? { due_at: due ? localInputToInstant(due) : null } : {}),
           hard_deadline: Boolean(due && hard),
@@ -984,7 +994,7 @@ export function TaskModal({
               min="1"
               max="1440"
               value={minutes}
-              onChange={(e) => setMinutes(Number(e.target.value))}
+              onChange={(e) => setMinutes(e.target.value)}
             />
           </Field>
           <Field label="Priority">

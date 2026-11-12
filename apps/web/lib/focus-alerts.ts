@@ -1,7 +1,7 @@
 import type { FocusPhase, FocusSession } from './focus-timer';
 
 export type FocusOptions = { sound: boolean; pet: boolean };
-export const defaultFocusOptions: FocusOptions = { sound: true, pet: false };
+export const defaultFocusOptions: FocusOptions = { sound: true, pet: true };
 
 export type DesktopFocusState = FocusOptions & {
   endsAt: number | null;
@@ -26,7 +26,7 @@ export function desktopFocusBridge() {
 export function readFocusOptions(key: string): FocusOptions {
   try {
     const saved = JSON.parse(localStorage.getItem(key) ?? '{}');
-    return { sound: saved?.sound !== false, pet: saved?.pet === true };
+    return { sound: saved?.sound !== false, pet: saved?.pet !== false };
   } catch {
     return defaultFocusOptions;
   }

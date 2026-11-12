@@ -369,7 +369,7 @@ function QuickCapture({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const [content, setContent] = useState('');
   const [kind, setKind] = useState('inbox');
   const [title, setTitle] = useState('');
-  const [minutes, setMinutes] = useState(30);
+  const [minutes, setMinutes] = useState('30');
   const [project, setProject] = useState('');
   const projects = useResource<Page<Project>>(kind === 'research' ? '/research/projects' : null);
   const action = useAction(onSaved);
@@ -393,7 +393,7 @@ function QuickCapture({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           title: title || content.slice(0, 50),
           description: content,
           source_type: 'general',
-          estimated_minutes: minutes,
+          estimated_minutes: Number(minutes),
         },
       });
     });
@@ -460,7 +460,7 @@ function QuickCapture({ onClose, onSaved }: { onClose: () => void; onSaved: () =
               max="1440"
               required
               value={minutes}
-              onChange={(e) => setMinutes(Number(e.target.value))}
+              onChange={(e) => setMinutes(e.target.value)}
             />
           </Field>
         )}

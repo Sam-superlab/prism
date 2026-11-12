@@ -192,9 +192,20 @@ function installFocusDesktop(mainWindow, origin) {
     if (trustedSender(event, companion, (url) => url === petUrl)) revealFocus();
   }
 
+  function onDrag(event, dx, dy) {
+    if (!trustedSender(event, companion, (url) => url === petUrl)) return;
+    if (![dx, dy].every((delta) => Number.isFinite(delta) && Math.abs(delta) <= 500)) return;
+    const bounds = companion.getBounds();
+    const { workArea } = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+    const x = Math.max(workArea.x, Math.min(bounds.x + dx, workArea.x + workArea.width - bounds.width));
+    const y = Math.max(workArea.y, Math.min(bounds.y + dy, workArea.y + workArea.height - bounds.height));
+    companion.setPosition(Math.round(x), Math.round(y));
+  }
+
   ipcMain.on('prism:focus-state', onState);
   ipcMain.on('prism:hide-pet', onHide);
   ipcMain.on('prism:open-focus', onOpen);
+  ipcMain.on('prism:drag-pet', onDrag);
   powerMonitor.on('resume', fireAlarm);
 
   return {
@@ -205,6 +216,7 @@ function installFocusDesktop(mainWindow, origin) {
       ipcMain.off('prism:focus-state', onState);
       ipcMain.off('prism:hide-pet', onHide);
       ipcMain.off('prism:open-focus', onOpen);
+      ipcMain.off('prism:drag-pet', onDrag);
       powerMonitor.off('resume', fireAlarm);
       notice?.close();
       companion?.destroy();

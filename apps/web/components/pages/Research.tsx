@@ -565,7 +565,7 @@ function ProjectEditor({
   const [description, setDescription] = useState(project?.description || '');
   const [area, setArea] = useState(project?.research_area || '');
   const [status, setStatus] = useState(project?.status || 'active');
-  const [importance, setImportance] = useState(project?.importance || 3);
+  const [importance, setImportance] = useState(String(project?.importance ?? 3));
   const [deadline, setDeadline] = useState(instantToLocalInput(project?.deadline));
   const [deadlineChanged, setDeadlineChanged] = useState(false);
   const [notes, setNotes] = useState(project?.notes || '');
@@ -588,7 +588,7 @@ function ProjectEditor({
                   description,
                   research_area: area,
                   status,
-                  importance,
+                  importance: Number(importance),
                   ...(!project || deadlineChanged
                     ? { deadline: deadline ? localInputToInstant(deadline) : null }
                     : {}),
@@ -638,7 +638,7 @@ function ProjectEditor({
               max="5"
               required
               value={importance}
-              onChange={(e) => setImportance(Number(e.target.value))}
+              onChange={(e) => setImportance(e.target.value)}
             />
           </Field>
           <Field label="Deadline (optional)">

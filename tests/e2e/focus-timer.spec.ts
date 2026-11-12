@@ -63,6 +63,7 @@ test('persists muted reminders and desktop companion visibility', async ({ page 
   const settings = page.getByRole('region', { name: 'Focus timer' });
   const sound = settings.getByRole('switch', { name: /Timer sound/ });
   const pet = settings.getByRole('switch', { name: /Desktop companion/ });
+  await expect(pet).toBeChecked();
   await sound.uncheck();
   await pet.check();
   await expect(page.locator('html')).toHaveAttribute('data-test-focus', /"sound":false.*"pet":true/);
@@ -72,4 +73,38 @@ test('persists muted reminders and desktop companion visibility', async ({ page 
   await page.evaluate(() => window.dispatchEvent(new Event('prism:hide-pet')));
   await expect(pet).not.toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('data-test-focus', /"sound":false.*"pet":false/);
+  await page.reload();
+  await expect(pet).not.toBeChecked();
+});
+
+test('runs in the drag direction and offers a right-click hide action', async ({ page }) => {
+  await page.addInitScript(() => {
+    Object.defineProperty(window, 'prismFocus', {
+      value: {
+        dragPet: (dx: number) => (document.documentElement.dataset.testDrag = String(dx)),
+        hidePet: () => (document.documentElement.dataset.testHidden = 'true'),
+      },
+    });
+  });
+  await page.goto('/focus-pet');
+  await expect(page.getByRole('button', { name: 'Hide study companion' })).toBeVisible();
+  const shell = page.getByRole('main', { name: 'Study companion' });
+  const pet = page.getByRole('button', { name: 'Pet study companion' });
+  await pet.hover();
+  const { x, y, width, height } = (await pet.boundingBox())!;
+  const centerX = x + width / 2;
+  const centerY = y + height / 2;
+  await page.mouse.down();
+  await page.mouse.move(centerX + 18, centerY);
+  await expect(shell).toHaveAttribute('data-motion', 'running');
+  await expect(shell).toHaveAttribute('data-direction', 'right');
+  await page.mouse.move(centerX - 18, centerY);
+  await expect(shell).toHaveAttribute('data-direction', 'left');
+  await expect(page.locator('html')).toHaveAttribute('data-test-drag', '-36');
+  await page.mouse.up();
+  await expect(shell).toHaveAttribute('data-motion', 'settling');
+  await expect(pet).not.toHaveAttribute('data-petted', 'true');
+  await pet.click({ button: 'right' });
+  await page.getByRole('button', { name: 'Hide desktop companion' }).click();
+  await expect(page.locator('html')).toHaveAttribute('data-test-hidden', 'true');
 });

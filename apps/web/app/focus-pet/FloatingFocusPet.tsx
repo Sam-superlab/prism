@@ -25,7 +25,11 @@ type PetWindow = {
       };
     };
   };
-  prismFocus?: { hidePet?: () => void; openFocus?: () => void };
+  prismFocus?: {
+    hidePet?: () => void;
+    openFocus?: () => void;
+    dragPet?: (dx: number, dy: number) => void;
+  };
 };
 
 const defaultState: FocusState = { endsAt: null, phase: 'focus', mood: 'ready', reducedMotion: false };
@@ -64,9 +68,14 @@ export function FloatingFocusPet() {
   const [state, setState] = useState(defaultState);
   const [now, setNow] = useState(0);
   const [actions, setActions] = useState({ hide: false, open: false });
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [motion, setMotion] = useState<'running' | 'settling'>();
+  const [direction, setDirection] = useState<'left' | 'right'>('right');
+  const menuTrigger = useRef<HTMLElement | null>(null);
   const drag = useRef<
-    { id: number; x: number; y: number; clientY: number; verticalSign?: number } | undefined
+    { id: number; x: number; y: number; clientY: number; verticalSign?: number; moved: boolean } | undefined
   >(undefined);
+  const suppressClick = useRef(false);
 
   useEffect(() => {
     const bridge = readBridge();
@@ -112,14 +121,25 @@ export function FloatingFocusPet() {
   }
 
   function startDrag(event: PointerEvent<HTMLElement>) {
+    const target = event.target as Element;
+    if (target.closest('[data-pet-menu]')) return;
+    setMenuOpen(false);
+    if (event.button !== 0) return;
+    suppressClick.current = false;
+    const bridge = readBridge();
     if (
-      event.button !== 0 ||
-      !readBridge().webkit?.messageHandlers?.prismPet ||
-      (event.target as Element).closest('button')
+      !(bridge.webkit?.messageHandlers?.prismPet || bridge.prismFocus?.dragPet) ||
+      (target.closest('button') && !target.closest('[data-pet-drag]'))
     )
       return;
-    drag.current = { id: event.pointerId, x: event.screenX, y: event.screenY, clientY: event.clientY };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = {
+      id: event.pointerId,
+      x: event.screenX,
+      y: event.screenY,
+      clientY: event.clientY,
+      moved: false,
+    };
+    (target.closest('button') ?? event.currentTarget).setPointerCapture(event.pointerId);
   }
 
   function moveDrag(event: PointerEvent<HTMLElement>) {
@@ -127,20 +147,40 @@ export function FloatingFocusPet() {
     if (previous?.id !== event.pointerId) return;
     const dx = event.screenX - previous.x;
     const screenDY = event.screenY - previous.y;
+    if (!previous.moved && Math.hypot(dx, screenDY) < 4) return;
+    if (!dx && !screenDY) return;
+    const bridge = readBridge();
+    const mac = bridge.webkit?.messageHandlers?.prismPet;
     const clientDY = event.clientY - previous.clientY;
     // WebKit may expose screen Y in Cocoa coordinates. Calibrate against the
     // first vertical move before changing the panel's position.
     const verticalSign =
       previous.verticalSign ?? (screenDY && clientDY ? Math.sign(screenDY * clientDY) : undefined);
-    const dy = screenDY * (verticalSign ?? 0);
+    const dy = mac ? screenDY * (verticalSign ?? 0) : screenDY;
     drag.current = {
       id: event.pointerId,
       x: event.screenX,
       y: event.screenY,
       clientY: event.clientY,
       verticalSign,
+      moved: true,
     };
-    if (dx || dy) readBridge().webkit?.messageHandlers?.prismPet?.postMessage({ action: 'drag', dx, dy });
+    if (dx) setDirection(dx < 0 ? 'left' : 'right');
+    suppressClick.current = true;
+    setMotion('running');
+    if (mac) mac.postMessage({ action: 'drag', dx, dy });
+    else bridge.prismFocus?.dragPet?.(dx, dy);
+  }
+
+  function endDrag(event: PointerEvent<HTMLElement>) {
+    if (drag.current?.id !== event.pointerId) return;
+    if (drag.current.moved) setMotion('settling');
+    drag.current = undefined;
+  }
+
+  function openMenu(target: EventTarget) {
+    menuTrigger.current = (target as Element).closest('button');
+    setMenuOpen(true);
   }
 
   const display = readout(state, now);
@@ -150,18 +190,56 @@ export function FloatingFocusPet() {
       className={styles.shell}
       data-reduced-motion={state.reducedMotion ? 'true' : undefined}
       data-phase={state.phase}
+      data-motion={motion}
+      data-direction={direction}
       aria-label="Study companion"
       onPointerDown={startDrag}
       onPointerMove={moveDrag}
-      onLostPointerCapture={() => {
-        drag.current = undefined;
+      onPointerUp={endDrag}
+      onPointerCancel={endDrag}
+      onLostPointerCapture={endDrag}
+      onClickCapture={(event) => {
+        if (event.detail === 0 || !suppressClick.current) return;
+        suppressClick.current = false;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onContextMenu={(event) => {
+        if (!actions.hide) return;
+        event.preventDefault();
+        openMenu(event.target);
       }}
       onKeyDown={(event) => {
-        if (event.key === 'Escape' && actions.hide) request('hide');
+        if (!actions.hide) return;
+        if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+          event.preventDefault();
+          openMenu(event.target);
+        }
+        if (event.key !== 'Escape') return;
+        if (menuOpen) {
+          setMenuOpen(false);
+          menuTrigger.current?.focus();
+        } else request('hide');
       }}
     >
       <div className={styles.handle} aria-hidden="true" />
-      <StudyPet phase={state.phase} status={display.mood} />
+      <div className={styles.runner} data-pet-drag>
+        <StudyPet phase={state.phase} status={display.mood} motion={motion} direction={direction} />
+      </div>
+      {menuOpen && (
+        <div className={styles.context} data-pet-menu>
+          <button
+            type="button"
+            autoFocus
+            onClick={() => {
+              setMenuOpen(false);
+              request('hide');
+            }}
+          >
+            Hide desktop companion
+          </button>
+        </div>
+      )}
       <div className={styles.tray}>
         {actions.open ? (
           <button
