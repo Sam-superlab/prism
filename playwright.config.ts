@@ -11,6 +11,20 @@ export default defineConfig({
   outputDir: 'output/playwright/test-results',
   use: {
     baseURL: 'http://127.0.0.1:3100',
+    storageState: {
+      cookies: [],
+      origins: [
+        {
+          origin: 'http://127.0.0.1:3100',
+          localStorage: [
+            {
+              name: 'prism.getting-started.v1.11111111-1111-4111-8111-111111111111',
+              value: '{"status":"hidden"}',
+            },
+          ],
+        },
+      ],
+    },
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
     ...devices['Desktop Chrome'],

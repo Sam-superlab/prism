@@ -387,16 +387,18 @@ function KnowledgeDetail({ id }: { id: string }) {
 }
 export function KnowledgeEditor({
   item,
+  initialType = 'theorem',
   onClose,
   onSaved,
 }: {
   item?: Knowledge;
+  initialType?: Knowledge['type'];
   onClose: () => void;
   onSaved: (item: Knowledge) => void;
 }) {
   const [creationId] = useState(uuid);
   const [title, setTitle] = useState(item?.title || '');
-  const [type, setType] = useState(item?.type || 'theorem');
+  const [type, setType] = useState(item?.type || initialType);
   const [subject, setSubject] = useState(item?.subject || '');
   const [tags, setTags] = useState(item?.tags.join(', ') || '');
   const [content, setContent] = useState(item?.content || '');
@@ -534,7 +536,7 @@ export function KnowledgeEditor({
     </Modal>
   );
 }
-function CardEditor({
+export function CardEditor({
   knowledge,
   card,
   onClose,
@@ -543,7 +545,7 @@ function CardEditor({
   knowledge: Knowledge;
   card?: Card;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (saved: Card) => void;
 }) {
   const [creationId] = useState(uuid);
   const [type, setType] = useState(card?.card_type || 'statement');
@@ -551,19 +553,23 @@ function CardEditor({
     card?.prompt || `State ${knowledge.title}, including all required hypotheses.`,
   );
   const [answer, setAnswer] = useState(card?.answer || knowledge.content);
-  const action = useAction(onSaved);
+  const action = useAction();
   return (
     <Modal title={card ? 'Edit review card' : 'Create an independent review card'} onClose={onClose}>
       <form
         onSubmit={(e) => {
           e.preventDefault();
-          void action.run(() =>
-            api(card ? `/review/cards/${card.id}` : `/knowledge-items/${knowledge.id}/cards`, {
-              method: card ? 'PATCH' : 'POST',
-              version: card?.version,
-              body: { ...(card ? {} : { id: creationId }), card_type: type, prompt, answer },
-            }),
-          );
+          void action.run(async () => {
+            const saved = await api<Card>(
+              card ? `/review/cards/${card.id}` : `/knowledge-items/${knowledge.id}/cards`,
+              {
+                method: card ? 'PATCH' : 'POST',
+                version: card?.version,
+                body: { ...(card ? {} : { id: creationId }), card_type: type, prompt, answer },
+              },
+            );
+            onSaved(saved);
+          });
         }}
       >
         <Field label="Review focus">
@@ -691,8 +697,9 @@ function RelationModal({
   );
 }
 
-export function ReviewPage() {
-  const queue = useResource<Page<Card>>('/review/queue?limit=100');
+export function ReviewPage({ cardId }: { cardId?: string }) {
+  const queue = useResource<Page<Card>>(cardId ? null : '/review/queue?limit=100');
+  const selectedCard = useResource<Card>(cardId ? `/review/cards/${cardId}` : null);
   const [device, setDevice] = useState('');
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
@@ -732,9 +739,10 @@ export function ReviewPage() {
       cancelled = true;
     };
   }, []);
-  const cards = queue.data?.items || [];
+  const focused = selectedCard.data;
+  const cards = cardId ? (focused ? [focused] : []) : queue.data?.items || [];
   const card = cards[index];
-  const done = Boolean(queue.data && !card);
+  const done = Boolean((cardId ? focused : queue.data) && !card);
   const totalDone = Object.values(ratings).reduce((a, b) => a + b, 0);
   function next() {
     pendingReview.current = null;
@@ -817,8 +825,16 @@ export function ReviewPage() {
           {totalDone} / {cards.length} reviewed
         </Badge>
       </div>
-      <ErrorState error={queue.error} retry={queue.reload} />
-      {queue.loading && !queue.data && <Loading />}
+      <ErrorState
+        error={cardId ? selectedCard.error : queue.error}
+        retry={cardId ? selectedCard.reload : queue.reload}
+      />
+      {(cardId ? selectedCard.loading && !focused : queue.loading && !queue.data) && <Loading />}
+      {cardId && selectedCard.error && (
+        <Link href="/today" className="button">
+          Back to Today
+        </Link>
+      )}
       {error && (
         <Notice tone={conflict ? 'warning' : 'error'}>
           {error}
@@ -855,7 +871,7 @@ export function ReviewPage() {
           </div>
           {reviewed.length > 0 && (
             <div className="next-reviews">
-              <h3>Coming up next</h3>
+              <h3>{cardId ? 'Next review' : 'Coming up next'}</h3>
               {reviewed.map((r, i) => (
                 <div key={i}>
                   <span>{r.title.slice(0, 60)}</span>

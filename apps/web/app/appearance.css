@@ -7,7 +7,7 @@
   --surface-secondary: #f2f2f7;
   --ink: #1d1d1f;
   --muted: #64646b;
-  --chrome-muted: #42424a;
+  --chrome-muted: #3e3e49;
   --line: #e5e5ea;
   --contrast-muted: #48484e;
   --contrast-line: #b8b8c0;
@@ -20,10 +20,14 @@
   --accent-soft: var(--accent-soft-light);
   --purple: var(--accent);
   --purple-light: var(--accent-soft);
-  --glass-tint: #f7faff;
-  --glass-canvas-cool: #e5edfc;
-  --glass-canvas-violet: #eaeaf8;
-  --glass-rim: #ffffffa6;
+  --glass-tint: #f6f7fc;
+  --glass-canvas-cool: #dce7f9;
+  --glass-canvas-warm: #f3e6dc;
+  --glass-key: #ffffffc4;
+  --glass-reflection: #d9e4faba;
+  --glass-warm: #f3dfd08c;
+  --glass-rim: #ffffffd9;
+  --glass-shade: #34416a13;
   --teal: #248a5a;
   --success-soft: #ebf6ef;
   --warm: #ad6500;
@@ -41,17 +45,21 @@
   --surface-secondary: #2b2b2f;
   --ink: #f5f5f7;
   --muted: #a1a1a8;
-  --chrome-muted: #c2c2cc;
+  --chrome-muted: #cbccd6;
   --line: #39393f;
   --contrast-muted: #c9c9d1;
   --contrast-line: #676772;
   --accent: #409cff;
   --accent-ink: var(--accent-ink-dark);
   --accent-soft: var(--accent-soft-dark);
-  --glass-tint: #1a1e27;
-  --glass-canvas-cool: #202b41;
-  --glass-canvas-violet: #24263a;
-  --glass-rim: #ffffff0f;
+  --glass-tint: #1b1e28;
+  --glass-canvas-cool: #252f49;
+  --glass-canvas-warm: #30242d;
+  --glass-key: #8a9dce38;
+  --glass-reflection: #506aad36;
+  --glass-warm: #95687f2e;
+  --glass-rim: #dce5ff2e;
+  --glass-shade: #00000047;
   --teal: #56c68c;
   --success-soft: #203b2d;
   --warm: #edb960;
@@ -66,17 +74,21 @@
     --surface-secondary: #2b2b2f;
     --ink: #f5f5f7;
     --muted: #a1a1a8;
-    --chrome-muted: #c2c2cc;
+    --chrome-muted: #cbccd6;
     --line: #39393f;
     --contrast-muted: #c9c9d1;
     --contrast-line: #676772;
     --accent: #409cff;
     --accent-ink: var(--accent-ink-dark);
     --accent-soft: var(--accent-soft-dark);
-    --glass-tint: #1a1e27;
-    --glass-canvas-cool: #202b41;
-    --glass-canvas-violet: #24263a;
-    --glass-rim: #ffffff0f;
+    --glass-tint: #1b1e28;
+    --glass-canvas-cool: #252f49;
+    --glass-canvas-warm: #30242d;
+    --glass-key: #8a9dce38;
+    --glass-reflection: #506aad36;
+    --glass-warm: #95687f2e;
+    --glass-rim: #dce5ff2e;
+    --glass-shade: #00000047;
     --teal: #56c68c;
     --success-soft: #203b2d;
     --warm: #edb960;
@@ -115,15 +127,27 @@
     :not([data-transparency='false'], [data-contrast='increased'], [data-system-reduced-transparency='true'])
   ) {
     --material-canvas:
-      radial-gradient(ellipse 980px 450px at 0 0, var(--glass-canvas-cool), transparent),
-      radial-gradient(ellipse 580px 460px at 0 60vh, var(--glass-canvas-violet), transparent);
+      radial-gradient(ellipse 980px 530px at 1% 0, var(--glass-canvas-cool), transparent 84%),
+      radial-gradient(ellipse 790px 460px at 97% 0, var(--glass-canvas-warm), transparent 86%);
     --workspace-bg: transparent;
-    --sidebar: color-mix(in srgb, var(--glass-tint) 80%, transparent);
-    --glass-over-content: color-mix(in srgb, var(--glass-tint) 97%, transparent);
-    --material-filter: blur(24px) saturate(1.2);
-    --material-divider: color-mix(in srgb, var(--ink) 16%, transparent);
-    --sidebar-rim: inset -1px 0 var(--glass-rim);
-    --toolbar-rim: inset 0 -1px var(--glass-rim);
+    --sidebar: color-mix(in srgb, var(--glass-tint) 82%, transparent);
+    --glass-over-content: color-mix(in srgb, var(--glass-tint) 98%, transparent);
+    --material-filter: blur(30px) saturate(1.2);
+    --material-divider: color-mix(in srgb, var(--ink) 13%, transparent);
+    --sidebar-light:
+      radial-gradient(ellipse 150% 320px at 0 0, var(--glass-key), transparent 80%),
+      radial-gradient(ellipse 160% 380px at 0 42%, var(--glass-reflection), transparent 80%),
+      radial-gradient(ellipse 150% 280px at 100% 100%, var(--glass-warm), transparent 86%);
+    --toolbar-light:
+      radial-gradient(ellipse 82% 160px at 0 -60px, var(--glass-key), transparent 95%),
+      radial-gradient(ellipse 60% 190px at 100% 115px, var(--glass-warm), transparent 95%);
+    --sidebar-inset: 9px;
+    --sidebar-radius: 22px;
+    --toolbar-radius: 18px;
+    --sidebar-rim: inset 0 1px var(--glass-rim), inset -1px 0 var(--glass-rim), 0 9px 24px var(--glass-shade);
+    --toolbar-rim: inset 0 1px var(--glass-rim), 0 6px 18px -9px var(--glass-shade);
+    --selected-rim:
+      inset 0 1px var(--glass-rim), inset 0 0 0 1px color-mix(in srgb, var(--accent-ink) 15%, transparent);
   }
 }
 @media (prefers-reduced-transparency: reduce), (prefers-contrast: more), (forced-colors: active) {
@@ -134,8 +158,14 @@
     --glass-over-content: initial;
     --material-filter: initial;
     --material-divider: initial;
+    --sidebar-light: initial;
+    --toolbar-light: initial;
+    --sidebar-inset: initial;
+    --sidebar-radius: initial;
+    --toolbar-radius: initial;
     --sidebar-rim: initial;
     --toolbar-rim: initial;
+    --selected-rim: initial;
   }
 }
 @media (prefers-contrast: more) {
@@ -223,7 +253,8 @@ summary:focus-visible {
 .sidebar {
   width: 232px;
   padding: 28px 14px 18px;
-  background: var(--sidebar, var(--surface-secondary));
+  background-color: var(--sidebar, var(--surface-secondary));
+  background-image: var(--sidebar-light, none);
   color: var(--ink);
   border-right: 1px solid var(--material-divider, var(--line));
   box-shadow: var(--sidebar-rim, none);
@@ -235,6 +266,15 @@ summary:focus-visible {
   display: contents;
 }
 @media (min-width: 801px) {
+  .sidebar {
+    inset: var(--sidebar-inset, 0) auto var(--sidebar-inset, 0) var(--sidebar-inset, 0);
+    width: calc(232px - 2 * var(--sidebar-inset, 0px));
+    border-radius: var(--sidebar-radius, 0);
+    overflow-y: auto;
+  }
+  .sidebar .profile {
+    padding-inline: calc(13px - var(--sidebar-inset, 0px));
+  }
   .sidebar-toggle {
     display: inline-flex;
   }
@@ -252,6 +292,8 @@ summary:focus-visible {
     width: 232px;
   }
   .sidebar-collapsed .sidebar {
+    /* Sliding a backdrop-filtered layer can briefly hide its text and icons. */
+    --material-filter: none;
     transform: translateX(-100%);
     visibility: hidden;
     transition:
@@ -262,7 +304,6 @@ summary:focus-visible {
     transform: translateX(0);
     visibility: visible;
     transition-delay: 0s;
-    /* WebKit can skip sampling outside a sliding drawer's layer. Keep underlying text faint. */
     background-color: var(--glass-over-content, var(--surface-secondary));
     box-shadow: var(--sidebar-rim, 0 0 transparent), var(--shadow);
   }
@@ -315,6 +356,7 @@ summary:focus-visible {
 .nav-link.active {
   background: var(--accent-soft);
   color: var(--accent-ink);
+  box-shadow: var(--selected-rim, none);
   font-weight: 550;
 }
 .nav-link.active > svg {
@@ -363,8 +405,10 @@ summary:focus-visible {
   top: 0;
   z-index: 40;
   min-height: 66px;
-  background: var(--glass-over-content, var(--panel));
+  background-color: var(--glass-over-content, var(--panel));
+  background-image: var(--toolbar-light, none);
   border-bottom: 1px solid var(--material-divider, var(--line));
+  border-radius: 0 0 var(--toolbar-radius, 0px) var(--toolbar-radius, 0px);
   box-shadow: var(--toolbar-rim, none);
   padding: 16px 36px;
 }
@@ -1185,6 +1229,7 @@ kbd {
 }
 @media (max-width: 800px) {
   .sidebar {
+    --material-filter: none;
     transform: translateX(-100%);
     visibility: hidden;
     transition: transform 0.2s ease;

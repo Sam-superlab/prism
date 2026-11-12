@@ -1,5 +1,6 @@
 'use client';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { api, useAction, useResource, uuid } from '../lib/api';
 import type { Page, Project, Today, User } from '../lib/types';
@@ -11,6 +12,7 @@ import { FitnessPage } from './pages/Fitness';
 import { DiscoverPage } from './pages/Discover';
 import { PracticePage } from './pages/Practice';
 import { SettingsPage } from './pages/Settings';
+import { GettingStarted, useGettingStarted } from './GettingStarted';
 
 const navigation = [
   { path: 'today', label: 'Today', icon: 'today' },
@@ -20,13 +22,15 @@ const navigation = [
   { path: 'fitness', label: 'Fitness', icon: 'fitness' },
   { path: 'discover', label: 'Discover', icon: 'discover' },
 ];
-export default function Workspace({ route }: { route: string }) {
+export default function Workspace({ route, reviewCardId }: { route: string; reviewCardId?: string }) {
+  const router = useRouter();
   const [mobileNav, setMobileNav] = useState(false);
   const [capture, setCapture] = useState(false);
   const [search, setSearch] = useState(false);
   const [epoch, setEpoch] = useState(0);
   const [online, setOnline] = useState(true);
   const me = useResource<User>('/me');
+  const guide = useGettingStarted(me.data?.id, route === 'today');
   const projects = useResource<Page<Project>>('/research/projects?limit=5');
   const active = route === 'review/session' ? 'knowledge' : route.split('/')[0];
   const section = [
@@ -177,15 +181,42 @@ export default function Workspace({ route }: { route: string }) {
           </div>
         )}
         <main className="main-content" key={`${route}:${epoch}`}>
-          {active === 'today' && <TodayPage />}
+          {active === 'today' && (
+            <TodayPage
+              gettingStarted={(reloadToday) =>
+                guide.progress && (
+                  <GettingStarted
+                    progress={guide.progress}
+                    update={guide.update}
+                    language={guide.language}
+                    onLanguageChange={guide.changeLanguage}
+                    onCardSaved={reloadToday}
+                  />
+                )
+              }
+            />
+          )}
           {active === 'planner' && <TodayPage planner />}
           {active === 'knowledge' && route !== 'review/session' && <KnowledgePage id={route.split('/')[1]} />}
-          {route === 'review/session' && <ReviewPage />}
+          {route === 'review/session' && <ReviewPage key={reviewCardId} cardId={reviewCardId} />}
           {active === 'research' && <ResearchPage id={route.split('/')[1]} />}
           {active === 'practice' && me.data && <PracticePage userId={me.data.id} />}
           {active === 'fitness' && <FitnessPage id={route.split('/')[1]} />}
           {active === 'discover' && <DiscoverPage />}
-          {active === 'settings' && <SettingsPage />}
+          {active === 'settings' && (
+            <SettingsPage
+              guideLanguage={guide.language}
+              onGuideLanguageChange={guide.changeLanguage}
+              onOpenGuide={
+                me.data && guide.progress !== undefined
+                  ? () => {
+                      guide.update({ ...guide.progress, status: 'active' });
+                      router.push('/today');
+                    }
+                  : undefined
+              }
+            />
+          )}
           {!section && route !== 'review/session' && (
             <div className="empty-state">
               <h1>Page not found</h1>

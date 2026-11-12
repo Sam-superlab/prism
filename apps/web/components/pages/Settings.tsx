@@ -1,11 +1,22 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { api, datetime, useAction, useResource } from '../../lib/api';
+import { guideCopy, type GuideLanguage } from '../../lib/getting-started-copy';
 import type { Conflict, ExportJob, Job, Page, Preferences, User } from '../../lib/types';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, Modal, Notice } from '../ui';
 import { AppearancePanel } from '../Appearance';
+import { GuideLanguageSelect } from '../GettingStarted';
 
-export function SettingsPage() {
+export function SettingsPage({
+  guideLanguage,
+  onGuideLanguageChange,
+  onOpenGuide,
+}: {
+  guideLanguage: GuideLanguage;
+  onGuideLanguageChange: (language: GuideLanguage) => void;
+  onOpenGuide?: () => void;
+}) {
+  const guide = guideCopy[guideLanguage];
   const me = useResource<User>('/me');
   const preferences = useResource<Preferences>('/me/preferences');
   const conflicts = useResource<Page<Conflict>>('/sync/conflicts?limit=100');
@@ -40,6 +51,22 @@ export function SettingsPage() {
       <div className="settings-layout">
         <div>
           <AppearancePanel />
+          <section className="panel content-panel" lang={guideLanguage}>
+            <div className="panel-heading">
+              <h2>{guide.settingsTitle}</h2>
+            </div>
+            <p className="muted">{guide.settingsDetail}</p>
+            <div className="inline-actions">
+              <GuideLanguageSelect
+                language={guideLanguage}
+                onChange={onGuideLanguageChange}
+                disabled={!onOpenGuide}
+              />
+              <button className="button" onClick={onOpenGuide} disabled={!onOpenGuide}>
+                {guide.settingsLink} <Icon name="arrow" size={16} />
+              </button>
+            </div>
+          </section>
           <section className="panel content-panel">
             <div className="panel-heading">
               <h2>Profile and timezone</h2>

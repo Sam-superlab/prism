@@ -1,6 +1,6 @@
 'use client';
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import {
   api,
   datetime,
@@ -14,7 +14,13 @@ import {
 import type { InboxEntry, Page, PlanItem, Task, Today, User } from '../../lib/types';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, Modal, Notice, label } from '../ui';
 
-export function TodayPage({ planner = false }: { planner?: boolean }) {
+export function TodayPage({
+  planner = false,
+  gettingStarted,
+}: {
+  planner?: boolean;
+  gettingStarted?: (reload: () => void) => ReactNode;
+}) {
   const me = useResource<User>('/me');
   const date = todayDate(me.data?.timezone);
   const today = useResource<Today>(`/today?date=${date}`);
@@ -159,6 +165,7 @@ export function TodayPage({ planner = false }: { planner?: boolean }) {
           </button>
         </div>
       </div>
+      {gettingStarted?.(refresh)}
       <ErrorState error={today.error} retry={today.reload} />
       {today.loading && !d && <Loading />}
       {d && (
