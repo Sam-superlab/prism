@@ -1388,7 +1388,7 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
                 : subject !== undefined
                   ? 'No cards in this subject are due yet. Choose another subject or return later.'
                   : cardId
-                    ? 'Return to Today to continue with your checklist.'
+                    ? 'Return to Dashboard to continue with your checklist.'
                     : 'Add more knowledge, or return when your next cards are due.'}
           </p>
           <div className="rating-summary">

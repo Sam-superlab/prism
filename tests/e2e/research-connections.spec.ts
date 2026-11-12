@@ -59,6 +59,7 @@ test('links knowledge and papers from their source pages to a research project',
     ).toBe(201);
   }
   await page.goto('/discover');
+  await page.getByRole('group', { name: 'Explore filters' }).getByRole('button', { name: 'All', exact: true }).click();
   await page.getByRole('button', { name: 'Refresh feed', exact: true }).click();
   const paperTitle = 'PRISM E2E metadata fixture';
   const paper = page.locator('.paper-card').filter({ hasText: paperTitle });
