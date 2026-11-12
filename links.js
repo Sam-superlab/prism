@@ -22,6 +22,7 @@ if (repository) {
     : download;
   const destinations = {
     download: `${macDownload}/PRISM-macOS-arm64.zip`,
+    macIntel: `${macDownload}/PRISM-macOS-x64.zip`,
     windows: `${download}/PRISM-Windows-x64.zip`,
     install: `${repository}/blob/main/README.md#install`,
     releases: version ? `${releases}/tag/${version}` : releases,

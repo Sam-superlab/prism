@@ -2,15 +2,15 @@
 
 PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download for Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.17/PRISM-macOS-arm64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.17/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.17) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.17/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.17/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.17/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.17) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
 ### macOS
 
-Requires an Apple silicon Mac running macOS 13.5 or later.
+Requires macOS 13.5 or later. Check **Apple menu → About This Mac** for your chip or processor.
 
-1. Download and unzip `PRISM-macOS-arm64.zip`.
+1. Download and unzip `PRISM-macOS-arm64.zip` for Apple silicon or `PRISM-macOS-x64.zip` for Intel.
 2. Move `PRISM.app` to **Applications**, then open it.
 3. If macOS blocks the first launch and you trust the download, open **System Settings → Privacy & Security** and choose **Open Anyway** if offered. [Apple's first-launch instructions](https://support.apple.com/en-us/102445)
 
