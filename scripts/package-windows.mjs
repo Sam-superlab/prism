@@ -198,6 +198,8 @@ try {
     'loading.html',
     'updater.cjs',
     'update-helper.cjs',
+    'focus-preload.cjs',
+    'focus-desktop.cjs',
   ])
     copy(join(repo, 'apps/windows', name), join(shell, name));
   writeFileSync(

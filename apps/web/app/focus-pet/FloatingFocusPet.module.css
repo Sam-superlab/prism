@@ -1,0 +1,111 @@
+:global(html):has(.shell),
+:global(body):has(.shell) {
+  background: transparent;
+  overflow: hidden;
+}
+
+.shell {
+  display: grid;
+  grid-template-rows: 18px minmax(0, 1fr) auto;
+  inline-size: 100%;
+  max-inline-size: 190px;
+  block-size: 100dvh;
+  max-block-size: 210px;
+  padding: 8px 8px 14px;
+  margin-inline: auto;
+  justify-items: center;
+  align-items: center;
+  color: var(--accent-ink, var(--accent));
+  -webkit-app-region: drag;
+  user-select: none;
+}
+
+.shell[data-phase='break'] {
+  color: var(--teal, var(--accent-ink));
+}
+
+.handle {
+  inline-size: 28px;
+  block-size: 4px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--ink) 24%, var(--panel));
+  box-shadow: 0 1px 4px #0002;
+  cursor: grab;
+}
+
+.shell > button {
+  max-inline-size: 160px;
+  filter: drop-shadow(0 4px 6px #142c6235);
+}
+
+.tray {
+  display: flex;
+  align-items: stretch;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  padding: 2px;
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 4px 12px #16203c26;
+  color: var(--ink);
+  -webkit-app-region: no-drag;
+}
+
+.open,
+.hide {
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.3;
+  transition: background-color 160ms ease;
+}
+
+.open {
+  display: grid;
+  align-items: center;
+  padding: 6px 7px;
+  min-block-size: 30px;
+  min-inline-size: 0;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.hide {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  inline-size: 27px;
+  padding: 0;
+}
+
+.hide svg {
+  display: block;
+  inline-size: 13px;
+  stroke: currentColor;
+  stroke-width: 1.4px;
+  stroke-linecap: round;
+}
+
+.tray button:hover {
+  background: var(--surface-secondary);
+}
+
+.tray button:focus-visible {
+  outline: 2px solid var(--accent-ink, var(--accent));
+  outline-offset: 1px;
+}
+
+.shell[data-reduced-motion='true'] :is(.open, .hide) {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .open,
+  .hide {
+    transition: none;
+  }
+}

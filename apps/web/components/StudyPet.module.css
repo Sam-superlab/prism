@@ -1,0 +1,149 @@
+.pet {
+  display: grid;
+  inline-size: 100%;
+  max-inline-size: 144px;
+  place-items: center;
+  justify-self: center;
+  padding: 0;
+  border: 0;
+  border-radius: 14px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  -webkit-app-region: no-drag;
+}
+
+.pet:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
+
+.art {
+  display: block;
+  inline-size: 100%;
+  overflow: visible;
+  transition: filter 180ms ease;
+}
+
+.pet:hover .art,
+.pet[data-petted='true'] .art {
+  filter: drop-shadow(0 3px 8px color-mix(in srgb, currentColor 26%, transparent));
+}
+
+.float,
+.reaction,
+.eyes,
+.tail,
+.heart {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.float {
+  animation: breathe 5.4s ease-in-out infinite;
+}
+
+.eyes {
+  animation: blink 5.8s ease-in-out infinite;
+}
+
+.tail {
+  transform-origin: left center;
+  animation: tail-swish 4.2s ease-in-out infinite;
+}
+
+.pet[data-mood='working'] .float {
+  animation-duration: 3.6s;
+}
+
+.pet[data-mood='resting'] .float {
+  animation-duration: 7.2s;
+}
+
+.pet[data-mood='finished'] .float {
+  animation:
+    cheer 520ms var(--motion-out, ease-out),
+    breathe 5.4s 520ms ease-in-out infinite;
+}
+
+.pet[data-petted='true'] .reaction {
+  animation: cheer 520ms var(--motion-out, ease-out);
+}
+
+.heart {
+  animation: heart-rise 620ms var(--motion-out, ease-out);
+}
+
+@keyframes breathe {
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes blink {
+  0%,
+  90%,
+  94%,
+  100% {
+    transform: scaleY(1);
+  }
+
+  92% {
+    transform: scaleY(0.14);
+  }
+}
+
+@keyframes tail-swish {
+  50% {
+    transform: rotate(-8deg);
+  }
+}
+
+@keyframes cheer {
+  42% {
+    transform: translateY(-6px) rotate(-3deg);
+  }
+
+  76% {
+    transform: scale(1.045, 0.96);
+  }
+}
+
+@keyframes heart-rise {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.78);
+  }
+
+  27% {
+    opacity: 1;
+    transform: scale(1.07);
+  }
+
+  100% {
+    opacity: 0.65;
+    transform: translateY(-6px);
+  }
+}
+
+:global([data-reduced-motion='true']) .pet :is(.float, .reaction, .eyes, .tail, .heart),
+:global([data-reduced-motion='true']) .pet[data-mood] .float,
+:global([data-reduced-motion='true']) .pet[data-petted] .reaction {
+  animation: none;
+}
+
+:global([data-reduced-motion='true']) .art {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet :is(.float, .reaction, .eyes, .tail, .heart),
+  .pet[data-mood] .float,
+  .pet[data-petted] .reaction {
+    animation: none;
+  }
+
+  .art {
+    transition: none;
+  }
+}

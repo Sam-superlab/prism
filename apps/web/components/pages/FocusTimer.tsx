@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   breakPresets,
   focusDurationMs,
@@ -16,7 +16,17 @@ import {
   type FocusSession,
   type FocusTask,
 } from '../../lib/focus-timer';
+import {
+  defaultFocusOptions,
+  desktopFocusBridge,
+  focusCompletionTitle,
+  playFocusSound,
+  prepareFocusSound,
+  readFocusOptions,
+  type FocusOptions,
+} from '../../lib/focus-alerts';
 import { Icon } from '../ui';
+import { StudyPet } from '../StudyPet';
 import styles from './FocusTimer.module.css';
 
 type Stored = { key: string; session: FocusSession };
@@ -24,10 +34,131 @@ type Stored = { key: string; session: FocusSession };
 export function useFocusTimer(userId?: string) {
   const key = userId && `prism.focus.v1.${userId}`;
   const [stored, setStored] = useState<Stored>();
+  const [preferences, setPreferences] = useState<{ key: string; options: FocusOptions }>();
+  const [native, setNative] = useState(false);
+  const [notice, setNotice] = useState<{ key: string; title: string; completion: string }>();
   const latest = useRef<Stored | undefined>(undefined);
+  const lastNotice = useRef('');
   const ready = Boolean(key && stored?.key === key);
   const session = ready ? stored!.session : newFocusSession;
   const status = session.clock.status;
+  const optionsKey = userId && `prism.focus-options.v1.${userId}`;
+  const options = preferences && preferences.key === optionsKey ? preferences.options : defaultFocusOptions;
+  const endedAt = session.clock.status === 'finished' ? session.clock.endedAt : undefined;
+
+  useEffect(() => {
+    setNative(Boolean(desktopFocusBridge()));
+    if (!optionsKey) return;
+    const read = () => setPreferences({ key: optionsKey, options: readFocusOptions(optionsKey) });
+    read();
+    const sync = (event: StorageEvent) => {
+      if (event.key === optionsKey) read();
+    };
+    window.addEventListener('storage', sync);
+    return () => window.removeEventListener('storage', sync);
+  }, [optionsKey]);
+
+  function setOption<K extends keyof FocusOptions>(name: K, value: FocusOptions[K]) {
+    if (!optionsKey) return;
+    if (name === 'sound' && value && !desktopFocusBridge()) prepareFocusSound();
+    const next = { ...options, [name]: value };
+    setPreferences({ key: optionsKey, options: next });
+    try {
+      localStorage.setItem(optionsKey, JSON.stringify(next));
+    } catch {
+      // Keep the preference for this visit.
+    }
+  }
+
+  useEffect(() => {
+    if (!optionsKey) return;
+    const hide = () => {
+      setPreferences({ key: optionsKey, options: { ...options, pet: false } });
+      try {
+        localStorage.setItem(optionsKey, JSON.stringify({ ...options, pet: false }));
+      } catch {
+        // Hide for the remainder of this visit.
+      }
+    };
+    window.addEventListener('prism:hide-pet', hide);
+    return () => window.removeEventListener('prism:hide-pet', hide);
+  }, [options, optionsKey]);
+
+  useEffect(() => {
+    if (!ready || preferences?.key !== optionsKey) return;
+    const bridge = desktopFocusBridge();
+    if (!bridge) return;
+    const media = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const sync = () =>
+      bridge({
+        ...options,
+        endsAt: session.clock.status === 'running' ? session.clock.endsAt : null,
+        phase: session.phase,
+        mood: status,
+        reducedMotion: media.matches || document.documentElement.dataset.reducedMotion === 'true',
+      });
+    sync();
+    const observer = new MutationObserver(sync);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['data-reduced-motion'],
+    });
+    media.addEventListener('change', sync);
+    return () => {
+      observer.disconnect();
+      media.removeEventListener('change', sync);
+    };
+  }, [ready, preferences, optionsKey, options, session.clock, session.phase, status]);
+
+  useEffect(() => {
+    if (!key || !endedAt || preferences?.key !== optionsKey) return;
+    const age = Date.now() - endedAt;
+    if (age < 0 || age > 5 * 60_000) return;
+    const marker = `${key}.last-reminder`;
+    const completion = `${session.phase}:${endedAt}`;
+    if (lastNotice.current === completion) return;
+    lastNotice.current = completion;
+    const title = focusCompletionTitle(session.phase);
+    let dismissed = false;
+    let delivered = false;
+    try {
+      dismissed = localStorage.getItem(`${marker}.dismissed`) === completion;
+      delivered = localStorage.getItem(marker) === completion;
+      localStorage.setItem(marker, completion);
+    } catch {
+      // Continue with one reminder per visit when storage is unavailable.
+    }
+    if (!dismissed) setNotice({ key, title, completion });
+    if (delivered || dismissed || desktopFocusBridge()) return;
+    if (options.sound) playFocusSound();
+    if (
+      (document.hidden || !document.hasFocus()) &&
+      typeof Notification !== 'undefined' &&
+      Notification.permission === 'granted'
+    ) {
+      try {
+        const alert = new Notification(title, { silent: true, tag: completion });
+        alert.onclick = () => {
+          window.focus();
+          window.dispatchEvent(new Event('prism:open-focus'));
+          alert.close();
+        };
+      } catch {
+        // The in-app reminder remains available.
+      }
+    }
+  }, [endedAt, key, options.sound, optionsKey, preferences, session.phase]);
+
+  function dismissNotice() {
+    if (notice && notice.key === key) {
+      try {
+        localStorage.setItem(`${notice.key}.last-reminder.dismissed`, notice.completion);
+      } catch {
+        // Dismiss for this visit even when storage is unavailable.
+      }
+    }
+    setNotice(undefined);
+  }
 
   useEffect(() => {
     if (!key) return;
@@ -112,28 +243,41 @@ export function useFocusTimer(userId?: string) {
     )
       return false;
     const clock = sameFocus && active.clock.status === 'paused' ? active.clock : { status: 'ready' as const };
+    if (options.sound && !desktopFocusBridge()) prepareFocusSound();
+    dismissNotice();
     commit(runFocus({ ...active, phase: 'focus', clock, task }, now));
     return true;
   }
 
   return {
     ready,
+    native,
+    options,
+    setOption,
+    notice: notice?.key === key ? notice?.title : undefined,
+    dismissNotice,
     session,
     status,
     taskId: session.task?.id,
     startTask,
     finishTask: (id: string) =>
       update((current) => (current.task?.id === id ? { ...current, task: undefined } : current)),
-    toggle: () =>
-      update((current, now) => {
+    toggle: () => {
+      if (status !== 'running' && options.sound && !desktopFocusBridge()) prepareFocusSound();
+      dismissNotice();
+      return update((current, now) => {
         if (current.clock.status === 'finished') {
           if (status !== 'finished') return current;
           const phase = current.phase === 'focus' ? 'break' : 'focus';
           return runFocus({ ...current, phase, clock: { status: 'ready' } }, now);
         }
         return current.clock.status === 'running' ? pauseFocus(current, now) : runFocus(current, now);
-      }),
-    reset: () => update((current) => ({ ...current, clock: { status: 'ready' } })),
+      });
+    },
+    reset: () => {
+      dismissNotice();
+      return update((current) => ({ ...current, clock: { status: 'ready' } }));
+    },
     setPhase: (phase: FocusPhase) =>
       update((current) =>
         current.clock.status === 'running' || current.clock.status === 'paused'
@@ -201,90 +345,6 @@ function FocusReadout({ session }: { session: FocusSession }) {
         {time}
       </span>
     </div>
-  );
-}
-
-function StudyPet({ phase, status }: { phase: FocusPhase; status: FocusSession['clock']['status'] }) {
-  const id = useId();
-  const resting = phase === 'break' && status === 'running';
-  const working = phase === 'focus' && status === 'running';
-  return (
-    <svg
-      className={styles.pet}
-      data-mood={resting ? 'resting' : working ? 'working' : status}
-      viewBox="0 0 156 112"
-      aria-hidden="true"
-      focusable="false"
-    >
-      <defs>
-        <linearGradient id={`${id}-fur`} x1="0" x2="1" y1="0" y2="1" gradientUnits="objectBoundingBox">
-          <stop stopColor="#d3faff" />
-          <stop offset=".62" stopColor="#92d0ff" />
-          <stop offset="1" stopColor="#a9a1f6" />
-        </linearGradient>
-        <linearGradient id={`${id}-gem`} x1="0" x2="1" y1="0" y2="1" gradientUnits="objectBoundingBox">
-          <stop stopColor="#e3f9ff" />
-          <stop offset="1" stopColor="#a499fd" />
-        </linearGradient>
-      </defs>
-      <circle cx="77" cy="53" r="42" fill="none" stroke="currentColor" opacity=".14" />
-      <path
-        d="M15 72c9-19 40-34 70-38s57 1 56 12-25 24-56 30c-18 4-38 4-51 0"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.15"
-        opacity=".24"
-      />
-      <path
-        d="M118 18h10m-5-5v10M30 52h8m-4-4v8"
-        stroke="currentColor"
-        strokeWidth="1.45"
-        strokeLinecap="round"
-        opacity=".65"
-      />
-      <ellipse cx="79" cy="97" rx="39" ry="6" fill="currentColor" opacity=".14" />
-      <g className={styles.petBody}>
-        <path
-          d="M45 58c-7-11-8-24-3-35 10 0 22 5 29 13a51 51 0 0 1 20 0c7-8 17-13 28-12 5 11 3 23-4 35 3 5 4 10 4 15 0 16-14 23-39 23S41 90 41 74c0-6 1-11 4-16Z"
-          fill={`url(#${id}-fur)`}
-          stroke="#5472b4"
-          strokeWidth="1.5"
-        />
-        <path
-          d="M49 45c-4-6-6-12-5-17 7 1 15 5 20 11m45 7c4-6 5-12 5-17-7 0-14 4-19 10"
-          fill="#7189ce"
-          opacity=".4"
-        />
-        <path d="M80 44l6 7-6 7-6-7 6-7Z" fill="#f3fcff" stroke="#6079ba" strokeWidth="1" />
-        <ellipse cx="57" cy="73" rx="5" ry="2.4" fill="#a98bdf" opacity=".55" />
-        <ellipse cx="102" cy="73" rx="5" ry="2.4" fill="#a98bdf" opacity=".55" />
-        {resting ? (
-          <path
-            d="M60 65q4 4 8 0m24 0q4 4 8 0m-24 7q4 4 8 0"
-            stroke="#273a67"
-            fill="none"
-            strokeWidth="2"
-            strokeLinecap="round"
-          />
-        ) : (
-          <g className={styles.eyes}>
-            <ellipse cx="65" cy="65" rx="2.7" ry={working ? 2.7 : 3.5} fill="#273a67" />
-            <ellipse cx="95" cy="65" rx="2.7" ry={working ? 2.7 : 3.5} fill="#273a67" />
-            <path d="M76 72q4 5 8 0" stroke="#273a67" fill="none" strokeWidth="2" strokeLinecap="round" />
-          </g>
-        )}
-        {working && (
-          <path
-            d="M65 82q7-3 15 2 8-5 15-2v11q-8-2-15 1-8-3-15-1Z"
-            fill="#f4f5ff"
-            stroke="#6079ba"
-            strokeWidth="1.3"
-          />
-        )}
-        {resting && <path d="M65 86q15 7 30 0" stroke="#6c81b8" strokeWidth="1.3" opacity=".6" fill="none" />}
-      </g>
-      <path d="m132 58 6 8-6 7-6-7Z" fill={`url(#${id}-gem)`} stroke="currentColor" strokeWidth="1.2" />
-    </svg>
   );
 }
 
@@ -434,5 +494,32 @@ export function FocusTimerStatus({ timer }: { timer: FocusTimerController }) {
         <StatusCountdown session={timer.session} />
       </span>
     </Link>
+  );
+}
+
+export function FocusCompletionNotice({ timer }: { timer: FocusTimerController }) {
+  if (!timer.notice) return null;
+  return (
+    <div className={`panel ${styles.completion}`}>
+      <p role="status">{timer.notice}</p>
+      <button
+        type="button"
+        className="button small"
+        onClick={() => {
+          window.dispatchEvent(new Event('prism:open-focus'));
+          timer.dismissNotice();
+        }}
+      >
+        Open timer
+      </button>
+      <button
+        type="button"
+        className="icon-button"
+        aria-label="Dismiss focus reminder"
+        onClick={timer.dismissNotice}
+      >
+        <Icon name="close" size={15} />
+      </button>
+    </div>
   );
 }

@@ -120,53 +120,6 @@
   letter-spacing: -0.045em;
 }
 
-.pet {
-  display: block;
-  inline-size: 100%;
-  max-inline-size: 134px;
-  max-block-size: 112px;
-  justify-self: center;
-  overflow: visible;
-}
-
-.petBody {
-  transform-box: fill-box;
-  transform-origin: 50% 90%;
-}
-
-.pet[data-mood='working'] .petBody {
-  animation: settle-pet 420ms var(--motion-out);
-}
-
-.pet[data-mood='resting'] .petBody {
-  animation: rest-pet 640ms var(--motion-out);
-}
-
-.pet[data-mood='finished'] .petBody {
-  animation: celebrate-pet 490ms var(--motion-out);
-}
-
-@keyframes settle-pet {
-  45% {
-    transform: translateY(-3px);
-  }
-}
-
-@keyframes rest-pet {
-  60% {
-    transform: scaleY(0.94);
-  }
-}
-
-@keyframes celebrate-pet {
-  40% {
-    transform: translateY(-6px) rotate(-3deg);
-  }
-  72% {
-    transform: translateY(1px) scaleY(0.97);
-  }
-}
-
 .details {
   min-block-size: 3.15rem;
   margin-block: 10px 4px;
@@ -258,20 +211,31 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pet .petBody {
-    animation: none;
-  }
   .arc,
   .phases button {
     transition: none;
   }
 }
 
-:global([data-reduced-motion='true']) .pet .petBody {
-  animation: none;
-}
-
 :global([data-reduced-motion='true']) .arc,
 :global([data-reduced-motion='true']) .phases button {
   transition: none;
+}
+
+.completion {
+  position: fixed;
+  inset: auto 1rem 1rem auto;
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  max-inline-size: calc(100vw - 2rem);
+  padding: 0.65rem 0.8rem;
+  box-shadow: var(--shadow);
+}
+
+.completion p {
+  margin: 0;
+  font-weight: 600;
 }

@@ -6,8 +6,10 @@ const { mkdir, writeFile, unlink, access } = require('node:fs/promises');
 const { join, isAbsolute } = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
 const { createUpdater, acknowledgeUpdate, startAutomaticChecks } = require('./updater.cjs');
+const { installFocusDesktop } = require('./focus-desktop.cjs');
 
 app.setName('PRISM');
+app.setAppUserModelId(process.execPath);
 app.setPath('userData', join(app.getPath('appData'), 'PRISM Desktop'));
 const smokeDir = process.env.PRISM_WINDOWS_SMOKE_DIR;
 if (smokeDir) {
@@ -22,6 +24,7 @@ let serviceStopping = false;
 let smokeTimer;
 let updater;
 let dailyChecks;
+let focusDesktop;
 const token = randomBytes(32).toString('hex');
 const origin = 'http://127.0.0.1:38741';
 const local = (url) => {
@@ -46,6 +49,7 @@ function openExternal(url) {
 async function shutdown() {
   serviceStopping = true;
   dailyChecks?.stop();
+  focusDesktop?.dispose();
   clearInterval(smokeTimer);
   if (!launcher || launcher.exitCode !== null) return;
   const exited = new Promise((resolve) => launcher.once('exit', resolve));
@@ -102,11 +106,18 @@ else {
         backgroundColor: '#fafafa',
         icon: join(__dirname, 'app-icon.png'),
         webPreferences: {
+          preload: join(__dirname, 'focus-preload.cjs'),
           session: browserSession,
           nodeIntegration: false,
           contextIsolation: true,
           sandbox: true,
         },
+      });
+      focusDesktop = installFocusDesktop(window, origin);
+      window.on('closed', () => {
+        window = undefined;
+        focusDesktop.dispose();
+        app.quit();
       });
       window.webContents.setWindowOpenHandler(({ url }) => {
         openExternal(url);

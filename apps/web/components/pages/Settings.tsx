@@ -12,13 +12,16 @@ import {
 import { Badge, ErrorState, Field, Icon, Loading, Modal, Notice } from '../ui';
 import { AppearancePanel } from '../Appearance';
 import { GuideLanguageSelect } from '../GettingStarted';
+import type { FocusTimerController } from './FocusTimer';
 import styles from './Settings.module.css';
 
 export function SettingsPage({
+  focusTimer,
   guideLanguage,
   onGuideLanguageChange,
   onOpenGuide,
 }: {
+  focusTimer: FocusTimerController;
   guideLanguage: GuideLanguage;
   onGuideLanguageChange: (language: GuideLanguage) => void;
   onOpenGuide?: () => void;
@@ -35,6 +38,7 @@ export function SettingsPage({
   const action = useAction();
   const sections = [
     { id: 'appearance-heading', label: 'Appearance', icon: 'settings' },
+    { id: 'focus-settings', label: 'Focus timer', icon: 'clock' },
     { id: 'learning-settings', label: 'Learning and notifications', icon: 'planner' },
     { id: 'profile-settings', label: 'Profile and timezone', icon: 'clock' },
     { id: 'keyboard-shortcuts', label: 'Keyboard shortcuts', icon: 'menu' },
@@ -85,6 +89,7 @@ export function SettingsPage({
         </nav>
         <div className={styles.stack}>
           <AppearancePanel />
+          <FocusSettings timer={focusTimer} />
           <section className="panel content-panel" aria-labelledby="learning-settings">
             <div className="panel-heading">
               <h2 id="learning-settings">Learning, planning, and notifications</h2>
@@ -264,6 +269,83 @@ export function SettingsPage({
         />
       )}
     </>
+  );
+}
+
+function FocusSettings({ timer }: { timer: FocusTimerController }) {
+  const [permission, setPermission] = useState<NotificationPermission | 'unsupported'>('unsupported');
+  useEffect(() => {
+    if (typeof Notification !== 'undefined') setPermission(Notification.permission);
+  }, []);
+
+  return (
+    <section className="panel content-panel" aria-labelledby="focus-settings">
+      <div className="panel-heading">
+        <h2 id="focus-settings">Focus timer</h2>
+      </div>
+      <label className="appearance-row switch-row">
+        <span>
+          <span className="appearance-label">Timer sound</span>
+          <small>Play a sound when focus or break ends.</small>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={timer.options.sound}
+          onChange={(event) => timer.setOption('sound', event.target.checked)}
+          disabled={!timer.ready}
+        />
+      </label>
+      <label className="appearance-row switch-row">
+        <span>
+          <span className="appearance-label">Desktop companion</span>
+          <small>
+            {timer.native
+              ? 'Show the draggable companion above other apps.'
+              : 'Available in the PRISM desktop app.'}
+          </small>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          checked={timer.options.pet}
+          onChange={(event) => timer.setOption('pet', event.target.checked)}
+          disabled={!timer.ready || !timer.native}
+        />
+      </label>
+      {timer.native ? (
+        <p className="panel-description muted">
+          Allow PRISM notifications in your system settings to get reminders in the background.
+        </p>
+      ) : (
+        <div className="appearance-row">
+          <div>
+            <span className="appearance-label">Background notifications</span>
+            <p>
+              {permission === 'granted'
+                ? 'Allowed by this browser.'
+                : permission === 'denied'
+                  ? 'Blocked. You can change this in your browser’s site settings.'
+                  : permission === 'unsupported'
+                    ? 'Unavailable in this browser.'
+                    : 'Allow a notification when focus or break ends while PRISM is in the background.'}
+            </p>
+          </div>
+          {permission === 'default' && (
+            <button
+              className="button small"
+              onClick={() =>
+                void Notification.requestPermission()
+                  .then(setPermission)
+                  .catch(() => {})
+              }
+            >
+              Enable notifications
+            </button>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 

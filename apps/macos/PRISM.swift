@@ -1,10 +1,11 @@
 import Cocoa
+import UserNotifications
 import WebKit
 #if PRISM_SPARKLE
 import Sparkle
 #endif
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler {
+final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     var window: NSWindow!
     var web: WKWebView!
     var launcher: Process?
@@ -19,6 +20,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var desktopReadyFile: URL?
     private let healthSession = URLSession(configuration: .ephemeral)
     private var markdownDownloads: [ObjectIdentifier: URL] = [:]
+    private let focusNotificationID = "prism.focus-completion"
+    private var focusReminder: FocusReminder?
+    private var focusPetState: FocusState?
+    private var focusPetPanel: NSPanel?
+    private var focusPetWeb: WKWebView?
+    private var focusPetLoaded = false
+    private var focusPetHidden = false
+    private var openFocusWhenReady = false
+    private let focusPetOriginKey = "prism.focus-pet.origin"
+
+    private struct FocusReminder: Equatable {
+        let endsAt: Double
+        let phase: String
+        let sound: Bool
+    }
+
+    private struct FocusState: Encodable {
+        let endsAt: Double?
+        let phase: String
+        let sound: Bool
+        let pet: Bool
+        let mood: String
+        let reducedMotion: Bool
+
+        init?(_ value: Any) {
+            guard let body = value as? [String: Any],
+                  let phase = body["phase"] as? String, ["focus", "break"].contains(phase),
+                  let mood = body["mood"] as? String, ["ready", "running", "paused", "finished"].contains(mood),
+                  let sound = body["sound"] as? Bool,
+                  let pet = body["pet"] as? Bool,
+                  let reducedMotion = body["reducedMotion"] as? Bool else { return nil }
+            let deadline = (body["endsAt"] as? NSNumber)?.doubleValue
+            let now = Date().timeIntervalSince1970 * 1000
+            if mood == "running" {
+                guard let deadline, deadline.isFinite,
+                      deadline >= now - 60_000, deadline <= now + 86_400_000 else { return nil }
+            }
+            self.endsAt = mood == "running" ? deadline : nil
+            self.phase = phase
+            self.sound = sound
+            self.pet = pet
+            self.mood = mood
+            self.reducedMotion = reducedMotion || NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        }
+    }
     #if PRISM_SPARKLE
     private var updaterController: SPUStandardUpdaterController?
     #endif
@@ -56,6 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(self, name: "prismAppearance")
         configuration.userContentController.add(self, name: "prismPrint")
+        configuration.userContentController.add(self, name: "prismFocus")
+        UNUserNotificationCenter.current().delegate = self
         let appearanceScript = """
         (function(){function send(){try{window.webkit.messageHandlers.prismAppearance.postMessage({theme:document.documentElement.dataset.theme||'system'})}catch(e){}}function attach(){if(!document.documentElement)return false;send();new MutationObserver(send).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});return true}if(!attach()){var observer=new MutationObserver(function(){if(attach())observer.disconnect()});observer.observe(document,{childList:true,subtree:true})}})();
         """
@@ -173,7 +221,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // The personal feed is served by the local launcher.
         if !packaged { updaterController?.startUpdater() }
         #endif
-        let request = URLRequest(url: address)
+        let target = openFocusWhenReady ? URL(string: "/today#focus-timer", relativeTo: address)! : address
+        openFocusWhenReady = false
+        let request = URLRequest(url: target)
         if let token = desktopToken {
             guard let cookie = HTTPCookie(properties: [.name: "prism_desktop", .value: token,
                 .domain: "127.0.0.1", .path: "/", .discard: "TRUE", .sameSitePolicy: "Strict",
@@ -204,10 +254,185 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         let reduced = NSWorkspace.shared.accessibilityDisplayShouldReduceTransparency
         web.evaluateJavaScript("document.documentElement?.setAttribute('data-system-reduced-transparency', '\(reduced)')")
     }
+    private func syncFocusReminder(_ state: FocusState) {
+        let center = UNUserNotificationCenter.current()
+        let now = Date().timeIntervalSince1970 * 1000
+        guard let endsAt = state.endsAt else {
+            // The renderer and Notification Center can reach the deadline in either order.
+            // Clearing a finished timer here could swallow the reminder just before it appears.
+            if state.mood == "finished", (focusReminder?.endsAt ?? 0) <= now + 1000 { return }
+            focusReminder = nil
+            center.removePendingNotificationRequests(withIdentifiers: [focusNotificationID])
+            return
+        }
+        let reminder = FocusReminder(endsAt: endsAt, phase: state.phase, sound: state.sound)
+        if let previous = focusReminder, previous.endsAt == endsAt,
+           previous.phase == state.phase, (previous == reminder || endsAt <= now + 1000) { return }
+        focusReminder = reminder
+        center.removePendingNotificationRequests(withIdentifiers: [focusNotificationID])
+        center.requestAuthorization(options: [.alert, .sound]) { [weak self] granted, _ in
+            DispatchQueue.main.async {
+                guard let self, granted, self.focusReminder == reminder else { return }
+                let remaining = reminder.endsAt / 1000 - Date().timeIntervalSince1970
+                // A permission prompt may outlast a timer. Avoid a stale alert long after it ended.
+                guard remaining >= -30 else { return }
+                let content = UNMutableNotificationContent()
+                content.title = reminder.phase == "focus" ? "Focus complete" : "Break complete"
+                content.body = reminder.phase == "focus" ? "Ready for a break?" : "Ready for your next focus session?"
+                content.sound = reminder.sound ? .default : nil
+                let trigger = UNTimeIntervalNotificationTrigger(timeInterval: max(1, remaining), repeats: false)
+                center.add(UNNotificationRequest(identifier: self.focusNotificationID, content: content, trigger: trigger))
+            }
+        }
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+        withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        var options: UNNotificationPresentationOptions = [.banner, .list]
+        if notification.request.content.sound != nil { options.insert(.sound) }
+        completionHandler(options)
+    }
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse,
+        withCompletionHandler completionHandler: @escaping () -> Void) {
+        DispatchQueue.main.async { [weak self] in
+            if let self, response.notification.request.identifier == self.focusNotificationID,
+               response.actionIdentifier == UNNotificationDefaultActionIdentifier {
+                self.openFocus()
+            }
+            completionHandler()
+        }
+    }
+
+    private func openFocus() {
+        guard let url = web?.url, url.scheme == address.scheme,
+              url.host == address.host, url.port == address.port else {
+            openFocusWhenReady = true
+            return
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+        web.evaluateJavaScript("window.dispatchEvent(new Event('prism:open-focus'))")
+    }
+
+    private func syncFocusPet(_ state: FocusState) {
+        focusPetState = state
+        guard state.pet else {
+            focusPetHidden = false
+            rememberFocusPetPosition()
+            focusPetPanel?.orderOut(nil)
+            return
+        }
+        guard !focusPetHidden else { return }
+        if focusPetPanel == nil, let url = URL(string: "/focus-pet", relativeTo: address) {
+            let configuration = WKWebViewConfiguration()
+            configuration.userContentController.add(self, name: "prismPet")
+            let petWeb = WKWebView(frame: .zero, configuration: configuration)
+            petWeb.navigationDelegate = self
+            petWeb.underPageBackgroundColor = .clear
+            if petWeb.responds(to: NSSelectorFromString("_setDrawsBackground:")) {
+                petWeb.setValue(false, forKey: "drawsBackground")
+            }
+            let size = NSSize(width: 190, height: 210)
+            let frame = (window.screen ?? NSScreen.main)?.visibleFrame ?? window.frame
+            var origin = NSPoint(x: frame.maxX - size.width - 22, y: frame.minY + 26)
+            if let saved = UserDefaults.standard.array(forKey: focusPetOriginKey) as? [Double],
+               saved.count == 2, saved.allSatisfy(\.isFinite) {
+                origin = NSPoint(x: saved[0], y: saved[1])
+            }
+            let panel = NSPanel(contentRect: NSRect(origin: origin, size: size),
+                styleMask: [.borderless, .nonactivatingPanel], backing: .buffered, defer: false)
+            panel.title = "PRISM Focus Companion"
+            panel.isFloatingPanel = true
+            panel.level = .floating
+            panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .ignoresCycle]
+            panel.hidesOnDeactivate = false
+            panel.canHide = false
+            panel.becomesKeyOnlyIfNeeded = true
+            panel.backgroundColor = .clear
+            panel.isOpaque = false
+            panel.hasShadow = false
+            panel.appearance = window.appearance
+            panel.contentView = petWeb
+            focusPetWeb = petWeb
+            focusPetPanel = panel
+            moveFocusPet(to: origin)
+            petWeb.load(URLRequest(url: url))
+        }
+        if focusPetLoaded {
+            focusPetPanel?.orderFrontRegardless()
+            publishFocusPetState()
+        }
+    }
+
+    private func publishFocusPetState() {
+        guard let state = focusPetState, state.pet, !focusPetHidden,
+              let data = try? JSONEncoder().encode(state),
+              let literal = String(data: data, encoding: .utf8) else { return }
+        focusPetWeb?.evaluateJavaScript("""
+            window.prismFocusState = \(literal);
+            window.dispatchEvent(new CustomEvent('prism:focus-state', { detail: window.prismFocusState }));
+            """)
+    }
+
+    private func moveFocusPet(to origin: NSPoint, followingPointer: Bool = false) {
+        guard let panel = focusPetPanel else { return }
+        let center = NSPoint(x: origin.x + panel.frame.width / 2, y: origin.y + panel.frame.height / 2)
+        let anchor = followingPointer ? NSEvent.mouseLocation : center
+        guard let screen = NSScreen.screens.first(where: { $0.frame.contains(anchor) })
+            ?? panel.screen ?? NSScreen.main else { return }
+        let frame = screen.visibleFrame
+        panel.setFrameOrigin(NSPoint(
+            x: max(frame.minX, min(origin.x, frame.maxX - panel.frame.width)),
+            y: max(frame.minY, min(origin.y, frame.maxY - panel.frame.height))
+        ))
+    }
+
+    private func rememberFocusPetPosition() {
+        guard let origin = focusPetPanel?.frame.origin else { return }
+        UserDefaults.standard.set([Double(origin.x), Double(origin.y)], forKey: focusPetOriginKey)
+    }
+
+    private func receiveFocusPetAction(_ value: Any) {
+        guard let body = value as? [String: Any], let action = body["action"] as? String,
+              let panel = focusPetPanel else { return }
+        switch action {
+        case "ready":
+            focusPetLoaded = true
+            if focusPetState?.pet == true && !focusPetHidden { panel.orderFrontRegardless() }
+            publishFocusPetState()
+        case "hide":
+            focusPetHidden = true
+            rememberFocusPetPosition()
+            panel.orderOut(nil)
+            web.evaluateJavaScript("window.dispatchEvent(new Event('prism:hide-pet'))")
+        case "open":
+            openFocus()
+        case "drag":
+            guard let dx = (body["dx"] as? NSNumber)?.doubleValue,
+                  let dy = (body["dy"] as? NSNumber)?.doubleValue,
+                  dx.isFinite, dy.isFinite, abs(dx) <= 500, abs(dy) <= 500 else { return }
+            let origin = panel.frame.origin
+            moveFocusPet(to: NSPoint(x: origin.x + dx, y: origin.y - dy), followingPointer: true)
+        default:
+            break
+        }
+    }
+
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
         guard message.frameInfo.isMainFrame,
               let url = message.frameInfo.request.url,
               url.scheme == "http", url.host == address.host, url.port == address.port else { return }
+        if message.name == "prismPet", message.webView === focusPetWeb, url.path == "/focus-pet" {
+            receiveFocusPetAction(message.body)
+            return
+        }
+        guard message.webView === web else { return }
+        if message.name == "prismFocus", let state = FocusState(message.body) {
+            syncFocusReminder(state)
+            syncFocusPet(state)
+            return
+        }
         if message.name == "prismPrint" {
             guard url.path == "/knowledge/export", window.attachedSheet == nil,
                   let info = NSPrintInfo.shared.copy() as? NSPrintInfo else { return }
@@ -227,6 +452,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         case "system": window.appearance = nil
         default: return
         }
+        focusPetPanel?.appearance = window.appearance
         syncReducedTransparency()
     }
     @objc func openBrowser() { NSWorkspace.shared.open(address) }
@@ -241,6 +467,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         timer?.invalidate()
+        rememberFocusPetPosition()
         guard let process = launcher, process.isRunning else { return .terminateNow }
         // Only terminate the process this app started; a reused server's short-lived launcher has already exited.
         process.terminationHandler = { _ in DispatchQueue.main.async { sender.reply(toApplicationShouldTerminate: true) } }
@@ -250,6 +477,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     func webView(_ webView: WKWebView, decidePolicyFor action: WKNavigationAction, decisionHandler: @escaping (WKNavigationActionPolicy) -> Void) {
         guard let url = action.request.url else { decisionHandler(.cancel); return }
         let local = url.scheme == "http" && url.host == address.host && url.port == address.port
+        if webView === focusPetWeb {
+            decisionHandler(local && url.path == "/focus-pet" && action.targetFrame?.isMainFrame == true ? .allow : .cancel)
+            return
+        }
         let localBlob = url.absoluteString.hasPrefix("blob:http://\(address.host ?? "localhost"):\(address.port ?? 3000)/")
         if action.shouldPerformDownload && (local || localBlob) { decisionHandler(.download); return }
         if url.scheme == "about" || local {
@@ -258,6 +489,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             if action.navigationType == .linkActivated && ["https", "http", "mailto"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
             decisionHandler(.cancel)
         }
+    }
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard webView === focusPetWeb else { return }
+        focusPetLoaded = true
+        guard focusPetState?.pet == true, !focusPetHidden else { return }
+        focusPetPanel?.orderFrontRegardless()
+        publishFocusPetState()
     }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = action.request.url, ["http", "https"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }

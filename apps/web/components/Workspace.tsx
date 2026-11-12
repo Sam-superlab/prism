@@ -8,7 +8,7 @@ import { shortcutPlatform, workspaceShortcutFor } from '../lib/workspace-shortcu
 import type { Page, Project, Today, User } from '../lib/types';
 import { ErrorState, Field, Icon, Loading, Modal, Notice } from './ui';
 import { TodayPage } from './pages/Today';
-import { FocusTimerStatus, useFocusTimer } from './pages/FocusTimer';
+import { FocusCompletionNotice, FocusTimerStatus, useFocusTimer } from './pages/FocusTimer';
 import { KnowledgePage, ReviewPage } from './pages/Knowledge';
 import { ResearchPage } from './pages/Research';
 import { DiscoverPage } from './pages/Discover';
@@ -44,6 +44,17 @@ export default function Workspace({
   const [searchKeys, setSearchKeys] = useState('⌘ K');
   const me = useResource<User>('/me');
   const focusTimer = useFocusTimer(me.data?.id);
+  useEffect(() => {
+    const openFocus = () => {
+      const timer = document.getElementById('focus-timer');
+      if (timer) {
+        timer.scrollIntoView({ block: 'start' });
+        document.getElementById('focus-timer-heading')?.focus({ preventScroll: true });
+      } else router.push('/today#focus-timer');
+    };
+    window.addEventListener('prism:open-focus', openFocus);
+    return () => window.removeEventListener('prism:open-focus', openFocus);
+  }, [router]);
   const guide = useGettingStarted(me.data?.id, route === 'today');
   const projects = useResource<Page<Project>>('/research/projects?limit=5');
   const active = route === 'review/session' ? 'knowledge' : route.split('/')[0];
@@ -316,6 +327,7 @@ export default function Workspace({
           {active === 'discover' && <DiscoverPage />}
           {active === 'settings' && (
             <SettingsPage
+              focusTimer={focusTimer}
               guideLanguage={guide.language}
               onGuideLanguageChange={guide.changeLanguage}
               onOpenGuide={
@@ -338,6 +350,7 @@ export default function Workspace({
           )}
         </main>
       </div>
+      <FocusCompletionNotice timer={focusTimer} />
       {capture && (
         <QuickCapture
           onClose={() => setCapture(false)}

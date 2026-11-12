@@ -4,7 +4,8 @@ export type FocusTask = { id: string; title: string };
 export type FocusPhase = 'focus' | 'break';
 
 type Clock =
-  | { status: 'ready' | 'finished' }
+  | { status: 'ready' }
+  | { status: 'finished'; endedAt?: number }
   | { status: 'running'; endsAt: number }
   | { status: 'paused'; remainingMs: number };
 
@@ -43,7 +44,7 @@ export function focusRemainingMs(session: FocusSession, now: number): number {
 
 export function settleFocus(session: FocusSession, now: number): FocusSession {
   if (session.clock.status === 'running' && session.clock.endsAt <= now) {
-    return { ...session, clock: { status: 'finished' } };
+    return { ...session, clock: { status: 'finished', endedAt: session.clock.endsAt } };
   }
   return session;
 }
@@ -73,7 +74,8 @@ export function restoreFocus(raw: string | null, now: number): FocusSession {
     let clock: Clock = { status: 'ready' };
     const duration = focusDurationMs(data);
     const saved = data.clock;
-    if (saved?.status === 'finished') clock = { status: 'finished' };
+    if (saved?.status === 'finished')
+      clock = { status: 'finished', endedAt: Number.isFinite(saved.endedAt) ? saved.endedAt : undefined };
     if (saved?.status === 'running' && Number.isFinite(saved.endsAt))
       clock = { status: 'running', endsAt: Math.min(saved.endsAt, now + duration) };
     if (saved?.status === 'paused' && Number.isFinite(saved.remainingMs) && saved.remainingMs > 0)
