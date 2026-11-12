@@ -5,6 +5,7 @@ import { useState } from 'react';
 import { api, useAction, useResource, uuid } from '../lib/api';
 import type { Entity, Knowledge, Page, Paper, Project, ResearchObject } from '../lib/types';
 import { ErrorState, Field, Icon, Loading, Modal, Notice } from './ui';
+import styles from './ResearchLinks.module.css';
 
 type Material = { kind: 'knowledge' | 'paper'; id: string; title: string };
 type ProjectLink = Entity & { project_id: string | null };
@@ -149,8 +150,8 @@ export function KnowledgeResearchLinks({ note }: { note: Knowledge }) {
     `/research/knowledge-links?knowledge_item_id=${note.id}&limit=500`,
   );
   return (
-    <section className="panel" aria-label="Research connections">
-      <div className="panel-heading">
+    <section className={`panel ${styles.card}`} aria-label="Research connections">
+      <div className={`panel-heading ${styles.heading}`}>
         <h2>Research connections</h2>
         <button className="button small" onClick={() => setOpen(true)}>
           <Icon name="plus" size={15} /> Link to research
@@ -168,7 +169,7 @@ export function KnowledgeResearchLinks({ note }: { note: Knowledge }) {
         ) : null,
       )}
       {links.data?.items.length === 0 && (
-        <p className="muted small-text">
+        <p className={`muted small-text ${styles.description}`}>
           Link this note to a project to use it in research and paper recommendations.
         </p>
       )}
@@ -199,8 +200,8 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
     );
 
   return (
-    <section className="panel" aria-label="Project materials">
-      <div className="panel-heading">
+    <section className={`panel ${styles.card}`} aria-label="Project materials">
+      <div className={`panel-heading ${styles.heading}`}>
         <h2>Project materials</h2>
       </div>
       <ErrorState error={notes.error} retry={notes.reload} />

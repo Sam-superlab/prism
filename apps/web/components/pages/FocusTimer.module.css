@@ -1,0 +1,277 @@
+.panel {
+  --timer-ink: var(--accent-ink, var(--accent));
+  --timer-tint: var(--accent-soft, var(--surface-secondary));
+  min-inline-size: 0;
+  padding: 16px;
+  margin-block-end: 18px;
+}
+
+.panel[data-phase='break'] {
+  --timer-ink: var(--teal);
+  --timer-tint: var(--success-soft);
+}
+
+@supports (color: color-mix(in srgb, black, white)) {
+  .panel[data-phase='break'] {
+    --timer-ink: color-mix(in srgb, var(--teal) 65%, var(--ink));
+  }
+}
+
+.panel > :global(.panel-heading) {
+  padding: 0;
+  margin-block-end: 12px;
+  color: var(--muted);
+}
+
+.phases {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  background: var(--surface-secondary);
+}
+
+.phases button {
+  min-inline-size: 0;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.4;
+  transition:
+    color var(--motion-feedback),
+    background-color var(--motion-feedback);
+}
+
+.phases button[aria-pressed='true'] {
+  background: var(--panel);
+  border-color: var(--line);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.phases button:not(:disabled, [aria-pressed='true']):hover {
+  color: var(--ink);
+  background: var(--hover-tint);
+}
+
+.phases button:disabled {
+  cursor: default;
+}
+
+.scene {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  min-block-size: 118px;
+  margin-block-start: 12px;
+  padding: 9px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(135deg, var(--panel), var(--timer-tint));
+  color: var(--timer-ink);
+}
+
+.readout {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 1;
+  inline-size: min(100%, 104px);
+  min-inline-size: 0;
+  justify-self: center;
+}
+
+.readout > * {
+  grid-area: 1 / 1;
+}
+
+.ring {
+  display: block;
+  inline-size: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring circle {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 4px;
+}
+
+.track {
+  opacity: 0.14;
+}
+
+.arc {
+  stroke-linecap: round;
+  transition: stroke-dasharray 250ms linear;
+}
+
+.time {
+  color: var(--ink);
+  font-size: clamp(1rem, 2.2vw, 1.55rem);
+  font-weight: 650;
+  line-height: 1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.045em;
+}
+
+.pet {
+  display: block;
+  inline-size: 100%;
+  max-inline-size: 134px;
+  max-block-size: 112px;
+  justify-self: center;
+  overflow: visible;
+}
+
+.petBody {
+  transform-box: fill-box;
+  transform-origin: 50% 90%;
+}
+
+.pet[data-mood='working'] .petBody {
+  animation: settle-pet 420ms var(--motion-out);
+}
+
+.pet[data-mood='resting'] .petBody {
+  animation: rest-pet 640ms var(--motion-out);
+}
+
+.pet[data-mood='finished'] .petBody {
+  animation: celebrate-pet 490ms var(--motion-out);
+}
+
+@keyframes settle-pet {
+  45% {
+    transform: translateY(-3px);
+  }
+}
+
+@keyframes rest-pet {
+  60% {
+    transform: scaleY(0.94);
+  }
+}
+
+@keyframes celebrate-pet {
+  40% {
+    transform: translateY(-6px) rotate(-3deg);
+  }
+  72% {
+    transform: translateY(1px) scaleY(0.97);
+  }
+}
+
+.details {
+  min-block-size: 3.15rem;
+  margin-block: 10px 4px;
+  overflow: hidden;
+  text-align: center;
+}
+
+.state,
+.task {
+  margin: 0;
+  line-height: 1.4;
+}
+
+.state {
+  color: var(--timer-ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.task {
+  margin-block-start: 3px;
+  color: var(--ink);
+  font-size: 0.84rem;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.actions button {
+  justify-content: center;
+  min-inline-size: 0;
+  padding-inline: 8px;
+}
+
+.presets {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding-block-start: 11px;
+  margin-block-start: 12px;
+  border-block-start: 1px solid var(--line);
+}
+
+.presets label {
+  display: grid;
+  align-items: start;
+  gap: 4px;
+  min-inline-size: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.presets select {
+  inline-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding-inline: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  font: inherit;
+}
+
+.presets select:disabled {
+  opacity: 0.75;
+}
+
+.statusLink {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 640px) {
+  .statusLink span {
+    position: absolute;
+    inline-size: 1px;
+    block-size: 1px;
+    clip-path: inset(50%);
+    overflow: hidden;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet .petBody {
+    animation: none;
+  }
+  .arc,
+  .phases button {
+    transition: none;
+  }
+}
+
+:global([data-reduced-motion='true']) .pet .petBody {
+  animation: none;
+}
+
+:global([data-reduced-motion='true']) .arc,
+:global([data-reduced-motion='true']) .phases button {
+  transition: none;
+}

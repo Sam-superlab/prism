@@ -8,6 +8,7 @@ import { shortcutPlatform, workspaceShortcutFor } from '../lib/workspace-shortcu
 import type { Page, Project, Today, User } from '../lib/types';
 import { ErrorState, Field, Icon, Loading, Modal, Notice } from './ui';
 import { TodayPage } from './pages/Today';
+import { FocusTimerStatus, useFocusTimer } from './pages/FocusTimer';
 import { KnowledgePage, ReviewPage } from './pages/Knowledge';
 import { ResearchPage } from './pages/Research';
 import { DiscoverPage } from './pages/Discover';
@@ -42,6 +43,7 @@ export default function Workspace({
   const [online, setOnline] = useState(true);
   const [searchKeys, setSearchKeys] = useState('⌘ K');
   const me = useResource<User>('/me');
+  const focusTimer = useFocusTimer(me.data?.id);
   const guide = useGettingStarted(me.data?.id, route === 'today');
   const projects = useResource<Page<Project>>('/research/projects?limit=5');
   const active = route === 'review/session' ? 'knowledge' : route.split('/')[0];
@@ -248,6 +250,7 @@ export default function Workspace({
             </nav>
           </div>
           <div className="topbar-actions">
+            {active !== 'today' && active !== 'planner' && <FocusTimerStatus timer={focusTimer} />}
             <span className={`connection-status ${online ? '' : 'offline'}`}>
               <span />
               {online ? 'Connected' : 'Offline'}
@@ -280,6 +283,7 @@ export default function Workspace({
         <main className="main-content" key={`${route}:${epoch}`}>
           {active === 'today' && (
             <TodayPage
+              focusTimer={focusTimer}
               gettingStarted={(reloadToday) =>
                 guide.progress && (
                   <GettingStarted
@@ -293,7 +297,7 @@ export default function Workspace({
               }
             />
           )}
-          {active === 'planner' && <TodayPage planner />}
+          {active === 'planner' && <TodayPage planner focusTimer={focusTimer} />}
           {active === 'knowledge' && route !== 'review/session' && (
             <KnowledgePage id={route.split('/')[1]} scope={studyScope} />
           )}

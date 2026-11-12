@@ -1,4 +1,5 @@
 'use client';
+import { localDayRange } from '@prism/shared-utils';
 import Link from 'next/link';
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
@@ -15,6 +16,7 @@ import type { InboxEntry, Page, PlanItem, Task, Today, User } from '../../lib/ty
 import { Badge, Empty, ErrorState, Field, Icon, Loading, Modal, Notice, label } from '../ui';
 import { DailyReviewDrafts } from './DailyReviewDrafts';
 import { TodayOverview } from './TodayOverview';
+import { FocusTimer, type FocusTimerController } from './FocusTimer';
 
 function previousDate(date: string) {
   const day = new Date(`${date}T00:00:00.000Z`);
@@ -22,12 +24,43 @@ function previousDate(date: string) {
   return day.toISOString().slice(0, 10);
 }
 
+function canPlanTask(task: Task, date: string, endOfDay: number) {
+  return (
+    task.source_type !== 'workout' &&
+    ['ready', 'in_progress'].includes(task.status) &&
+    (!task.planned_date ||
+      task.planned_date <= date ||
+      task.pinned ||
+      (task.hard_deadline && task.due_at !== null && Date.parse(task.due_at) < endOfDay))
+  );
+}
+
+function taskPlanFeedback(task: Task, day: Today, item: PlanItem | undefined, planError: boolean) {
+  if (item?.status === 'planned') return { text: `Added to today’s plan: ${task.title}` };
+  if (item?.status === 'completed') return { text: `Completed: ${task.title}` };
+  if (item?.status === 'deferred' || item?.status === 'skipped') {
+    const reason = item.deferred_reason ? ` ${item.deferred_reason}` : '';
+    return { text: `Saved in Deferred: ${task.title}.${reason}`, destination: 'deferred' as const };
+  }
+  if (!canPlanTask(task, day.date, Date.parse(localDayRange(day.date, day.timezone).end))) {
+    const reason =
+      task.planned_date && task.planned_date > day.date
+        ? `Planned for ${task.planned_date}.`
+        : 'Only ready or in-progress tasks go into today’s plan.';
+    return { text: `Saved in Task library: ${task.title}. ${reason}`, destination: 'library' as const };
+  }
+  if (planError) return { text: `Saved in Task library: ${task.title}.`, destination: 'library' as const };
+  return { text: 'Task saved. Updating today’s plan…' };
+}
+
 export function TodayPage({
   planner = false,
   gettingStarted,
+  focusTimer,
 }: {
   planner?: boolean;
   gettingStarted?: (reload: () => void) => ReactNode;
+  focusTimer: FocusTimerController;
 }) {
   const me = useResource<User>('/me');
   const timezone = me.data?.timezone;
@@ -40,6 +73,7 @@ export function TodayPage({
   const [capacity, setCapacity] = useState<number | null>(null);
   const [tab, setTab] = useState('pending');
   const [addTask, setAddTask] = useState(false);
+  const [savedTask, setSavedTask] = useState<Task | null>(null);
   const [shutdown, setShutdown] = useState(false);
   const [defer, setDefer] = useState<PlanItem | null>(null);
   const [reason, setReason] = useState('Focusing on other work today');
@@ -48,6 +82,8 @@ export function TodayPage({
   const [autoError, setAutoError] = useState('');
   const attempted = useRef('');
   const planPanel = useRef<HTMLElement>(null);
+  const taskLibrary = useRef<HTMLDetailsElement>(null);
+  const focusPanel = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!timezone) return;
     const update = () => setDate(todayDate(timezone));
@@ -67,13 +103,29 @@ export function TodayPage({
   const action = useAction(refresh);
   const d = today.data?.date === date ? today.data : null;
   const draftDate =
-    process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d && !planner
-      ? previousDate(d.date)
-      : null;
+    process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d && !planner ? previousDate(d.date) : null;
   const reloadToday = today.reload;
   useEffect(() => {
-    if (!d || d.plan || attempted.current === d.date) return;
-    attempted.current = d.date;
+    if (!d || today.loading || autoPlanning || action.busy || (d.plan && (tasks.loading || !tasks.data)))
+      return;
+    let request = d.date;
+    if (d.plan) {
+      const included = new Set(d.plan.items.map((item) => item.task_id));
+      const endOfDay = Date.parse(localDayRange(d.date, d.timezone).end);
+      const available = new Map(tasks.data?.items.map((task) => [task.id, task]));
+      if (savedTask && !available.has(savedTask.id)) available.set(savedTask.id, savedTask);
+      const missing = [...available.values()]
+        .filter((task) => !included.has(task.id) && canPlanTask(task, d.date, endOfDay))
+        .map((task) => task.id)
+        .sort();
+      if (!missing.length) {
+        attempted.current = '';
+        return;
+      }
+      request += ':' + missing.join(',');
+    }
+    if (attempted.current === request) return;
+    attempted.current = request;
     setAutoError('');
     setAutoPlanning(true);
     void api('/daily-plans/generate', {
@@ -82,13 +134,19 @@ export function TodayPage({
         plan_date: d.date,
         timezone: d.timezone,
         capacity_minutes: d.capacity_minutes,
-        if_missing: true,
+        ...(d.plan ? { override_manual: false } : { if_missing: true }),
       },
     })
       .then(reloadToday)
-      .catch(() => setAutoError('Could not prepare the plan automatically. Try Generate plan.'))
+      .catch(() =>
+        setAutoError(
+          d.plan
+            ? 'Could not refresh today’s plan. Try Replan.'
+            : 'Could not prepare the plan automatically. Try Plan today.',
+        ),
+      )
       .finally(() => setAutoPlanning(false));
-  }, [d, reloadToday]);
+  }, [d, today.loading, tasks.data, tasks.loading, autoPlanning, action.busy, reloadToday, savedTask]);
   const localHour = me.data
     ? Number(
         new Intl.DateTimeFormat('en-GB', {
@@ -107,6 +165,11 @@ export function TodayPage({
           ? 'Good afternoon'
           : 'Good evening';
   const plan = d?.plan;
+  const savedPlanItem = plan?.items.find((item) => item.task_id === savedTask?.id);
+  const savedTaskFeedback =
+    savedTask && d
+      ? taskPlanFeedback(savedTask, d, savedPlanItem, Boolean(autoError || tasks.error || today.error))
+      : null;
   const items = [...(plan?.items || [])].sort((a, b) => a.position - b.position);
   const active = items.filter(
     (x) =>
@@ -147,24 +210,39 @@ export function TodayPage({
       }),
     );
   }
-  async function complete(item: PlanItem) {
-    const task = item.task_id && taskById.get(item.task_id);
-    if (!task) return;
-    await action.run(() =>
-      api(`/tasks/${task.id}/complete`, {
+  async function completeTask(task: Task) {
+    await action.run(async () => {
+      await api(`/tasks/${task.id}/complete`, {
         method: 'POST',
         version: task.version,
         body: { completed_at: new Date().toISOString() },
-      }),
-    );
+      });
+      focusTimer.finishTask(task.id);
+    });
+  }
+  function complete(item: PlanItem) {
+    const task = item.task_id && taskById.get(item.task_id);
+    if (task) void completeTask(task);
   }
   async function start(item: PlanItem) {
     const task = item.task_id && taskById.get(item.task_id);
     if (!task) return;
-    await action.run(() =>
-      api(`/tasks/${task.id}`, { method: 'PATCH', version: task.version, body: { status: 'in_progress' } }),
-    );
-    setMessage(`Started: ${task.title}`);
+    await action.run(async () => {
+      await api(`/tasks/${task.id}`, {
+        method: 'PATCH',
+        version: task.version,
+        body: { status: 'in_progress' },
+      });
+      setMessage(`Started: ${task.title}`);
+    });
+  }
+  function focusOn(task: Task) {
+    if (!focusTimer.startTask({ id: task.id, title: task.title })) return;
+    const reducedMotion =
+      document.documentElement.dataset.reducedMotion === 'true' ||
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    focusPanel.current?.querySelector('h2')?.focus({ preventScroll: true });
+    focusPanel.current?.scrollIntoView({ block: 'nearest', behavior: reducedMotion ? 'instant' : 'smooth' });
   }
   const count = d?.completed_count || 0;
   const total = d?.planned_count || 0;
@@ -312,7 +390,37 @@ export function TodayPage({
                 </Notice>
               )}
               {action.error && <Notice tone="error">{action.error}</Notice>}
-              {!plan && autoError && <Notice tone="error">{autoError}</Notice>}
+              {savedTaskFeedback && (
+                <Notice>
+                  <span role="status">{savedTaskFeedback.text}</span>
+                  {savedTaskFeedback.destination === 'deferred' && (
+                    <button className="button small" onClick={() => setTab('deferred')}>
+                      Show deferred
+                    </button>
+                  )}
+                  {savedTaskFeedback.destination === 'library' && (
+                    <button
+                      className="button small"
+                      onClick={() => {
+                        if (!taskLibrary.current) return;
+                        setPoolFilter('pending');
+                        taskLibrary.current.open = true;
+                        taskLibrary.current.querySelector('summary')?.focus();
+                      }}
+                    >
+                      Open Task library
+                    </button>
+                  )}
+                  <button
+                    className="icon-button"
+                    aria-label="Dismiss task update"
+                    onClick={() => setSavedTask(null)}
+                  >
+                    <Icon name="close" size={14} />
+                  </button>
+                </Notice>
+              )}
+              {autoError && <Notice tone="error">{autoError}</Notice>}
               {!plan && autoPlanning ? (
                 <Loading />
               ) : !plan ? (
@@ -331,7 +439,7 @@ export function TodayPage({
               ) : active.length === 0 ? (
                 <Empty icon="check" title={tab === 'pending' ? 'All clear here' : 'Nothing here yet'}>
                   {tab === 'pending'
-                    ? 'Review completed work or add your next step.'
+                    ? 'Check Deferred or the Task library for tasks outside today’s schedule.'
                     : 'Completed and adjusted items will appear here.'}
                 </Empty>
               ) : (
@@ -389,6 +497,17 @@ export function TodayPage({
                           )}
                         </div>
                         <div className="task-row-actions">
+                          {task && item.status === 'planned' && (
+                            <button
+                              className="button small"
+                              disabled={!focusTimer.ready}
+                              onClick={() => focusOn(task)}
+                              aria-label={`Focus on ${task.title}`}
+                            >
+                              <Icon name="clock" size={15} />
+                              {focusTimer.taskId === task.id ? 'View timer' : 'Focus'}
+                            </button>
+                          )}
                           {item.status === 'planned' &&
                             (item.item_type === 'review' ? (
                               <Link className="button small soft" href="/review/session">
@@ -467,6 +586,9 @@ export function TodayPage({
               </div>
             </section>
             <aside className="today-side">
+              <div ref={focusPanel}>
+                <FocusTimer timer={focusTimer} />
+              </div>
               <section className="panel capacity-panel">
                 <div className="panel-heading">
                   <h2>How much time do you have?</h2>
@@ -539,7 +661,7 @@ export function TodayPage({
         </>
       )}
       {draftDate && <DailyReviewDrafts key={draftDate} date={draftDate} />}
-      <details className="panel task-pool">
+      <details className="panel task-pool" ref={taskLibrary}>
         <summary>
           <span>
             <Icon name="planner" size={17} />
@@ -588,15 +710,7 @@ export function TodayPage({
                   className={`task-check ${t.status === 'completed' ? 'checked' : ''}`}
                   aria-label={`Complete task ${t.title}`}
                   disabled={t.status === 'completed' || action.busy}
-                  onClick={() =>
-                    void action.run(() =>
-                      api(`/tasks/${t.id}/complete`, {
-                        method: 'POST',
-                        version: t.version,
-                        body: { completed_at: new Date().toISOString() },
-                      }),
-                    )
-                  }
+                  onClick={() => void completeTask(t)}
                 >
                   {t.status === 'completed' && <Icon name="check" size={13} />}
                 </button>
@@ -618,16 +732,29 @@ export function TodayPage({
                     {t.pinned && <Icon name="pin" size={12} />}
                   </div>
                 </div>
-                <button
-                  className="icon-button"
-                  aria-label={`Edit task ${t.title}`}
-                  onClick={() => {
-                    setEditingTask(t);
-                    setAddTask(true);
-                  }}
-                >
-                  <Icon name="edit" size={15} />
-                </button>
+                <div className="inline-actions">
+                  {['ready', 'in_progress'].includes(t.status) && (
+                    <button
+                      className="icon-button"
+                      aria-label={`Focus on ${t.title}`}
+                      title={focusTimer.taskId === t.id ? 'View timer' : 'Focus'}
+                      disabled={!focusTimer.ready}
+                      onClick={() => focusOn(t)}
+                    >
+                      <Icon name="clock" size={15} />
+                    </button>
+                  )}
+                  <button
+                    className="icon-button"
+                    aria-label={`Edit task ${t.title}`}
+                    onClick={() => {
+                      setEditingTask(t);
+                      setAddTask(true);
+                    }}
+                  >
+                    <Icon name="edit" size={15} />
+                  </button>
+                </div>
               </article>
             ))}
         </div>
@@ -726,9 +853,12 @@ export function TodayPage({
       {addTask && (
         <TaskModal
           task={editingTask}
+          defaultPlannedDate={date}
           onClose={() => setAddTask(false)}
-          onSaved={() => {
+          onSaved={(saved) => {
             setAddTask(false);
+            setSavedTask(editingTask ? null : (saved ?? null));
+            if (!editingTask && saved) setTab('pending');
             refresh();
           }}
         />
@@ -776,12 +906,14 @@ export function TaskModal({
   projectId,
   objectId,
   task,
+  defaultPlannedDate,
 }: {
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (saved?: Task) => void;
   projectId?: string;
   objectId?: string;
   task?: Task;
+  defaultPlannedDate?: string;
 }) {
   const [creationId] = useState(uuid);
   const [title, setTitle] = useState(task?.title || '');
@@ -791,13 +923,13 @@ export function TaskModal({
   const [due, setDue] = useState(instantToLocalInput(task?.due_at));
   const [dueChanged, setDueChanged] = useState(false);
   const [hard, setHard] = useState(task?.hard_deadline || false);
-  const [planned, setPlanned] = useState(task?.planned_date || '');
+  const [planned, setPlanned] = useState(task ? (task.planned_date ?? '') : (defaultPlannedDate ?? ''));
   const [status, setStatus] = useState(task?.status || 'ready');
   const [pinned, setPinned] = useState(task?.pinned || false);
-  const action = useAction(onSaved);
+  const action = useAction();
   async function save() {
-    await action.run(() =>
-      api(task ? `/tasks/${task.id}` : '/tasks', {
+    await action.run(async () => {
+      const saved = await api<Task>(task ? `/tasks/${task.id}` : '/tasks', {
         method: task ? 'PATCH' : 'POST',
         version: task?.version,
         body: {
@@ -819,8 +951,9 @@ export function TaskModal({
           pinned,
           ...(status === 'completed' ? {} : { status }),
         },
-      }),
-    );
+      });
+      onSaved(saved);
+    });
   }
   return (
     <Modal title={task ? 'Edit task' : 'Next step'} onClose={onClose}>
@@ -910,9 +1043,10 @@ export function TaskModal({
               disabled={action.busy}
               onClick={() => {
                 if (confirm('Archive this task? Its history will be preserved.'))
-                  void action.run(() =>
-                    api(`/tasks/${task.id}`, { method: 'DELETE', version: task.version }),
-                  );
+                  void action.run(async () => {
+                    await api(`/tasks/${task.id}`, { method: 'DELETE', version: task.version });
+                    onSaved();
+                  });
               }}
             >
               Archive task

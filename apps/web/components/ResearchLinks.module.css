@@ -1,0 +1,36 @@
+.card {
+  min-inline-size: 0;
+  padding: var(--panel-padding);
+  overflow-wrap: anywhere;
+}
+
+.card .heading {
+  padding: 0;
+  margin-block-end: 0.85rem;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem 0.8rem;
+}
+
+.heading > h2 {
+  flex: 1 1 9rem;
+  min-inline-size: 0;
+}
+
+.heading > button {
+  max-inline-size: 100%;
+  white-space: normal;
+  text-align: start;
+}
+
+.description {
+  margin: 0;
+}
+
+.card :global(.relation-row) {
+  padding-inline: 0;
+}
+
+.card :global(.relation-row) > div {
+  min-inline-size: 0;
+}
