@@ -44,10 +44,6 @@
   min-inline-size: 0;
 }
 
-.workspaceGraph :global(.page-heading) {
-  margin-block-end: 8px;
-}
-
 .viewport {
   position: relative;
   isolation: isolate;

@@ -49,7 +49,8 @@ test('updates the local graph, zooms and drags, then opens a linked research obj
   await expect(page.getByRole('link', { name: 'Planner', exact: true })).toHaveCount(0);
   await navigation.getByRole('link', { name: 'Workspace Graph' }).click();
   await expect(page).toHaveURL(/\/graph$/);
-  await expect(page.getByRole('heading', { name: 'Workspace Graph', exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Workspace Graph', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Workspace Graph', exact: true })).toHaveCount(0);
   await page.getByRole('link', { name: 'Graph fixture note · Knowledge' }).locator('circle').first().click();
   await expect(page).toHaveURL(new RegExp(`/knowledge/${note}$`));
   const local = page.getByRole('region', { name: 'Local graph', exact: true });

@@ -109,10 +109,7 @@ function dotRadius(degree: number, focused: boolean) {
 
 export function WorkspaceGraphPage() {
   return (
-    <section className={styles.workspaceGraph} aria-labelledby="workspace-graph-heading">
-      <div className="page-heading">
-        <h1 id="workspace-graph-heading">Workspace Graph</h1>
-      </div>
+    <section className={styles.workspaceGraph} aria-label="Workspace Graph">
       <GraphExplorer />
     </section>
   );
