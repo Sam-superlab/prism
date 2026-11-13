@@ -17,6 +17,7 @@ $Extracted = Join-Path $WorkspaceRoot 'extracted'
 Expand-Archive -LiteralPath $BaseArchive -DestinationPath $Extracted
 $AppDirectory = Join-Path $Extracted 'PRISM'
 $Exe = Join-Path $AppDirectory 'PRISM.exe'
+$RouteCache = Join-Path $AppDirectory 'resources/desktop/web/apps/web/.next/server/route-cache'
 if (-not (Test-Path -LiteralPath $Exe)) { throw 'The base archive does not contain PRISM.exe.' }
 $PrismProfile = Join-Path $WorkspaceRoot 'test'
 New-Item -ItemType Directory -Path $PrismProfile | Out-Null
@@ -82,6 +83,10 @@ function Set-ApiSession([object]$Record) {
   $cookie = New-Object System.Net.Cookie('prism_desktop', $Record.token, '/', '127.0.0.1')
   $script:Session.Cookies.Add($cookie)
   $script:Origin = $Record.origin
+}
+function Visit-Companion {
+  $response = Invoke-WebRequest -Uri "$script:Origin/focus-pet" -WebSession $script:Session
+  if ($response.StatusCode -ne 200) { throw 'The companion page did not load.' }
 }
 function Wait-Ready([string]$Version, [int]$PreviousPid = 0) {
   for ($i = 0; $i -lt 240; $i++) {
@@ -184,13 +189,26 @@ try {
   if ((Get-Content -Raw -LiteralPath (Join-Path $AppDirectory 'resources/app/package.json') | ConvertFrom-Json).version -ne $initial.version) {
     throw 'A corrupt download replaced the installed app.'
   }
+  if ($rejectedDownload.message -notmatch 'checksum or signature') { throw "Unexpected download failure: $($rejectedDownload.message)" }
   Remove-Item -LiteralPath $CorruptionMarker
   Write-Output 'Corrupt download was rejected before installation.'
 
+  # The older standalone runtime creates this disposable prerender cache while the companion opens.
+  # Keep a copy beside the test program to exercise the documented one-time recovery.
+  Visit-Companion
+  if (Test-Path -LiteralPath $RouteCache) {
+    Trigger-Update
+    $blocked = Wait-UpdateState 'error'
+    if ($blocked.message -notmatch 'extra files') { throw "Unexpected legacy cache failure: $($blocked.message)" }
+    Move-Item -LiteralPath $RouteCache -Destination (Join-Path $WorkspaceRoot 'legacy-route-cache')
+    Write-Output 'Confirmed the old version refuses its generated companion cache and can retry after moving it.'
+  }
   $oldPid = $PrismProcess.Id
   Trigger-Update
   $installed = Wait-UpdateState 'installed'
   $updated = Wait-Ready $TargetVersion $oldPid
+  Visit-Companion
+  if (Test-Path -LiteralPath $RouteCache) { throw 'The updated companion wrote a cache into the installation.' }
   $restored = Read-Api "/knowledge-items/$noteId"
   $restoredPrefs = Read-Api '/me/preferences'
   $appearance = $updated.appearance | ConvertFrom-Json
