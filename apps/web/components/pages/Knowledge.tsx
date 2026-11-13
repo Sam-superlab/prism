@@ -399,7 +399,7 @@ function KnowledgeCollection({
           onSaved={(item) => {
             if (editor === 'guided' || !guide.progress?.itemId) guide.continueWith(item.id);
             setEditor(undefined);
-            window.location.href = `/knowledge/${item.id}`;
+            router.push(`/knowledge/${item.id}`);
           }}
         />
       )}
@@ -407,6 +407,7 @@ function KnowledgeCollection({
   );
 }
 function KnowledgeDetail({ id, guide }: { id: string; guide: ModuleGuideState }) {
+  const router = useRouter();
   const item = useResource<Knowledge>(`/knowledge-items/${id}`);
   const cards = useResource<Page<Card>>(`/knowledge-items/${id}/cards?limit=100`);
   const [edit, setEdit] = useState(false);
@@ -490,7 +491,7 @@ function KnowledgeDetail({ id, guide }: { id: string; guide: ModuleGuideState })
               if (confirm('Archive this knowledge item and its cards? Review history will be preserved.'))
                 void action.run(async () => {
                   await api(`/knowledge-items/${id}`, { method: 'DELETE', version: k.version });
-                  window.location.href = '/knowledge';
+                  router.push('/knowledge');
                 });
             }}
           >

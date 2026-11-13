@@ -1,0 +1,176 @@
+.workspace-with-tabs .topbar {
+  height: auto;
+  min-height: 45px;
+  gap: 6px;
+  padding: 5px 9px;
+}
+
+.workspace-with-tabs .main-content {
+  width: 100%;
+  max-width: none;
+  padding-top: clamp(14px, 2vw, 26px);
+}
+
+.workspace-with-tabs main[hidden] {
+  display: none;
+}
+
+.workspace-with-tabs .topbar-actions {
+  flex: none;
+  gap: 3px;
+  margin-inline-start: auto;
+}
+
+.workspace-with-tabs .topbar .icon-button {
+  inline-size: 32px;
+  block-size: 32px;
+}
+
+.workspace-with-tabs .workspace-capture {
+  color: var(--accent);
+  background: var(--hover-tint);
+}
+
+.workspace-horizontal-tabs {
+  flex: 1;
+  min-inline-size: 0;
+}
+
+.workspace-tab-strip,
+.workspace-tab-list {
+  display: flex;
+  min-inline-size: 0;
+  align-items: center;
+  gap: 4px;
+}
+
+.workspace-tab-list {
+  overflow: auto;
+  scrollbar-width: thin;
+}
+
+.workspace-tab {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  max-inline-size: 180px;
+  min-inline-size: 0;
+  border-radius: 8px;
+  color: var(--muted);
+  transition: background-color var(--motion-feedback), color var(--motion-feedback);
+}
+
+.workspace-tab:hover {
+  background: var(--hover-tint);
+  color: var(--ink);
+}
+
+.workspace-tab[data-selected='true'] {
+  background: var(--active-tint);
+  color: var(--ink);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.workspace-tab-select,
+.workspace-tab-close {
+  border: 0;
+  background: transparent;
+  border-radius: 7px;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+}
+
+.workspace-tab-select {
+  gap: 7px;
+  min-width: 0;
+  padding: 5px 8px;
+  font: inherit;
+  font-size: .86rem;
+  min-height: 31px;
+  flex: 1;
+}
+
+.workspace-tab-select svg,
+.workspace-tab-close {
+  flex: none;
+}
+
+.workspace-tab-select span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workspace-tab-close {
+  margin-inline-end: 4px;
+  padding: 4px;
+}
+
+.workspace-tab-close:hover {
+  background: var(--active-tint);
+}
+
+.workspace-new-tab {
+  flex: none;
+}
+
+.sidebar > .workspace-tab-strip,
+.sidebar > .workspace-tab-strip > .workspace-tab-list {
+  flex-direction: column;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.sidebar > .workspace-tab-strip {
+  flex: 0 0 auto;
+}
+
+.sidebar .workspace-tab-list {
+  flex: 0 1 auto;
+  max-block-size: 32vh;
+}
+
+.sidebar .workspace-tab {
+  max-inline-size: none;
+}
+
+.sidebar .workspace-new-tab {
+  align-self: flex-start;
+}
+
+.workspace-with-tabs[data-tab-layout='vertical'] .workspace-horizontal-tabs {
+  display: none;
+}
+
+@media (max-width: 800px) {
+  .workspace-with-tabs .tab-layout-toggle,
+  .workspace-with-tabs .sidebar > .workspace-tab-strip {
+    display: none;
+  }
+
+  .workspace-with-tabs[data-tab-layout='vertical'] .workspace-horizontal-tabs {
+    display: block;
+  }
+}
+
+.workspace-with-tabs.sidebar-collapsed .workspace-horizontal-tabs {
+  display: block;
+}
+
+@media (max-width: 520px) {
+  .workspace-with-tabs .topbar-actions a[title='Open focus timer'] span {
+    display: none;
+  }
+
+  .workspace-tab {
+    max-inline-size: 130px;
+  }
+}
+
+
+.workspace-with-tabs .workspace-graph-content {
+  padding: 8px clamp(8px, 1vw, 16px) 10px;
+  margin-block: 0;
+}

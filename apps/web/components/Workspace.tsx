@@ -1,7 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useState } from 'react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { Activity, useCallback, useEffect, useState, type MouseEvent } from 'react';
 import { api, useAction, useResource, uuid } from '../lib/api';
 import { scopedPath, type StudyScope } from '../lib/knowledge-scope';
 import { shortcutPlatform, workspaceShortcutFor } from '../lib/workspace-shortcuts';
@@ -16,54 +16,49 @@ import { SettingsPage } from './pages/Settings';
 import { PracticePage } from './pages/Practice';
 import { GettingStarted, useGettingStarted } from './GettingStarted';
 import { WorkspaceGraphPage } from './ConnectionGraph';
+import { destinations, tabDestination, tabPath, useWorkspaceTabs, WorkspaceTabList } from './WorkspaceTabs';
 
-const navigation = [
-  { path: 'today', label: 'Dashboard', icon: 'today' },
-  { path: 'knowledge', label: 'Knowledge', icon: 'knowledge' },
-  { path: 'practice', label: 'Practice', icon: 'check' },
-  { path: 'research', label: 'Research', icon: 'research' },
-  { path: 'discover', label: 'Discover', icon: 'discover' },
-  { path: 'graph', label: 'Workspace Graph', icon: 'graph' },
-];
+const navigation = destinations.filter(({ path }) => path !== 'settings');
 const sidebarPreference = 'prism.sidebar.pinned';
-export default function Workspace({
-  route,
-  studyScope,
-  reviewCardId,
-  discoverView,
-  discoverRefresh,
-  researchObjectId,
-}: {
-  route: string;
-  studyScope: StudyScope;
-  reviewCardId?: string;
-  discoverView?: 'for-you';
-  discoverRefresh?: string;
-  researchObjectId?: string;
-}) {
+const layoutPreference = 'prism.tabs.layout';
+
+function chapterBound(value: string | null) {
+  return value && /^[1-9]\d{0,5}$/.test(value) ? Number(value) : undefined;
+}
+
+function entityId(value: string | null) {
+  return value && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i.test(value) ? value : undefined;
+}
+
+export default function Workspace() {
   const router = useRouter();
+  const pathname = usePathname();
+  const query = useSearchParams().toString();
+  const [vertical, setVertical] = useState(false);
+  const [newTab, setNewTab] = useState(false);
   const [mobileNav, setMobileNav] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const [sidebarPeek, setSidebarPeek] = useState(false);
   const [capture, setCapture] = useState(false);
   const [search, setSearch] = useState(false);
-  const [epoch, setEpoch] = useState(0);
+  const [dashboardRevision, setDashboardRevision] = useState(0);
   const [online, setOnline] = useState(true);
   const [searchKeys, setSearchKeys] = useState('⌘ K');
   const me = useResource<User>('/me');
+  const tabState = useWorkspaceTabs(query ? `${pathname}?${query}` : pathname, me.data?.id);
   const focusTimer = useFocusTimer(me.data?.id);
   useEffect(() => {
     const openFocus = () => {
-      const timer = document.getElementById('focus-timer');
+      const timer = document.querySelector<HTMLElement>('main:not([hidden]) #focus-timer');
       if (timer) {
         timer.scrollIntoView({ block: 'start' });
-        document.getElementById('focus-timer-heading')?.focus({ preventScroll: true });
+        timer.querySelector<HTMLElement>('#focus-timer-heading')?.focus({ preventScroll: true });
       } else router.push('/today#focus-timer');
     };
     window.addEventListener('prism:open-focus', openFocus);
     return () => window.removeEventListener('prism:open-focus', openFocus);
   }, [router]);
-  const guide = useGettingStarted(me.data?.id, route === 'today');
+  const guide = useGettingStarted(me.data?.id, pathname === '/today');
   function openInterests() {
     guide.update({ ...guide.progress, status: 'welcome' });
   }
@@ -73,14 +68,40 @@ export default function Workspace({
     router.push(`/discover?${query}`);
   }
   const projects = useResource<Page<Project>>('/research/projects?limit=5');
-  const active = route === 'review/session' ? 'knowledge' : route.split('/')[0];
-  const section = [
-    ...navigation,
-    { path: 'settings', label: 'Settings', icon: 'settings' },
-  ].find((x) => x.path === active);
+  const active = tabDestination(pathname)?.path;
+  function openTabPicker() {
+    setMobileNav(false);
+    setSidebarPeek(false);
+    setNewTab(true);
+    setSearch(true);
+  }
+
+  function toggleTabLayout() {
+    setVertical(!vertical);
+    if (!vertical && !sidebarPinned) toggleSidebar();
+    try {
+      localStorage.setItem(layoutPreference, vertical ? 'horizontal' : 'vertical');
+    } catch {
+      // Keep the layout for this session.
+    }
+  }
+
+  function openLinkInTab(event: MouseEvent) {
+    if (!(event.metaKey || event.ctrlKey || event.button === 1) || event.shiftKey || event.altKey) return;
+    const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
+    if (!(link instanceof HTMLAnchorElement) || link.target || link.download || link.origin !== location.origin) return;
+    if (!tabDestination(link.pathname) || link.pathname === '/knowledge/export') return;
+    event.preventDefault();
+    tabState.open(link.pathname + link.search + link.hash);
+    setSidebarPeek(false);
+    setMobileNav(false);
+    setSearch(false);
+  }
+
   useEffect(() => {
     try {
       setSidebarPinned(window.localStorage.getItem(sidebarPreference) !== 'false');
+      setVertical(localStorage.getItem(layoutPreference) === 'vertical');
     } catch {
       // The sidebar can still be toggled when storage is unavailable.
     }
@@ -126,6 +147,7 @@ export default function Workspace({
           openSettings();
           break;
         case 'search':
+          setNewTab(false);
           setSearch(true);
           break;
         case 'capture':
@@ -145,7 +167,12 @@ export default function Workspace({
     };
   }, [router, toggleSidebar]);
   return (
-    <div className={`app-shell ${sidebarPinned ? '' : 'sidebar-collapsed'}`}>
+    <div
+      className={`app-shell workspace-with-tabs ${sidebarPinned ? '' : 'sidebar-collapsed'}`}
+      data-tab-layout={vertical ? 'vertical' : 'horizontal'}
+      onClickCapture={openLinkInTab}
+      onAuxClickCapture={(event) => { if (event.button === 1) openLinkInTab(event); }}
+    >
       {mobileNav && (
         <button className="nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNav(false)} />
       )}
@@ -175,6 +202,7 @@ export default function Workspace({
               PRISM
             </span>
           </Link>
+          {vertical && <WorkspaceTabList state={tabState} onOpen={openTabPicker} />}
           <div className="sidebar-caption">WORKSPACE</div>
           <nav aria-label="Main navigation">
             {navigation.map((item) => (
@@ -251,48 +279,35 @@ export default function Workspace({
             >
               <Icon name="menu" />
             </button>
-            <nav className="breadcrumb-path" aria-label="Breadcrumb">
-              <Link className="muted" href="/today" aria-label="Workspace home">
-                Workspace
-              </Link>
-              {section && (
-                <>
-                  <span className="breadcrumb-slash" aria-hidden="true">
-                    /
-                  </span>
-                  <Link
-                    href={`/${section.path}`}
-                    aria-label={`Open ${section.label} overview`}
-                    aria-current={route === section.path ? 'page' : undefined}
-                  >
-                    {section.label}
-                  </Link>
-                </>
-              )}
-            </nav>
+          </div>
+          <div className="workspace-horizontal-tabs">
+            <WorkspaceTabList state={tabState} onOpen={openTabPicker} />
           </div>
           <div className="topbar-actions">
             {active !== 'today' && <FocusTimerStatus timer={focusTimer} />}
-            <span className={`connection-status ${online ? '' : 'offline'}`}>
-              <span />
-              {online ? 'Connected' : 'Offline'}
-            </span>
             <button
-              className="search-trigger"
-              onClick={() => setSearch(true)}
-              aria-label="Search and navigate"
+              type="button"
+              className="icon-button tab-layout-toggle"
+              aria-label={vertical ? 'Switch to horizontal tabs' : 'Switch to vertical tabs'}
+              title={vertical ? 'Horizontal tabs' : 'Vertical tabs'}
+              onClick={toggleTabLayout}
             >
-              <Icon name="search" size={17} />
-              <span>Search workspace</span>
-              <kbd>{searchKeys}</kbd>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" aria-hidden="true">
+                <rect x="1.5" y="2.5" width="13" height="11" rx="2" />
+                <path d={vertical ? 'M6 3v10' : 'M2 6.5h12'} />
+              </svg>
             </button>
             <button
-              className="button primary small"
-              aria-label="Quick capture"
-              onClick={() => setCapture(true)}
+              type="button"
+              className="icon-button"
+              onClick={() => { setNewTab(false); setSearch(true); }}
+              aria-label="Search and navigate"
+              title={`Search workspace (${searchKeys})`}
             >
+              <Icon name="search" size={17} />
+            </button>
+            <button type="button" className="icon-button workspace-capture" aria-label="Quick capture" title="Quick capture" onClick={() => setCapture(true)}>
               <Icon name="plus" size={17} />
-              <span>Quick capture</span>
             </button>
           </div>
         </header>
@@ -302,98 +317,138 @@ export default function Workspace({
             Mobile supports offline entry.
           </div>
         )}
-        <main className="main-content" key={`${route}:${epoch}`}>
-          {active === 'today' && (
-            <TodayPage
-              focusTimer={focusTimer}
-              gettingStarted={(reloadToday) =>
-                guide.progress && (
-                  <GettingStarted
-                    progress={guide.progress}
-                    update={guide.update}
-                    language={guide.language}
-                    onLanguageChange={guide.changeLanguage}
-                    onCardSaved={reloadToday}
-                    onDiscover={openFirstRound}
-                  />
-                )
-              }
-            />
-          )}
-          {active === 'graph' && <WorkspaceGraphPage />}
-          {active === 'knowledge' && route !== 'review/session' && (
-            <KnowledgePage
-              id={route.split('/')[1]}
-              scope={studyScope}
-              guideUserId={me.data?.id}
-              guideLanguage={guide.language}
-            />
-          )}
-          {route === 'review/session' && (
-            <ReviewPage
-              key={reviewCardId || scopedPath('/review/session', studyScope)}
-              scope={studyScope}
-              cardId={reviewCardId}
-            />
-          )}
-          {active === 'practice' && (
-            me.data ? <PracticePage key={me.data.id} userId={me.data.id} guideLanguage={guide.language} /> :
-              me.error ? <ErrorState error={me.error} retry={me.reload} /> : <Loading />
-          )}
-          {active === 'research' && (
-            <ResearchPage
-              id={route.split('/')[1]}
-              selectedObjectId={researchObjectId}
-              guideUserId={me.data?.id}
-              guideLanguage={guide.language}
-            />
-          )}
-          {active === 'discover' && (
-            <>
-              <DiscoverPage
-                key={discoverRefresh ?? discoverView ?? 'explore'}
-                initialView={discoverView}
-                initialRefreshJob={discoverRefresh}
-                onOpenInterests={me.data ? openInterests : undefined}
-                guideLanguage={guide.language}
-                userId={me.data?.id}
-              />
-              {guide.progress?.status === 'welcome' && (
-                <GettingStarted
-                  progress={guide.progress}
-                  update={guide.update}
-                  language={guide.language}
-                  onLanguageChange={guide.changeLanguage}
-                  onCardSaved={() => {}}
-                  onDiscover={openFirstRound}
-                />
-              )}
-            </>
-          )}
-          {active === 'settings' && (
-            <SettingsPage
-              focusTimer={focusTimer}
-              guideLanguage={guide.language}
-              onGuideLanguageChange={guide.changeLanguage}
-              onOpenGuide={
-                me.data && guide.progress !== undefined
-                  ? () => {
-                      guide.update({ ...guide.progress, status: 'active' });
-                      router.push('/today');
+        {tabState.tabs.map((tab) => {
+          const route = tabPath(tab.href);
+          const section = tabDestination(tab.href);
+          const active = section?.path;
+          const params = new URL(tab.href, 'https://prism.local').searchParams;
+          const from = chapterBound(params.get('chapter_from'));
+          const to = chapterBound(params.get('chapter_to'));
+          const subject = params.get('subject') ?? undefined;
+          const studyScope: StudyScope = {
+            subject,
+            chapters: subject !== undefined && from !== undefined && to !== undefined && from <= to
+              ? { from, to }
+              : undefined,
+          };
+          const reviewCardId = entityId(params.get('card'));
+          const researchObjectId = entityId(params.get('object'));
+          const discoverView = params.get('view') === 'for-you' ? 'for-you' : undefined;
+          const discoverRefresh = discoverView ? entityId(params.get('refresh')) : undefined;
+          const selected = tab.id === tabState.selected;
+          return (
+            <Activity key={tab.id} mode={selected ? 'visible' : 'hidden'}>
+              <main
+                className={`main-content${route === 'graph' ? ' workspace-graph-content' : ''}`}
+                hidden={!selected}
+                key={route}
+                ref={(element) => {
+                  if (!element || !selected || !/^(knowledge|research)\/[^/]+$/.test(route)) return;
+                  const syncTitle = () => {
+                    const title = element.querySelector('.page-heading h1')?.textContent?.trim();
+                    if (title) tabState.name(tab.id, route, title);
+                  };
+                  const observer = new MutationObserver(syncTitle);
+                  syncTitle();
+                  observer.observe(element, { childList: true, subtree: true, characterData: true });
+                  return () => observer.disconnect();
+                }}
+              >
+                {active === 'today' && (
+                  <TodayPage
+                    key={dashboardRevision}
+                    focusTimer={focusTimer}
+                    gettingStarted={(reloadToday) =>
+                      guide.progress && (
+                        <GettingStarted
+                          progress={guide.progress}
+                          update={guide.update}
+                          language={guide.language}
+                          onLanguageChange={guide.changeLanguage}
+                          onCardSaved={reloadToday}
+                          onDiscover={openFirstRound}
+                        />
+                      )
                     }
-                  : undefined
-              }
-            />
-          )}
-          {!section && route !== 'review/session' && (
-            <div className="empty-state">
-              <h1>Page not found</h1>
-              <Link href="/today" className="button primary">
-                Back to Dashboard
-              </Link>
-            </div>
-          )}
-        </main>
+                  />
+                )}
+                {active === 'graph' && <WorkspaceGraphPage />}
+                {active === 'knowledge' && route !== 'review/session' && (
+                  <KnowledgePage
+                    id={route.split('/')[1]}
+                    scope={studyScope}
+                    guideUserId={me.data?.id}
+                    guideLanguage={guide.language}
+                  />
+                )}
+                {route === 'review/session' && (
+                  <ReviewPage
+                    key={reviewCardId || scopedPath('/review/session', studyScope)}
+                    scope={studyScope}
+                    cardId={reviewCardId}
+                  />
+                )}
+                {active === 'practice' && (
+                  me.data ? <PracticePage key={me.data.id} userId={me.data.id} guideLanguage={guide.language} /> :
+                    me.error ? <ErrorState error={me.error} retry={me.reload} /> : <Loading />
+                )}
+                {active === 'research' && (
+                  <ResearchPage
+                    id={route.split('/')[1]}
+                    selectedObjectId={researchObjectId}
+                    guideUserId={me.data?.id}
+                    guideLanguage={guide.language}
+                  />
+                )}
+                {active === 'discover' && (
+                  <>
+                    <DiscoverPage
+                      key={discoverRefresh ?? discoverView ?? 'explore'}
+                      initialView={discoverView}
+                      initialRefreshJob={discoverRefresh}
+                      onOpenInterests={me.data ? openInterests : undefined}
+                      guideLanguage={guide.language}
+                      userId={me.data?.id}
+                    />
+                    {selected && guide.progress?.status === 'welcome' && (
+                      <GettingStarted
+                        progress={guide.progress}
+                        update={guide.update}
+                        language={guide.language}
+                        onLanguageChange={guide.changeLanguage}
+                        onCardSaved={() => {}}
+                        onDiscover={openFirstRound}
+                      />
+                    )}
+                  </>
+                )}
+                {active === 'settings' && (
+                  <SettingsPage
+                    focusTimer={focusTimer}
+                    guideLanguage={guide.language}
+                    onGuideLanguageChange={guide.changeLanguage}
+                    onOpenGuide={
+                      me.data && guide.progress !== undefined
+                        ? () => {
+                            guide.update({ ...guide.progress, status: 'active' });
+                            router.push('/today');
+                          }
+                        : undefined
+                    }
+                  />
+                )}
+                {!section && route !== 'review/session' && (
+                  <div className="empty-state">
+                    <h1>Page not found</h1>
+                    <Link href="/today" className="button primary">
+                      Back to Dashboard
+                    </Link>
+                  </div>
+                )}
+              </main>
+            </Activity>
+          );
+        })}
       </div>
       <FocusCompletionNotice timer={focusTimer} />
       {capture && (
@@ -401,11 +456,16 @@ export default function Workspace({
           onClose={() => setCapture(false)}
           onSaved={() => {
             setCapture(false);
-            setEpoch((x) => x + 1);
+            setDashboardRevision((x) => x + 1);
           }}
         />
       )}
-      {search && <SearchModal onClose={() => setSearch(false)} />}
+      {search && (
+        <SearchModal
+          onClose={() => setSearch(false)}
+          onOpenTab={newTab ? tabState.open : undefined}
+        />
+      )}
     </div>
   );
 }
@@ -519,13 +579,28 @@ function QuickCapture({ onClose, onSaved }: { onClose: () => void; onSaved: () =
     </Modal>
   );
 }
-function SearchModal({ onClose }: { onClose: () => void }) {
+function SearchModal({
+  onClose,
+  onOpenTab,
+}: {
+  onClose: () => void;
+  onOpenTab?: (href: string, title: string) => void;
+}) {
+  function select(href: string, title: string) {
+    return (event: MouseEvent<HTMLAnchorElement>) => {
+      if (onOpenTab) {
+        event.preventDefault();
+        onOpenTab(href, title);
+      }
+      onClose();
+    };
+  }
   const [q, setQ] = useState('');
   const result = useResource<Page<{ id: string; title: string }>>(
     q.length > 1 ? `/knowledge-items?q=${encodeURIComponent(q)}&limit=8` : null,
   );
   return (
-    <Modal title="Search and navigate" onClose={onClose}>
+    <Modal title={onOpenTab ? 'Open a new tab' : 'Search and navigate'} onClose={onClose}>
       <input
         className="search-input"
         autoFocus
@@ -536,17 +611,14 @@ function SearchModal({ onClose }: { onClose: () => void }) {
       <div className="search-results">
         {q.length > 1
           ? result.data?.items.map((x) => (
-              <Link href={`/knowledge/${x.id}`} key={x.id} onClick={onClose}>
+              <Link href={`/knowledge/${x.id}`} key={x.id} onClick={select(`/knowledge/${x.id}`, x.title)}>
                 <Icon name="knowledge" />
                 {x.title}
                 <Icon name="arrow" size={16} />
               </Link>
             ))
-          : [
-              ...navigation,
-              { path: 'settings', label: 'Settings', icon: 'settings' },
-            ].map((x) => (
-              <Link key={x.path} href={`/${x.path}`} onClick={onClose}>
+          : destinations.map((x) => (
+              <Link key={x.path} href={`/${x.path}`} onClick={select(`/${x.path}`, x.label)}>
                 <Icon name={x.icon} />
                 {x.label}
                 <Icon name="arrow" size={16} />

@@ -240,6 +240,7 @@ export function Modal({
     el?.addEventListener('cancel', handler);
     return () => {
       el?.removeEventListener('cancel', handler);
+      el?.close();
       previous?.focus({ preventScroll: true });
     };
   }, []);

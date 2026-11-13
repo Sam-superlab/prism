@@ -71,7 +71,16 @@
 }
 
 .workspaceGraph .surface {
-  block-size: clamp(330px, calc(100dvh - 240px), 900px);
+  block-size: max(280px, calc(100dvh - 82px - var(--toolbar-inset, 0px)));
+}
+
+.workspaceGraph .toolbar {
+  position: absolute;
+  inset: 9px 9px auto auto;
+  margin: 0;
+  z-index: 2;
+  border-radius: 8px;
+  background: var(--panel);
 }
 
 .surface:active,

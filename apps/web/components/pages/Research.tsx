@@ -32,6 +32,7 @@ export function ResearchPage({
   guideUserId?: string;
   guideLanguage?: GuideLanguage;
 }) {
+  const router = useRouter();
   const projects = useResource<Page<Project>>(id ? null : '/research/projects?limit=100');
   const [create, setCreate] = useState<'regular' | 'guided'>();
   const [filter, setFilter] = useState('active');
@@ -120,7 +121,7 @@ export function ResearchPage({
           onSaved={(p) => {
             if (create === 'guided' || !guide.progress?.itemId) guide.continueWith(p.id);
             setCreate(undefined);
-            window.location.href = `/research/${p.id}`;
+            router.push(`/research/${p.id}`);
           }}
         />
       )}
@@ -216,7 +217,7 @@ function ProjectDetail({
               )
                 void action.run(async () => {
                   await api(`/research/projects/${id}`, { method: 'DELETE', version: p.version });
-                  window.location.href = '/research';
+                  router.push('/research');
                 });
             }}
           >

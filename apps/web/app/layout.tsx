@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import 'katex/dist/katex.min.css';
 import './globals.css';
 import './appearance.css';
+import './workspace-tabs.css';
 import { APPEARANCE_BOOTSTRAP } from '../lib/appearance';
 
 export const metadata: Metadata = {
