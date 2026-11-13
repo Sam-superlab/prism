@@ -50,9 +50,12 @@ export function useWorkspaceTabs(href: string, userId?: string) {
   currentHref.current = href;
   const nextId = useRef(2);
   const pendingHref = useRef<string>(null);
+  const switchingHref = useRef<string>(null);
   const positions = useRef(new Map<number, number>());
 
   useLayoutEffect(() => {
+    if (switchingHref.current && switchingHref.current !== href) return;
+    switchingHref.current = null;
     setTabs((items) => {
       const tab = items.find((item) => item.id === selected);
       if (!tab || tab.href.split('#')[0] === href) return items;
@@ -81,7 +84,10 @@ export function useWorkspaceTabs(href: string, userId?: string) {
       setTabs(restored.some((tab) => tab.id === target.id) ? restored : [...restored, target]);
       setSelected(target.id);
       pendingHref.current = target.href;
-      if (target.href !== current + location.hash) window.history.replaceState(null, '', target.href);
+      if (target.href !== current + location.hash) {
+        switchingHref.current = target.href.split('#')[0];
+        window.history.replaceState(null, '', target.href);
+      }
     } else if (startup) window.history.replaceState(null, '', '/today');
     setLoadedKey(key);
   }, [key]);
@@ -108,6 +114,7 @@ export function useWorkspaceTabs(href: string, userId?: string) {
     if (tab.id === selected) return;
     positions.current.set(selected, window.scrollY);
     pendingHref.current = tab.href;
+    switchingHref.current = tab.href.split('#')[0];
     window.history.replaceState(null, '', tab.href);
     setSelected(tab.id);
   }
