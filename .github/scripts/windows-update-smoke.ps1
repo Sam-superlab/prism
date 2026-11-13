@@ -155,6 +155,9 @@ try {
   if ((Read-Api '/knowledge-items?limit=1').items.Count -ne 0) { throw 'The base included personal notes.' }
   $noteId = [guid]::NewGuid().ToString()
   $note = Write-Api 'Post' '/knowledge-items' @{ id=$noteId; title='Windows update persistence'; type='theorem'; content='Synthetic update test note.' } ''
+  $otherId = [guid]::NewGuid().ToString()
+  $null = Write-Api 'Post' '/knowledge-items' @{ id=$otherId; title='Linked Windows test note'; type='definition'; content='Synthetic linked note.' } ''
+  $null = Write-Api 'Post' '/knowledge-relations' @{ id=[guid]::NewGuid().ToString(); source_item_id=$noteId; target_item_id=$otherId; relation_type='depends_on' } ''
   $prefs = Read-Api '/me/preferences'
   $savedPrefs = Write-Api 'Patch' '/me/preferences' @{ daily_review_limit=37 } $prefs.version
   New-Item -ItemType File -Path (Join-Path $PrismProfile 'appearance-dark') | Out-Null
@@ -180,8 +183,19 @@ try {
   }
   Write-Output 'Invalid manifest signature was rejected before installation.'
 
-  # Serve corrupted bytes with the signed length to exercise download digest/signature validation.
   [IO.File]::WriteAllText($ActiveManifest, $SignedManifest, $Utf8)
+  # The older standalone runtime creates this disposable prerender cache while the companion opens.
+  # Keep a copy beside the test program to exercise the documented one-time recovery.
+  Visit-Companion
+  if (Test-Path -LiteralPath $RouteCache) {
+    Trigger-Update
+    $blocked = Wait-UpdateState 'error'
+    if ($blocked.message -notmatch 'extra files') { throw "Unexpected legacy cache failure: $($blocked.message)" }
+    Move-Item -LiteralPath $RouteCache -Destination (Join-Path $WorkspaceRoot 'legacy-route-cache')
+    Write-Output 'Confirmed the old version refuses its generated companion cache and can retry after moving it.'
+  }
+
+  # Serve corrupted bytes with the signed length to exercise download digest/signature validation.
   New-Item -ItemType File -Path $CorruptionMarker | Out-Null
   Trigger-Update
   $rejectedDownload = Wait-UpdateState 'error'
@@ -193,16 +207,6 @@ try {
   Remove-Item -LiteralPath $CorruptionMarker
   Write-Output 'Corrupt download was rejected before installation.'
 
-  # The older standalone runtime creates this disposable prerender cache while the companion opens.
-  # Keep a copy beside the test program to exercise the documented one-time recovery.
-  Visit-Companion
-  if (Test-Path -LiteralPath $RouteCache) {
-    Trigger-Update
-    $blocked = Wait-UpdateState 'error'
-    if ($blocked.message -notmatch 'extra files') { throw "Unexpected legacy cache failure: $($blocked.message)" }
-    Move-Item -LiteralPath $RouteCache -Destination (Join-Path $WorkspaceRoot 'legacy-route-cache')
-    Write-Output 'Confirmed the old version refuses its generated companion cache and can retry after moving it.'
-  }
   $oldPid = $PrismProcess.Id
   Trigger-Update
   $installed = Wait-UpdateState 'installed'
@@ -214,6 +218,10 @@ try {
   $appearance = $updated.appearance | ConvertFrom-Json
   if ($restored.content -ne $note.content) { throw 'The note changed during installation.' }
   if ($restoredPrefs.daily_review_limit -ne 37) { throw 'The review setting changed during installation.' }
+  $edges = (Read-Api '/graph').edges
+  if (-not ($edges | Where-Object { $_.source -eq "knowledge:$noteId" -and $_.target -eq "knowledge:$otherId" })) {
+    throw 'The knowledge link was missing after installation.'
+  }
   if ($updated.theme -ne 'dark' -or $appearance.textSize -ne 18) { throw 'Appearance changed during installation.' }
   if ((Get-Content -Raw -LiteralPath (Join-Path $AppDirectory 'resources/app/package.json') | ConvertFrom-Json).version -ne $TargetVersion) {
     throw 'The original program folder did not receive the update.'
@@ -221,7 +229,7 @@ try {
   Trigger-Update
   $currentState = Wait-UpdateState 'current'
   Stop-Prism
-  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, review setting, Dark appearance, and font size preserved. The next check reported current."
+  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, knowledge link, review setting, Dark appearance, and font size preserved. The next check reported current."
 } finally {
   $env:PRISM_WINDOWS_SMOKE_DIR = $PreviousSmokeDir
   $env:PRISM_WINDOWS_UPDATE_TEST_FEED = $PreviousFeed
