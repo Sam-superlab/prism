@@ -17,6 +17,7 @@ $Extracted = Join-Path $WorkspaceRoot 'extracted'
 Expand-Archive -LiteralPath $BaseArchive -DestinationPath $Extracted
 $AppDirectory = Join-Path $Extracted 'PRISM'
 $Exe = Join-Path $AppDirectory 'PRISM.exe'
+$RouteCache = Join-Path $AppDirectory 'resources/desktop/web/apps/web/.next/server/route-cache'
 if (-not (Test-Path -LiteralPath $Exe)) { throw 'The base archive does not contain PRISM.exe.' }
 $PrismProfile = Join-Path $WorkspaceRoot 'test'
 New-Item -ItemType Directory -Path $PrismProfile | Out-Null
@@ -82,6 +83,10 @@ function Set-ApiSession([object]$Record) {
   $cookie = New-Object System.Net.Cookie('prism_desktop', $Record.token, '/', '127.0.0.1')
   $script:Session.Cookies.Add($cookie)
   $script:Origin = $Record.origin
+}
+function Visit-Companion {
+  $response = Invoke-WebRequest -Uri "$script:Origin/focus-pet" -WebSession $script:Session
+  if ($response.StatusCode -ne 200) { throw 'The companion page did not load.' }
 }
 function Wait-Ready([string]$Version, [int]$PreviousPid = 0) {
   for ($i = 0; $i -lt 240; $i++) {
@@ -150,6 +155,9 @@ try {
   if ((Read-Api '/knowledge-items?limit=1').items.Count -ne 0) { throw 'The base included personal notes.' }
   $noteId = [guid]::NewGuid().ToString()
   $note = Write-Api 'Post' '/knowledge-items' @{ id=$noteId; title='Windows update persistence'; type='theorem'; content='Synthetic update test note.' } ''
+  $otherId = [guid]::NewGuid().ToString()
+  $null = Write-Api 'Post' '/knowledge-items' @{ id=$otherId; title='Linked Windows test note'; type='definition'; content='Synthetic linked note.' } ''
+  $null = Write-Api 'Post' '/knowledge-relations' @{ id=[guid]::NewGuid().ToString(); source_item_id=$noteId; target_item_id=$otherId; relation_type='depends_on' } ''
   $prefs = Read-Api '/me/preferences'
   $savedPrefs = Write-Api 'Patch' '/me/preferences' @{ daily_review_limit=37 } $prefs.version
   New-Item -ItemType File -Path (Join-Path $PrismProfile 'appearance-dark') | Out-Null
@@ -175,8 +183,19 @@ try {
   }
   Write-Output 'Invalid manifest signature was rejected before installation.'
 
-  # Serve corrupted bytes with the signed length to exercise download digest/signature validation.
   [IO.File]::WriteAllText($ActiveManifest, $SignedManifest, $Utf8)
+  # The older standalone runtime creates this disposable prerender cache while the companion opens.
+  # Keep a copy beside the test program to exercise the documented one-time recovery.
+  Visit-Companion
+  if (Test-Path -LiteralPath $RouteCache) {
+    Trigger-Update
+    $blocked = Wait-UpdateState 'error'
+    if ($blocked.message -notmatch 'extra files') { throw "Unexpected legacy cache failure: $($blocked.message)" }
+    Move-Item -LiteralPath $RouteCache -Destination (Join-Path $WorkspaceRoot 'legacy-route-cache')
+    Write-Output 'Confirmed the old version refuses its generated companion cache and can retry after moving it.'
+  }
+
+  # Serve corrupted bytes with the signed length to exercise download digest/signature validation.
   New-Item -ItemType File -Path $CorruptionMarker | Out-Null
   Trigger-Update
   $rejectedDownload = Wait-UpdateState 'error'
@@ -184,6 +203,7 @@ try {
   if ((Get-Content -Raw -LiteralPath (Join-Path $AppDirectory 'resources/app/package.json') | ConvertFrom-Json).version -ne $initial.version) {
     throw 'A corrupt download replaced the installed app.'
   }
+  if ($rejectedDownload.message -notmatch 'checksum or signature') { throw "Unexpected download failure: $($rejectedDownload.message)" }
   Remove-Item -LiteralPath $CorruptionMarker
   Write-Output 'Corrupt download was rejected before installation.'
 
@@ -191,11 +211,17 @@ try {
   Trigger-Update
   $installed = Wait-UpdateState 'installed'
   $updated = Wait-Ready $TargetVersion $oldPid
+  Visit-Companion
+  if (Test-Path -LiteralPath $RouteCache) { throw 'The updated companion wrote a cache into the installation.' }
   $restored = Read-Api "/knowledge-items/$noteId"
   $restoredPrefs = Read-Api '/me/preferences'
   $appearance = $updated.appearance | ConvertFrom-Json
   if ($restored.content -ne $note.content) { throw 'The note changed during installation.' }
   if ($restoredPrefs.daily_review_limit -ne 37) { throw 'The review setting changed during installation.' }
+  $edges = (Read-Api '/graph').edges
+  if (-not ($edges | Where-Object { $_.source -eq "knowledge:$noteId" -and $_.target -eq "knowledge:$otherId" })) {
+    throw 'The knowledge link was missing after installation.'
+  }
   if ($updated.theme -ne 'dark' -or $appearance.textSize -ne 18) { throw 'Appearance changed during installation.' }
   if ((Get-Content -Raw -LiteralPath (Join-Path $AppDirectory 'resources/app/package.json') | ConvertFrom-Json).version -ne $TargetVersion) {
     throw 'The original program folder did not receive the update.'
@@ -203,7 +229,7 @@ try {
   Trigger-Update
   $currentState = Wait-UpdateState 'current'
   Stop-Prism
-  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, review setting, Dark appearance, and font size preserved. The next check reported current."
+  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, knowledge link, review setting, Dark appearance, and font size preserved. The next check reported current."
 } finally {
   $env:PRISM_WINDOWS_SMOKE_DIR = $PreviousSmokeDir
   $env:PRISM_WINDOWS_UPDATE_TEST_FEED = $PreviousFeed

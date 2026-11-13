@@ -2,7 +2,7 @@
 
 PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.19/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.19/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.19/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.19) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.20/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.20/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.20/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.20) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
@@ -32,19 +32,27 @@ From 0.2.6 onward, choose **File → Check for Updates…**, download the availa
 
 The updater replaces the program folder and retains the AppData workspace and browser profile. If the updated application fails to start, it attempts to restore the prior program.
 
+#### Updating from an older Windows build with the desktop companion
+
+If **Check for Updates…** reports extra files after the desktop companion has run, hide Pip from its right-click menu if it is visible. With PRISM open, move `resources/desktop/web/apps/web/.next/server/route-cache` from the extracted PRISM program folder to a temporary location outside it, if present. Then choose **File → Check for Updates…** again. This folder holds generated previews. The new version keeps them in memory.
+
+You can also extract the current ZIP into a fresh folder and open `PRISM.exe`. It uses the existing `%APPDATA%\PRISM Desktop` workspace and appearance settings. Keep that AppData folder.
+
 ## Getting started
 
-New empty workspaces show an English welcome guide. The Today checklist walks through creating a note, making a review card, and completing the first review. Skip it any time and reopen it from **Settings → Getting Started**.
+Pip helps you choose subjects and arXiv research areas by name, then opens your first round of papers. The guide is available in English, Simplified Chinese, and Japanese. Knowledge, Practice, and Research each have a short walkthrough the first time you open them. You can skip a guide and resume it from the section or **Settings → Getting Started**.
 
-The example stays temporary until you select **Keep this example**.
+The Dashboard checklist walks through creating a note, making a review card, and completing the first review. The example stays temporary until you select **Keep this example**.
 
 ## Study and planning
 
 - Write Markdown and LaTeX notes and organize them by subject and chapter.
 - Add review cards for definitions, statements, hypotheses, or proofs.
 - For Proof Recall, select **Proof** when editing a card and add ordered hints. Mark difficult steps during review to retain them in your review history.
-- Today shows plan progress, time capacity, and seven days of review activity.
-- Use the top navigation links to return to Today or the current section.
+- Dashboard shows your daily plan, time capacity, and seven days of review activity.
+- Open **Workspace Graph** in the sidebar to explore links between notes, projects, research objects, and papers. Knowledge and Research also show local graphs.
+- In Discover, organize Saved, Interested, and Liked papers into optional folders stored on your device. In Research, search for materials by title or narrow the results to those folders.
+- Add References to a project and insert citations from the editor. With the Zotero desktop app open and its local API enabled, PRISM can read its reference metadata on the same computer.
 
 ## Updates and local data
 

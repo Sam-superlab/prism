@@ -72,6 +72,23 @@ jobs:
         shell: pwsh
         run: |
           $root = Join-Path $env:RUNNER_TEMP 'prism-windows-update-smoke'
+          $app = Join-Path $root 'extracted/PRISM'
+          $marker = Join-Path $app 'prism-install.json'
+          if (Test-Path -LiteralPath $marker) {
+            $inventory = Get-Content -Raw -LiteralPath $marker | ConvertFrom-Json
+            $files = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            $directories = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+            foreach ($file in $inventory.files) { [void]$files.Add($file) }
+            foreach ($dir in $inventory.directories) { [void]$directories.Add($dir) }
+            [void]$files.Add('prism-install.json')
+            Get-ChildItem -LiteralPath $app -Force -Recurse | ForEach-Object {
+              $name = [IO.Path]::GetRelativePath($app, $_.FullName).Replace('\','/')
+              $expected = if ($_.PSIsContainer) { $directories.Remove($name) } else { $files.Remove($name) }
+              if (-not $expected) { Write-Output "Unexpected program path: $name" }
+            }
+            foreach ($name in $files) { Write-Output "Missing program file: $name" }
+            foreach ($name in $directories) { Write-Output "Missing program directory: $name" }
+          }
           foreach ($pattern in @('startup-error.txt','desktop.log','server-error.log','updater-state.json','update.log','install.log')) {
             Get-ChildItem $root -Filter $pattern -Recurse -ErrorAction SilentlyContinue | ForEach-Object { Write-Output $_.Name; Get-Content $_.FullName -Tail 100 }
           }
