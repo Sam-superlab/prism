@@ -44,7 +44,6 @@ function restoreTabs(key: string): { tabs: Tab[]; selected: number } | undefined
 export function useWorkspaceTabs(href: string, userId?: string) {
   const [tabs, setTabs] = useState<Tab[]>([{ id: 1, href }]);
   const [selected, setSelected] = useState(1);
-  const [lastHref, setLastHref] = useState(href);
   const key = userId && `prism.tabs.v1.${userId}`;
   const [loadedKey, setLoadedKey] = useState<string>();
   const currentHref = useRef(href);
@@ -53,18 +52,22 @@ export function useWorkspaceTabs(href: string, userId?: string) {
   const pendingHref = useRef<string>(null);
   const positions = useRef(new Map<number, number>());
 
-  if (lastHref !== href) {
-    setLastHref(href);
-    setTabs(tabs.map((tab) => tab.id !== selected || tab.href.split('#')[0] === href ? tab : {
-      ...tab,
-      href,
-      title: tabPath(tab.href) === tabPath(href) ? tab.title : undefined,
-    }));
-  }
+  useLayoutEffect(() => {
+    setTabs((items) => {
+      const tab = items.find((item) => item.id === selected);
+      if (!tab || tab.href.split('#')[0] === href) return items;
+      return items.map((item) => item.id !== selected ? item : {
+        ...item,
+        href,
+        title: tabPath(item.href) === tabPath(href) ? item.title : undefined,
+      });
+    });
+  }, [href, selected]);
 
   useEffect(() => {
     if (!key) return;
     const current = currentHref.current;
+    const startup = current === '/today?restoreTabs=1';
     const saved = restoreTabs(key);
     if (saved) {
       const restored = saved.tabs;
@@ -72,16 +75,14 @@ export function useWorkspaceTabs(href: string, userId?: string) {
       const matching = restored.find((tab) => tab.href.split('#')[0] === current);
       const selectedTab = restored.find((tab) => tab.id === saved.selected)!;
       // Desktop launchers always enter /today. Honor other explicit links.
-      const target = current === '/today' && !location.hash
+      const target = startup
         ? selectedTab
         : matching ?? { id: nextId.current++, href: current + location.hash };
       setTabs(restored.some((tab) => tab.id === target.id) ? restored : [...restored, target]);
       setSelected(target.id);
-      const route = target.href.split('#')[0];
-      setLastHref(route);
       pendingHref.current = target.href;
       if (target.href !== current + location.hash) window.history.replaceState(null, '', target.href);
-    }
+    } else if (startup) window.history.replaceState(null, '', '/today');
     setLoadedKey(key);
   }, [key]);
 

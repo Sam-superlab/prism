@@ -222,7 +222,7 @@ else {
         httpOnly: true,
         sameSite: 'strict',
       });
-      await window.loadURL(`${origin}/today`);
+      await window.loadURL(`${origin}/today?restoreTabs=1`);
       if (!(await window.webContents.executeJavaScript(`Boolean(document.querySelector('main'))`)))
         throw new Error('The PRISM workspace did not become ready.');
       await acknowledgeUpdate(app);

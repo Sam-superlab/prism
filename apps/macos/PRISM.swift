@@ -221,7 +221,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         // The personal feed is served by the local launcher.
         if !packaged { updaterController?.startUpdater() }
         #endif
-        let target = openFocusWhenReady ? URL(string: "/today#focus-timer", relativeTo: address)! : address
+        let target = openFocusWhenReady ? URL(string: "/today#focus-timer", relativeTo: address)! : URL(string: "/today?restoreTabs=1", relativeTo: address)!
         openFocusWhenReady = false
         let request = URLRequest(url: target)
         if let token = desktopToken {
