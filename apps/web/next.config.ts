@@ -4,7 +4,13 @@ const config: NextConfig = {
   devIndicators: false,
   distDir: process.env.PRISM_NEXT_DIST_DIR || '.next',
   ...(process.env.PRISM_NEXT_STANDALONE === 'true'
-    ? { output: 'standalone', outputFileTracingRoot: resolve('../..'), images: { unoptimized: true } }
+    ? {
+        output: 'standalone',
+        outputFileTracingRoot: resolve('../..'),
+        images: { unoptimized: true },
+        // Desktop updates validate the program directory against its installation inventory.
+        experimental: { isrFlushToDisk: false },
+      }
     : {}),
   async headers() {
     return [
