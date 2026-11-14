@@ -2,7 +2,7 @@
 
 PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.27/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.27/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.27/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.27) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.34/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.34/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.34/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.34) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
