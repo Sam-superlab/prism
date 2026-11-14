@@ -2,7 +2,7 @@
 
 PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.21/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.21/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.21/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.21) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.27/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.27/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.27/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.27) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
@@ -53,7 +53,11 @@ The Dashboard checklist walks through creating a note, making a review card, and
 - Use the plus button in the tab strip to open a page, or Command-click on Mac and Control-click on Windows. Switch between horizontal and vertical tabs in the toolbar. PRISM remembers your tabs and their order on this computer.
 - Open **Workspace Graph** in the sidebar to explore links between notes, projects, research objects, and papers. Knowledge and Research also show local graphs.
 - In Discover, organize Saved, Interested, and Liked papers into optional folders stored on your device. In Research, search for materials by title or narrow the results to those folders.
-- Add References to a project and insert citations from the editor. With the Zotero desktop app open and its local API enabled, PRISM can read its reference metadata on the same computer.
+- Add References to a project and insert citations from the editor. To move an existing Zotero library, choose **Library → Import bibliography** and select a Zotero RDF export.
+
+## Library
+
+Open **Library** from the sidebar to organize collections, browse references, and view details and attachments side by side. Click **Title**, **Authors**, or **Year** to sort. Drag the dividers to resize the panes, or use the toolbar button to hide details. PRISM remembers these choices on this computer.
 
 ## Updates and local data
 
