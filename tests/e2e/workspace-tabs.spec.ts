@@ -18,11 +18,26 @@ test('restores tab order and layout on desktop startup and honors explicit navig
   await tabs.getByRole('button', { name: 'Workspace Graph', exact: true }).click();
   await page.getByRole('button', { name: 'Switch to vertical tabs' }).click();
   await expect(titles).toHaveText(['Knowledge', 'Discover', 'Workspace Graph']);
+  const restoredRequests: string[] = [];
+  page.on('request', (request) => restoredRequests.push(new URL(request.url()).pathname));
   await page.goto('/today?restoreTabs=1');
   await expect(page).toHaveURL(/\/graph$/);
   await expect(page.getByRole('button', { name: 'Switch to horizontal tabs' })).toBeVisible();
   await expect(titles).toHaveText(['Knowledge', 'Discover', 'Workspace Graph']);
   await expect(tabs.getByRole('button', { name: 'Workspace Graph', exact: true })).toHaveAttribute('aria-current', 'page');
+  await expect(canvas).toBeVisible();
+  await expect(page.locator('main.main-content')).toHaveCount(1);
+  expect(restoredRequests).not.toContain('/api/v1/knowledge-items');
+  expect(restoredRequests).not.toContain('/api/v1/arxiv/subscriptions');
+  expect(restoredRequests).not.toContain('/api/v1/today');
+
+  const knowledgeRequest = page.waitForRequest((request) =>
+    new URL(request.url()).pathname === '/api/v1/knowledge-items',
+  );
+  await tabs.getByRole('button', { name: 'Knowledge', exact: true }).click();
+  await knowledgeRequest;
+  await expect(page.getByPlaceholder('Search knowledge titles or content…')).toBeVisible();
+  await expect(titles).toHaveText(['Knowledge', 'Discover', 'Workspace Graph']);
   await page.goto('/today');
   await expect(page.getByRole('heading', { name: 'Dashboard', exact: true })).toBeVisible();
 });

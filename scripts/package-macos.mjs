@@ -26,7 +26,9 @@ if (
 const repo = fileURLToPath(new URL('../', import.meta.url));
 const temp = mkdtempSync(join(tmpdir(), 'prism-macos-'));
 const staging = join(temp, 'source');
-const bundle = join(temp, 'PRISM.app');
+const localPreviewId = process.env.PRISM_MACOS_LOCAL_PREVIEW_ID;
+const appName = localPreviewId ? 'PRISM Literature Preview' : 'PRISM';
+const bundle = join(temp, `${appName}.app`);
 const binaries = join(bundle, 'Contents/MacOS');
 const resources = join(bundle, 'Contents/Resources');
 const frameworks = join(bundle, 'Contents/Frameworks');
@@ -39,6 +41,9 @@ const updateFeed = process.env.PRISM_MACOS_UPDATE_FEED_URL;
 const updatePublicKey = process.env.PRISM_MACOS_UPDATE_PUBLIC_KEY;
 const updateTestId = process.env.PRISM_MACOS_UPDATE_TEST_ID;
 const updateTestPort = Number(process.env.PRISM_MACOS_UPDATE_TEST_PORT || 38742);
+const localPreviewPort = Number(process.env.PRISM_MACOS_LOCAL_PREVIEW_PORT || 38868);
+const isolatedWorkspace = updateTestId ?? localPreviewId;
+const isolatedPort = updateTestId ? updateTestPort : localPreviewPort;
 const publicAdHocPreview = process.env.PRISM_MACOS_PUBLIC_AD_HOC_PREVIEW === 'true';
 const withUpdater = Boolean(
   updateFeed ||
@@ -50,10 +55,10 @@ const withUpdater = Boolean(
 const output = resolve(
   repo,
   process.env.PRISM_MACOS_OUTPUT_DIR ||
-    (updateTestId ? `output/macos/update-tests/${updateTestId}/${version}` : 'output/macos'),
+    (isolatedWorkspace ? `output/macos/update-tests/${isolatedWorkspace}/${version}` : 'output/macos'),
 );
-const bundleId = updateTestId ? `app.prism.desktop.update-test.${updateTestId}` : 'app.prism.desktop.release';
-const releaseName = `PRISM-macOS-${process.arch}.zip`;
+const bundleId = isolatedWorkspace ? `app.prism.desktop.update-test.${isolatedWorkspace}` : 'app.prism.desktop.release';
+const releaseName = localPreviewId ? `PRISM-Literature-Preview-macOS-${process.arch}.zip` : `PRISM-macOS-${process.arch}.zip`;
 const zip = join(temp, releaseName);
 const offline = process.env.PRISM_PACKAGE_OFFLINE === 'true' ? ['--offline'] : [];
 const targetArchitecture = process.arch === 'arm64' ? 'arm64' : 'x86_64';
@@ -143,6 +148,11 @@ function validateUpdater() {
   }
 }
 
+function isolatedWorkspaceInfo() {
+  return isolatedWorkspace ? `<key>PRISMUpdateTestWorkspace</key><string>${isolatedWorkspace}</string>
+<key>PRISMUpdateTestWebPort</key><integer>${isolatedPort}</integer>\n` : '';
+}
+
 function updaterInfo() {
   if (!withUpdater) return '';
   return `<key>SUFeedURL</key><string>${updateFeed}</string>
@@ -154,18 +164,16 @@ function updaterInfo() {
 <key>SUScheduledCheckInterval</key><integer>3600</integer>
 <key>SUAutomaticallyUpdate</key><false/>
 <key>SUAllowsAutomaticUpdates</key><false/>
-<key>SUEnableSystemProfiling</key><false/>
-${
-  updateTestId
-    ? `<key>PRISMUpdateTestWorkspace</key><string>${updateTestId}</string>
-<key>PRISMUpdateTestWebPort</key><integer>${updateTestPort}</integer>\n`
-    : ''
-}`;
+<key>SUEnableSystemProfiling</key><false/>\n`;
 }
 
 try {
   if (!/^\d+\.\d+\.\d+$/.test(version) || (notaryProfile && identity === '-'))
     throw new Error('Use a numeric release version and a Developer ID identity for notarization.');
+  if (localPreviewId && (withUpdater || identity !== '-' || notaryProfile ||
+    !/^[a-z0-9]{8,32}$/.test(localPreviewId) || !Number.isInteger(localPreviewPort) ||
+    localPreviewPort < 1024 || localPreviewPort > 65535 || localPreviewPort === 38741))
+    throw new Error('The local preview needs its own ID and loopback port and uses ad hoc signing.');
   validateUpdater();
   for (const file of ['package.json', 'pnpm-workspace.yaml', 'pnpm-lock.yaml', 'tsconfig.base.json'])
     stage(file);
@@ -185,7 +193,7 @@ try {
   ])
     stage(`apps/web/${file}`);
   stage('apps/worker/src');
-  for (const file of ['app.ts', 'config.ts', 'errors.ts', 'server.ts', 'service.ts'])
+  for (const file of ['app.ts', 'config.ts', 'developer-literature.ts', 'errors.ts', 'local-workspace-backup.ts', 'open-access-pdf.ts', 'reference-lookup.ts', 'server.ts', 'service.ts'])
     stage(`apps/api/src/${file}`);
 
   const nodeDownload = downloadNode();
@@ -241,6 +249,7 @@ try {
   rmSync(join(api, 'node_modules/.pnpm/node_modules/@prism/api'), { force: true });
   copy(join(repo, 'docs/api/openapi.json'), join(runtime, 'docs/api/openapi.json'));
   copy(join(repo, 'docs/implementation/eom-title-index.md'), join(resources, 'licenses/EoM-title-index.md'));
+  copy(join(staging, 'apps/web/lib/csl'), join(resources, 'licenses/CSL-styles'));
   const databaseModule = realpathSync(join(api, 'node_modules/@prism/database'));
   for (const file of [
     'schema.sql',
@@ -251,6 +260,39 @@ try {
     'migrations/006_research_project_knowledge.sql',
     'migrations/007_research_references.sql',
     'migrations/008_reference_arxiv_identifiers.sql',
+    'migrations/009_standalone_references.sql',
+    'migrations/010_project_reference_links.sql',
+    'migrations/011_literature_collections.sql',
+    'migrations/012_reference_merge.sql',
+    'migrations/013_literature_saved_searches.sql',
+    'migrations/014_reference_pdfs.sql',
+    'migrations/015_pdf_annotations.sql',
+    'migrations/016_pdf_text_index.sql',
+    'migrations/017_reference_relations.sql',
+    'migrations/018_pdf_reading_positions.sql',
+    'migrations/019_pdf_sticky_notes.sql',
+    'migrations/020_attachment_formats.sql',
+    'migrations/021_webpage_snapshots.sql',
+    'migrations/022_reference_knowledge_links.sql',
+    'migrations/023_literature_search_conditions.sql',
+    'migrations/024_pdf_area_annotations.sql',
+    'migrations/025_literature_feeds.sql',
+    'migrations/026_literature_feed_schedule.sql',
+    'migrations/027_pdf_ink_annotations.sql',
+    'migrations/028_private_team_libraries.sql',
+    'migrations/029_pdf_annotation_tags.sql',
+    'migrations/030_team_library_visibility.sql',
+    'migrations/031_team_library_attachments.sql',
+    'migrations/032_team_library_notes.sql',
+    'migrations/033_team_pdf_annotations.sql',
+    'migrations/034_developer_literature_tokens.sql',
+    'migrations/035_pdf_text_index_mode.sql',
+    'migrations/036_text_attachment_annotations.sql',
+    'migrations/037_reference_creators.sql',
+    'migrations/038_export_attachment_option.sql',
+    'migrations/039_reference_import_source.sql',
+    'migrations/040_developer_literature_scopes.sql',
+    'migrations/041_research_questions.sql',
   ])
     copy(join(repo, 'database', file), resolve(databaseModule, '../../database', file));
   copy(join(repo, 'apps/macos/launch.mjs'), join(runtime, 'launch.mjs'));
@@ -266,8 +308,8 @@ try {
 <plist version="1.0"><dict>
 <key>CFBundleExecutable</key><string>PRISM</string>
 <key>CFBundleIdentifier</key><string>${bundleId}</string>
-<key>CFBundleName</key><string>PRISM</string>
-<key>CFBundleDisplayName</key><string>PRISM</string>
+<key>CFBundleName</key><string>${appName}</string>
+<key>CFBundleDisplayName</key><string>${appName}</string>
 <key>CFBundlePackageType</key><string>APPL</string>
 <key>CFBundleShortVersionString</key><string>${version}</string>
 <key>CFBundleVersion</key><string>${version}</string>
@@ -277,7 +319,7 @@ try {
 <key>NSPrincipalClass</key><string>NSApplication</string>
 <key>NSAppTransportSecurity</key><dict><key>NSAllowsLocalNetworking</key><true/></dict>
 <key>PRISMPackaged</key><true/>
-${updaterInfo()}</dict></plist>\n`,
+${updaterInfo()}${isolatedWorkspaceInfo()}</dict></plist>\n`,
   );
   runMacToolchain([
     'swiftc',
@@ -289,8 +331,14 @@ ${updaterInfo()}</dict></plist>\n`,
     '-framework',
     'WebKit',
     ...(withUpdater ? sparkleSwiftFlags(frameworks) : []),
-    ...(updateTestId ? ['-D', 'PRISM_UPDATE_TEST'] : []),
+    ...(isolatedWorkspace ? ['-D', 'PRISM_UPDATE_TEST'] : []),
     join(repo, 'apps/macos/PRISM.swift'),
+    join(repo, 'apps/macos/WebDAVBackup.swift'),
+    join(repo, 'apps/macos/WebDAVAttachment.swift'),
+    join(repo, 'apps/macos/WebDAVAttachmentSync.swift'),
+    join(repo, 'apps/macos/WorkspaceBackup.swift'),
+    join(repo, 'apps/macos/RecoveredWorkspace.swift'),
+    join(repo, 'apps/macos/LocalPdfOcr.swift'),
     '-o',
     join(binaries, 'PRISM'),
   ]);

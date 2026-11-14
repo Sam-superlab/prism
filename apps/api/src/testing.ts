@@ -3,8 +3,8 @@ import pg from 'pg';
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { createDatabase } from '@prism/database';
-export async function createTestPostgres() {
-  const raw = await readFile(new URL('../../../.data/test-postgres.env', import.meta.url), 'utf8');
+export async function createTestPostgres(envPath: string | URL = new URL('../../../.data/test-postgres.env', import.meta.url)) {
+  const raw = await readFile(envPath, 'utf8');
   const env: Record<string, string> = {};
   for (const line of raw.split('\n')) {
     const m = /^([A-Z_]+)=(.*)$/.exec(line.trim());
@@ -29,6 +29,39 @@ export async function createTestPostgres() {
     '006_research_project_knowledge',
     '007_research_references',
     '008_reference_arxiv_identifiers',
+    '009_standalone_references',
+    '010_project_reference_links',
+    '011_literature_collections',
+    '012_reference_merge',
+    '013_literature_saved_searches',
+    '014_reference_pdfs',
+    '015_pdf_annotations',
+    '016_pdf_text_index',
+    '017_reference_relations',
+    '018_pdf_reading_positions',
+    '019_pdf_sticky_notes',
+    '020_attachment_formats',
+    '021_webpage_snapshots',
+    '022_reference_knowledge_links',
+    '023_literature_search_conditions',
+    '024_pdf_area_annotations',
+    '025_literature_feeds',
+    '026_literature_feed_schedule',
+    '027_pdf_ink_annotations',
+    '028_private_team_libraries',
+    '029_pdf_annotation_tags',
+    '030_team_library_visibility',
+    '031_team_library_attachments',
+    '032_team_library_notes',
+    '033_team_pdf_annotations',
+    '034_developer_literature_tokens',
+    '035_pdf_text_index_mode',
+    '036_text_attachment_annotations',
+    '037_reference_creators',
+    '038_export_attachment_option',
+    '039_reference_import_source',
+    '040_developer_literature_scopes',
+    '041_research_questions',
   ]) {
     await owner.query(
       await readFile(new URL(`../../../database/migrations/${migration}.sql`, import.meta.url), 'utf8'),
@@ -40,6 +73,18 @@ export async function createTestPostgres() {
     `GRANT USAGE ON SCHEMA prism TO "${role}";GRANT SELECT,INSERT,UPDATE,DELETE ON ALL TABLES IN SCHEMA prism TO "${role}";GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA prism TO "${role}"`,
   );
   const db = await createDatabase({ url: runtimeUrl.toString(), production: true });
+  await owner.query(`REVOKE SELECT,UPDATE,DELETE ON prism.team_library_events FROM "${role}"`);
+  await owner.query(`REVOKE UPDATE,DELETE ON prism.team_library_attachments,prism.team_library_attachment_chunks FROM "${role}";
+    GRANT UPDATE (deleted_at,version) ON prism.team_library_attachments TO "${role}";
+    GRANT UPDATE (data) ON prism.team_library_attachment_chunks TO "${role}"`);
+  await owner.query(`REVOKE UPDATE,DELETE ON prism.team_library_notes FROM "${role}";
+    GRANT UPDATE (title,content,updated_by,updated_by_name,updated_at,version,deleted_at) ON prism.team_library_notes TO "${role}"`);
+  await owner.query(`REVOKE UPDATE,DELETE ON prism.team_pdf_annotations FROM "${role}";
+    GRANT UPDATE (page,kind,color,text,comment,tags,rects,ink_path,updated_by,updated_by_name,updated_at,version,deleted_at)
+      ON prism.team_pdf_annotations TO "${role}"`);
+  await owner.query(`REVOKE SELECT,UPDATE,DELETE ON prism.developer_literature_tokens FROM "${role}";
+    GRANT SELECT (id,user_id,name,created_at,expires_at,revoked_at,scope) ON prism.developer_literature_tokens TO "${role}";
+    GRANT UPDATE (revoked_at) ON prism.developer_literature_tokens TO "${role}"`);
   return {
     db,
     url: runtimeUrl.toString(),

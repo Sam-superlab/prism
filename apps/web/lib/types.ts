@@ -61,6 +61,7 @@ export interface ResearchObject extends Entity {
   title: string;
   content: string;
   claim_status: string;
+  question_status?: import('./research-question-links').ResearchQuestionStatus | null;
   proof_content: string | null;
   evidence_reference: string | null;
   evidence_metadata: Record<string, unknown>;
@@ -223,6 +224,7 @@ export interface Subscription extends Entity {
 }
 export interface User {
   id: string;
+  team_libraries_enabled?: boolean;
   display_name: string;
   email: string;
   timezone: string;

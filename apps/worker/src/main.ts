@@ -15,6 +15,7 @@ await service.initialize();
 const worker = startWorker({
   db,
   userId: config.userId,
+  literatureFeedUserIds: config.hostedAccounts?.map((account) => account.userId),
   service,
   redisUrl: process.env.REDIS_URL,
   userAgent: process.env.PRISM_ARXIV_USER_AGENT,

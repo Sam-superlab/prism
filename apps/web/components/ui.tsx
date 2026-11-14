@@ -7,6 +7,7 @@ import {
   useEffect,
   useId,
   useRef,
+  useState,
   type ReactElement,
   type ReactNode,
 } from 'react';
@@ -14,6 +15,8 @@ import katex from 'katex';
 import Markdown from 'react-markdown';
 import remarkMath from 'remark-math';
 import { ApiError } from '../lib/api';
+import { authReturnPath } from '../lib/auth-return-path';
+import { isKnowledgeImageSource, pdfAreaImageSource } from '../lib/knowledge-image-sources';
 import markdownStyles from './KnowledgeMarkdown.module.css';
 
 const icons: Record<string, ReactNode> = {
@@ -33,6 +36,19 @@ const icons: Record<string, ReactNode> = {
       <path d="m9 3 2 5-7 10a2 2 0 0 0 2 3h12a2 2 0 0 0 2-3L13 8l2-5M8 3h8M8 15h8" />
     </>
   ),
+  library: <path d="M4 5v14m4-14v14m4-14v14m3-13 5 12" />,
+  detailsPane: <><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M15 5v14m2-10h2m-2 3h2" /></>,
+  folder: <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
+  file: <path d="M6 3h8l4 4v14H6ZM14 3v5h4M9 12h6m-6 4h6" />,
+  fileSearch: <><path d="M13 21H5V3h9l4 4v4m-4-8v5h4" /><circle cx="15" cy="15.5" r="3.5" /><path d="m18 18 3 3" /></>,
+  import: <path d="M12 3v12m-4-4 4 4 4-4M4 15v5h16v-5" />,
+  export: <path d="M12 15V3m-4 4 4-4 4 4M4 15v5h16v-5" />,
+  annotation: <path d="M4 4h16v12H9l-5 4ZM8 8h8m-8 4h6" />,
+  feed: <><path d="M4 4c9 0 16 7 16 16M4 11c5 0 9 4 9 9" /><circle cx="5" cy="19" r="1" /></>,
+  users: <><circle cx="9" cy="7" r="3" /><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 4a3 3 0 0 1 0 6m2 4a4 4 0 0 1 3 4v2" /></>,
+  quote: <path d="M4 12h5v6H4v-6c0-3 2-5 5-6m6 6h5v6h-5v-6c0-3 2-5 5-6" />,
+  duplicates: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4H4v12h4" /></>,
+  select: <><rect x="4" y="4" width="16" height="16" rx="3" /><path d="m8 12 3 3 5-6" /></>,
   fitness: (
     <>
       <path d="m3 9 3-3m-3 9L9 3m6 18 6-6M9 21l12-12M7 7l10 10M2 12l10-10m0 20 10-10" />
@@ -162,6 +178,7 @@ export function Loading() {
   );
 }
 export function ErrorState({ error, retry }: { error: Error | null; retry?: () => void }) {
+  const needsLogin = error instanceof ApiError && error.status === 401;
   if (!error) return null;
   return (
     <div className="error-box" role="alert">
@@ -172,8 +189,16 @@ export function ErrorState({ error, retry }: { error: Error | null; retry?: () =
             Try again
           </button>
         )}
-        {error instanceof ApiError && error.status === 401 && (
-          <a className="button small primary" href="/auth/login">
+        {needsLogin && (
+          <a
+            className="button small primary"
+            href="/auth/login"
+            onClick={(event) => {
+              const destination = authReturnPath(window.location.pathname + window.location.search);
+              if (destination !== '/today')
+                event.currentTarget.href = `/auth/login?returnTo=${encodeURIComponent(destination)}`;
+            }}
+          >
             Sign in to PRISM
           </a>
         )}
@@ -212,6 +237,10 @@ export function Modal({
   wide = false,
   lang,
   closeLabel = 'Close',
+  inline = false,
+  suspended = false,
+  dismissOnBackdrop = true,
+  className,
 }: {
   title: string;
   children: ReactNode;
@@ -219,12 +248,17 @@ export function Modal({
   wide?: boolean;
   lang?: string;
   closeLabel?: string;
+  inline?: boolean;
+  suspended?: boolean;
+  dismissOnBackdrop?: boolean;
+  className?: string;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const titleId = useId();
   const close = useRef(onClose);
   close.current = onClose;
   useEffect(() => {
+    if (inline || suspended) return;
     const el = ref.current;
     const previous = document.activeElement as HTMLElement | null;
     el?.showModal();
@@ -243,15 +277,16 @@ export function Modal({
       el?.close();
       previous?.focus({ preventScroll: true });
     };
-  }, []);
+  }, [inline, suspended]);
   return (
     <dialog
       ref={ref}
       lang={lang}
       aria-labelledby={titleId}
-      className={`modal ${wide ? 'wide' : ''}`}
+      open={inline || undefined}
+      className={['modal', wide && 'wide', inline && 'inline-reader', className].filter(Boolean).join(' ')}
       onClick={(e) => {
-        if (e.target === ref.current) onClose();
+        if (!inline && dismissOnBackdrop && e.target === ref.current) onClose();
       }}
     >
       <header>
@@ -295,14 +330,36 @@ function Formula({ latex, display }: { latex: string; display: boolean }) {
   }
 }
 
-const sourceImagePath = /^\/knowledge-sources\/(?:[\w-]+\/)*[\w-]+\.(?:png|jpe?g|webp|gif|avif)$/i;
+function KnowledgePdfFigure({ src, alt }: { src: string; alt: string }) {
+  const image = useRef<HTMLImageElement>(null);
+  const [unavailable, setUnavailable] = useState(false);
+  useEffect(() => {
+    const element = image.current;
+    if (!element) return;
+    let cancelled = false;
+    let stop: (() => void) | undefined;
+    void import('../lib/literature-pdf-area-image').then(({ displayLiteraturePdfAreaImage }) => {
+      if (!cancelled) stop = displayLiteraturePdfAreaImage(element, src, () => setUnavailable(true));
+    }).catch(() => {
+      if (!cancelled) {
+        element.dataset.prismPdfFigure = 'unavailable';
+        setUnavailable(true);
+      }
+    });
+    return () => { cancelled = true; stop?.(); };
+  }, [src]);
+  return <>
+    <img ref={image} alt={alt} data-prism-pdf-figure="loading" hidden={unavailable} />
+    {unavailable && <a href={src}>{alt} · Open PDF source</a>}
+  </>;
+}
 
 type MarkdownNode = { type: string; value?: string; children?: MarkdownNode[] };
 function remarkCitations(citations: Record<string, string>) {
   return (tree: MarkdownNode) => {
     function visit(node: MarkdownNode) {
       if (node.type === 'text' && node.value) {
-        node.value = node.value.replace(/\[@([a-z0-9./-]+)\]/gi, (token, key: string) =>
+        node.value = node.value.replace(/\[@([a-z0-9_./:+-]{1,180})\]/gi, (token, key: string) =>
           Object.hasOwn(citations, key) ? `(${citations[key]})` : token,
         );
       }
@@ -316,16 +373,19 @@ export const KnowledgeMarkdown = memo(function KnowledgeMarkdown({
   content,
   className = '',
   citations,
+  interactive = true,
 }: {
   content: string;
   className?: string;
   citations?: Record<string, string>;
+  interactive?: boolean;
 }) {
   return (
     <div className={['math-content', markdownStyles.prose, className].filter(Boolean).join(' ')}>
       <Markdown
         remarkPlugins={citations ? [remarkMath, [remarkCitations, citations]] : [remarkMath]}
         components={{
+          ...(!interactive ? { a: ({ children }: { children?: ReactNode }) => <span>{children}</span> } : {}),
           code({ className, children, node }) {
             const classes = className?.split(' ') || [];
             if (!classes.includes('math-inline') && !classes.includes('math-display')) {
@@ -343,8 +403,10 @@ export const KnowledgeMarkdown = memo(function KnowledgeMarkdown({
             return <pre>{children}</pre>;
           },
           img({ src, alt }) {
-            if (typeof src === 'string' && sourceImagePath.test(src))
+            if (typeof src === 'string' && isKnowledgeImageSource(src)) {
+              if (pdfAreaImageSource(src)) return <KnowledgePdfFigure key={src} src={src} alt={alt || 'PDF figure'} />;
               return <img src={src} alt={alt || ''} />;
+            }
             return alt || null;
           },
         }}

@@ -13,7 +13,9 @@ import {
   uuid,
 } from '../../lib/api';
 import type { InboxEntry, Page, PlanItem, Task, Today, User } from '../../lib/types';
-import { Badge, Empty, ErrorState, Field, Icon, Loading, Modal, Notice, label } from '../ui';
+import { MarkdownEditor } from '../MarkdownEditor';
+import { ResearchActivity } from '../ResearchActivity';
+import { Badge, Empty, ErrorState, Field, Icon, KnowledgeMarkdown, Loading, Modal, Notice, label } from '../ui';
 import { DailyReviewDrafts } from './DailyReviewDrafts';
 import { TodayOverview } from './TodayOverview';
 import { FocusTimer, type FocusTimerController } from './FocusTimer';
@@ -51,6 +53,15 @@ function taskPlanFeedback(task: Task, day: Today, item: PlanItem | undefined, pl
   }
   if (planError) return { text: `Saved in Task library: ${task.title}.`, destination: 'library' as const };
   return { text: 'Task saved. Updating today’s plan…' };
+}
+
+function ResearchTaskLink({ task }: { task?: Task | null }) {
+  if (!task?.project_id || !task.research_object_id) return null;
+  return (
+    <Link className="text-link" href={`/research/${task.project_id}?object=${task.research_object_id}`}>
+      Open research record
+    </Link>
+  );
 }
 
 export function TodayPage({
@@ -106,6 +117,15 @@ export function TodayPage({
   const draftDate =
     process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d ? previousDate(d.date) : null;
   const reloadToday = today.reload;
+  const reloadTasks = tasks.reload;
+  useEffect(() => {
+    function refreshTasks() {
+      reloadToday();
+      reloadTasks();
+    }
+    window.addEventListener('prism:tasks-changed', refreshTasks);
+    return () => window.removeEventListener('prism:tasks-changed', refreshTasks);
+  }, [reloadToday, reloadTasks]);
   useEffect(() => {
     if (!d || today.loading || autoPlanning || action.busy || (d.plan && (tasks.loading || !tasks.data)))
       return;
@@ -203,6 +223,7 @@ export function TodayPage({
         body: { completed_at: new Date().toISOString() },
       });
       focusTimer.finishTask(task.id);
+      window.dispatchEvent(new Event('prism:tasks-changed'));
     });
   }
   function complete(item: PlanItem) {
@@ -219,6 +240,7 @@ export function TodayPage({
         body: { status: 'in_progress' },
       });
       setMessage(`Started: ${task.title}`);
+      window.dispatchEvent(new Event('prism:tasks-changed'));
     });
   }
   function focusOn(task: Task) {
@@ -265,7 +287,7 @@ export function TodayPage({
           {d.continuation_note && (
             <section className="panel continuation-note" aria-label="Yesterday’s next step">
               <span className="eyebrow">PICK UP WHERE YOU LEFT OFF</span>
-              <p>{d.continuation_note}</p>
+              <KnowledgeMarkdown content={d.continuation_note} />
             </section>
           )}
           <div className="summary-grid">
@@ -469,6 +491,7 @@ export function TodayPage({
                             {task?.status === 'in_progress' && (
                               <span className="active-label">In progress</span>
                             )}
+                            <ResearchTaskLink task={task} />
                           </div>
                           {item.deferred_reason ? (
                             <p className="task-reason">{item.deferred_reason}</p>
@@ -625,6 +648,7 @@ export function TodayPage({
           </div>
         </>
       )}
+      {d && <ResearchActivity />}
       {draftDate && <DailyReviewDrafts key={draftDate} date={draftDate} />}
       <details className="panel task-pool" ref={taskLibrary}>
         <summary>
@@ -695,6 +719,7 @@ export function TodayPage({
                     <span>{t.estimated_minutes} min</span>
                     {t.due_at && <span>{datetime(t.due_at)}</span>}
                     {t.pinned && <Icon name="pin" size={12} />}
+                    <ResearchTaskLink task={t} />
                   </div>
                 </div>
                 <div className="inline-actions">
@@ -754,7 +779,7 @@ export function TodayPage({
           .filter((x) => !x.classified_task_id && !x.classified_knowledge_id)
           .map((entry) => (
             <div className="inbox-row" key={entry.id}>
-              <p>{entry.content}</p>
+              <KnowledgeMarkdown content={entry.content} />
               <span>{datetime(entry.created_at, true)}</span>
               <button
                 className="button small"
@@ -917,6 +942,7 @@ export function TaskModal({
           ...(status === 'completed' ? {} : { status }),
         },
       });
+      window.dispatchEvent(new Event('prism:tasks-changed'));
       onSaved(saved);
     });
   }
@@ -938,9 +964,7 @@ export function TaskModal({
             placeholder="A clear, actionable next step"
           />
         </Field>
-        <Field label="Description">
-          <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </Field>
+        <MarkdownEditor label="Description" rows={3} value={description} onChange={setDescription} />
         <div className="form-grid">
           <Field label="Estimated minutes">
             <input
@@ -1066,17 +1090,16 @@ function ShutdownModal({ date, planId, onClose }: { date: string; planId: string
             <p className="muted">
               {preview.data.deferred_item_ids.length} items deferred. Unfinished tasks remain available.
             </p>
-            <Field label="Where will you pick up tomorrow?">
-              <textarea
-                rows={3}
-                value={note}
-                placeholder="One sentence to get you started tomorrow."
-                onChange={(e) => {
-                  setDraft(e.target.value);
-                  setSaved(false);
-                }}
-              />
-            </Field>
+            <MarkdownEditor
+              label="Where will you pick up tomorrow?"
+              rows={3}
+              value={note}
+              placeholder="One sentence to get you started tomorrow."
+              onChange={(text) => {
+                setDraft(text);
+                setSaved(false);
+              }}
+            />
             {saved && <Notice>Daily reflection saved.</Notice>}
             {action.error && <Notice tone="error">{action.error}</Notice>}
             <div className="modal-footer">

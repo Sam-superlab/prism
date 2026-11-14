@@ -1,0 +1,8 @@
+PRISM uses styles from the Citation Style Language project, https://citationstyles.org/.
+
+IEEE Reference Guide and Chicago Manual of Style 18th edition (author-date) are distributed under the Creative Commons Attribution-ShareAlike 3.0 Unported license, https://creativecommons.org/licenses/by-sa/3.0/.
+The CSL XML is stored unchanged in JSON string form. Its original metadata, including authors and contributors, remains intact.
+
+Source revision (CSL 1.0.2 branch): 7a37c5a736c10fbd468bc31f92cbc6eafaa2173d
+https://github.com/citation-style-language/styles/blob/7a37c5a736c10fbd468bc31f92cbc6eafaa2173d/ieee.csl
+https://github.com/citation-style-language/styles/blob/7a37c5a736c10fbd468bc31f92cbc6eafaa2173d/chicago-author-date.csl

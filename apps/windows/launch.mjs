@@ -5,7 +5,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 const { PRISM_DESKTOP_TOKEN: token, PRISM_DATA_DIR: dataDir, PRISM_DESKTOP_RUNTIME: runtime } = process.env;
 const host = '127.0.0.1';
-const webPort = 38741;
+const webPort = Number(process.env.PRISM_DESKTOP_WEB_PORT || 38741);
 const webOrigin = `http://${host}:${webPort}`;
 const wrapper = fileURLToPath(new URL('./service.mjs', import.meta.url));
 const children = [];
@@ -65,6 +65,8 @@ process.on('disconnect', () => void stop(0));
 try {
   if (!/^[a-f0-9]{64}$/.test(token || '') || !isAbsolute(dataDir || '') || !isAbsolute(runtime || ''))
     throw new Error('PRISM requires a private local workspace and session.');
+  if (!Number.isInteger(webPort) || webPort < 1024 || webPort > 65535)
+    throw new Error('Invalid desktop service port.');
   await portFree(webPort);
   const apiPort = await portFree(0);
   const apiOrigin = `http://${host}:${apiPort}`;

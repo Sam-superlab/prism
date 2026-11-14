@@ -17,13 +17,16 @@ type EdgeKind =
   | 'project_knowledge'
   | 'object_knowledge'
   | 'project_paper'
-  | 'project_reference';
+  | 'project_reference'
+  | 'question_source'
+  | 'question_record';
 type GraphEdge = { source: string; target: string; kind: EdgeKind };
 type GraphNodeRow = {
   id: string;
   kind: NodeKind;
   label: string;
   project_id: string | null;
+  object_type: string | null;
   url: string | null;
   arxiv_id: string | null;
   doi: string | null;
@@ -33,7 +36,10 @@ function hrefForNode(node: GraphNodeRow): string | undefined {
   const id = node.id.slice(node.id.indexOf(':') + 1);
   if (node.kind === 'knowledge') return `/knowledge/${id}`;
   if (node.kind === 'project') return `/research/${id}`;
-  if (node.kind === 'research') return `/research/${node.project_id}?object=${id}`;
+  if (node.kind === 'research')
+    return node.object_type === 'question'
+      ? `/research/${node.project_id}/questions/${id}`
+      : `/research/${node.project_id}?object=${id}`;
   if (node.url) {
     try {
       const url = new URL(node.url);
@@ -45,8 +51,8 @@ function hrefForNode(node: GraphNodeRow): string | undefined {
   if (node.arxiv_id && arxivIdPattern.test(node.arxiv_id)) return `https://arxiv.org/abs/${node.arxiv_id}`;
   if (node.doi && doiPattern.test(node.doi))
     return `https://doi.org/${node.doi.split('/').map(encodeURIComponent).join('/')}`;
-  if (node.id.startsWith('reference:') && node.project_id)
-    return `/research/${node.project_id}#reference-${id}`;
+  if (node.id.startsWith('reference:'))
+    return node.project_id ? `/research/${node.project_id}#reference-${id}` : `/research/library?reference=${id}`;
 }
 
 export async function workspaceGraph(
@@ -66,7 +72,7 @@ export async function workspaceGraph(
         SELECT id, title, updated_at FROM research_projects WHERE user_id=$1 AND deleted_at IS NULL
       ),
       objects AS (
-        SELECT o.id, o.project_id, o.title, o.updated_at
+        SELECT o.id, o.project_id, o.title, o.updated_at, o.object_type
         FROM research_objects o JOIN projects p ON p.id=o.project_id
         WHERE o.user_id=$1 AND o.deleted_at IS NULL
       ),
@@ -75,10 +81,17 @@ export async function workspaceGraph(
         FROM research_paper_links l JOIN projects p ON p.id=l.project_id
         WHERE l.user_id=$1 AND l.deleted_at IS NULL
       ),
-      references_in_projects AS (
+      references_in_library AS (
         SELECT r.id, r.project_id, r.title, r.url, r.arxiv_id, r.doi, r.updated_at
-        FROM research_references r JOIN projects p ON p.id=r.project_id
-        WHERE r.user_id=$1 AND r.deleted_at IS NULL
+        FROM research_references r LEFT JOIN projects p ON p.id=r.project_id
+        WHERE r.user_id=$1 AND r.deleted_at IS NULL AND (r.project_id IS NULL OR p.id IS NOT NULL)
+      ),
+      reference_links AS (
+        SELECT l.project_id,l.reference_id
+        FROM research_reference_links l
+        JOIN projects p ON p.id=l.project_id
+        JOIN references_in_library r ON r.id=l.reference_id
+        WHERE l.user_id=$1 AND l.deleted_at IS NULL
       ),
       selected_papers AS (
         SELECT paper_id FROM paper_links
@@ -86,19 +99,19 @@ export async function workspaceGraph(
         SELECT paper_id FROM user_papers WHERE user_id=$1 AND deleted_at IS NULL
           AND (is_saved OR for_you_reaction IN ('interested','liked'))
       ),
-      graph_nodes(id, kind, label, project_id, url, arxiv_id, doi, updated_at) AS (
-        SELECT 'knowledge:' || id, 'knowledge', title, NULL::text, NULL::text, NULL::text, NULL::text, updated_at
+      graph_nodes(id, kind, label, project_id, url, arxiv_id, doi, updated_at, object_type) AS (
+        SELECT 'knowledge:' || id, 'knowledge', title, NULL::text, NULL::text, NULL::text, NULL::text, updated_at, NULL::text
           FROM knowledge_items WHERE user_id=$1 AND deleted_at IS NULL
         UNION ALL
-        SELECT 'project:' || id, 'project', title, NULL, NULL, NULL, NULL, updated_at FROM projects
+        SELECT 'project:' || id, 'project', title, NULL, NULL, NULL, NULL, updated_at, NULL FROM projects
         UNION ALL
-        SELECT 'research:' || id, 'research', title, project_id::text, NULL, NULL, NULL, updated_at FROM objects
+        SELECT 'research:' || id, 'research', title, project_id::text, NULL, NULL, NULL, updated_at, object_type FROM objects
         UNION ALL
-        SELECT 'paper:' || p.id, 'paper', p.title, NULL, NULL, p.arxiv_id, NULL, p.updated_at
+        SELECT 'paper:' || p.id, 'paper', p.title, NULL, NULL, p.arxiv_id, NULL, p.updated_at, NULL
           FROM arxiv_papers p JOIN selected_papers s ON s.paper_id=p.id
         UNION ALL
-        SELECT 'reference:' || r.id, 'paper', r.title, r.project_id::text, r.url, r.arxiv_id, r.doi, r.updated_at
-          FROM references_in_projects r
+        SELECT 'reference:' || r.id, 'paper', r.title, r.project_id::text, r.url, r.arxiv_id, r.doi, r.updated_at, NULL
+          FROM references_in_library r
       ),
       graph_edges(source, target, kind) AS (
         SELECT 'knowledge:' || source_item_id, 'knowledge:' || target_item_id, relation_type
@@ -114,7 +127,22 @@ export async function workspaceGraph(
         UNION ALL
         SELECT 'project:' || project_id, 'paper:' || paper_id, 'project_paper' FROM paper_links
         UNION ALL
-        SELECT 'project:' || project_id, 'reference:' || id, 'project_reference' FROM references_in_projects
+        SELECT 'project:' || project_id, 'reference:' || id, 'project_reference'
+          FROM references_in_library WHERE project_id IS NOT NULL
+        UNION ALL
+        SELECT 'project:' || project_id, 'reference:' || reference_id, 'project_reference' FROM reference_links
+        UNION ALL
+        SELECT 'reference:' || first_reference_id, 'reference:' || second_reference_id, 'related'
+          FROM research_reference_relations WHERE user_id=$1 AND deleted_at IS NULL
+        UNION ALL
+        SELECT 'reference:' || reference_id, 'knowledge:' || knowledge_item_id, 'related'
+          FROM research_reference_knowledge_links WHERE user_id=$1 AND deleted_at IS NULL
+        UNION ALL
+        SELECT 'research:' || question_id, 'reference:' || reference_id, 'question_source'
+          FROM research_question_links WHERE user_id=$1 AND deleted_at IS NULL AND reference_id IS NOT NULL
+        UNION ALL
+        SELECT 'research:' || question_id, 'research:' || research_object_id, 'question_record'
+          FROM research_question_links WHERE user_id=$1 AND deleted_at IS NULL AND research_object_id IS NOT NULL
       ),
       active_edges AS (
         SELECT DISTINCT e.source,e.target,e.kind

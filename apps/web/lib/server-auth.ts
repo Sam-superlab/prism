@@ -22,6 +22,7 @@ export interface AuthFlow {
   issuer: string;
   redirectUri: string;
   tokenEndpoint: string;
+  returnTo?: string;
   createdAt: number;
 }
 export function apiBase() {

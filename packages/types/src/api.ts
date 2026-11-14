@@ -334,6 +334,41 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/research/question-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List evidence linked from one question or to one research record. Supply exactly one of question_id and research_object_id. */
+        get: operations["get_research_question_links"];
+        put?: never;
+        /** @description Link a Library reference with an optional PDF page, or a research record in the same project, to a Research Question. */
+        post: operations["post_research_question_links"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/question-links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Remove a link and preserve its research history. */
+        delete: operations["delete_research_question_link"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/research/objects/{id}": {
         parameters: {
             query?: never;
@@ -348,6 +383,40 @@ export interface paths {
         options?: never;
         head?: never;
         patch: operations["patch_research_objects_id"];
+        trace?: never;
+    };
+    "/research/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Summarize the past 365 local dates of recorded research events. */
+        get: operations["get_research_activity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/activity/day": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List recorded research changes on a calendar date in the account timezone. */
+        get: operations["get_research_activity_day"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/research/projects/{id}/timeline": {
@@ -1371,6 +1440,824 @@ export interface paths {
         delete: operations["delete_research_references_id"];
         options?: never;
         head?: never;
+        /** @description Update bibliographic metadata while preserving the reference ID and citation key. */
+        patch: operations["patch_research_references_id"];
+        trace?: never;
+    };
+    "/research/reference-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_research_reference_links"];
+        put?: never;
+        /** @description Attach a standalone library reference to a project, preserving its ID and citation key. */
+        post: operations["post_research_reference_links"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_research_reference_links_id"];
+        put?: never;
+        post?: never;
+        /** @description Soft delete, increment version and emit tombstone. Preserve historical records. */
+        delete: operations["delete_research_reference_links_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Search standalone references, project references and linked or saved arXiv papers. */
+        get: operations["get_literature_library"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Return the current account’s collection hierarchy as a flat list of parent and child records. */
+        get: operations["get_literature_collections"];
+        put?: never;
+        /** @description Create a collection at the root or beneath another collection. */
+        post: operations["post_literature_collections"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/collections/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_literature_collections_id"];
+        put?: never;
+        post?: never;
+        /** @description Delete an empty collection. References and child collections must be moved or removed first. */
+        delete: operations["delete_literature_collections_id"];
+        options?: never;
+        head?: never;
+        /** @description Rename or move a collection. Moving into itself or one of its descendants is invalid. */
+        patch: operations["patch_literature_collections_id"];
+        trace?: never;
+    };
+    "/research/library/memberships": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_literature_memberships"];
+        put?: never;
+        /** @description Add an existing PRISM reference to a collection without moving or duplicating it. */
+        post: operations["post_literature_memberships"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/memberships/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_literature_memberships_id"];
+        put?: never;
+        post?: never;
+        /** @description Soft delete, increment version and emit tombstone. Preserve historical records. */
+        delete: operations["delete_literature_memberships_id"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/duplicates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Find possible duplicates among standalone native references. */
+        get: operations["get_literature_library_duplicates"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Merge standalone references into a version-checked surviving record while retaining citation aliases and links. */
+        post: operations["post_literature_library_merge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/saved-searches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List the current account’s saved literature filters. */
+        get: operations["get_literature_saved_searches"];
+        put?: never;
+        /** @description Save a named literature filter. */
+        post: operations["post_literature_saved_searches"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/saved-searches/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_literature_saved_searches_id"];
+        put?: never;
+        post?: never;
+        /** @description Delete a saved search without altering references or collections. */
+        delete: operations["delete_literature_saved_searches_id"];
+        options?: never;
+        head?: never;
+        /** @description Rename or update a saved literature filter. */
+        patch: operations["patch_literature_saved_searches_id"];
+        trace?: never;
+    };
+    "/research/references/{id}/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Start or resume an upload. */
+        post: operations["begin_reference_pdf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}/pdfs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List completed PDF attachments. */
+        get: operations["list_reference_pdfs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/chunk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Upload one contiguous base64 chunk, retryable by offset. */
+        put: operations["put_reference_pdf_chunk"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verify and publish an uploaded PDF. */
+        post: operations["complete_reference_pdf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}/open-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Find open-access PDF candidates by the arXiv, DOI, or PubMed identifier of an owned reference. Does not fetch or save PDF bytes. */
+        get: operations["discover_open_access_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}/open-access/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Fetch a selected open-access PDF from a supported source for an owned reference. Does not persist an attachment. */
+        post: operations["fetch_open_access_pdf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Download an owned completed PDF attachment. */
+        get: operations["download_reference_pdf"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Cancel an upload or remove a PDF attachment. */
+        delete: operations["delete_reference_pdf"];
+        options?: never;
+        head?: never;
+        /** @description Rename a completed attachment while preserving its ID and reading state. */
+        patch: operations["rename_reference_pdf"];
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List persisted highlights, underlines, and sticky notes. */
+        get: operations["list_pdf_annotations"];
+        put?: never;
+        /** @description Add an annotation to a completed PDF. */
+        post: operations["create_pdf_annotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/annotations/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Copy selected embedded PDF annotations into the owned PDF in one transaction. Previously imported IDs, including deleted ones, are skipped. */
+        post: operations["import_embedded_pdf_annotations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/pdf-annotations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read an owned annotation. */
+        get: operations["get_pdf_annotation"];
+        put?: never;
+        post?: never;
+        /** @description Remove an owned annotation. */
+        delete: operations["delete_pdf_annotation"];
+        options?: never;
+        head?: never;
+        /** @description Edit an owned annotation. */
+        patch: operations["patch_pdf_annotation"];
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/text-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read the active PDF index or pending rebuild. */
+        get: operations["get_pdf_text_index"];
+        put?: never;
+        /** @description Start or resume PDF text indexing. */
+        post: operations["begin_pdf_text_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/text-index/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Upload contiguous extracted page text. */
+        put: operations["put_pdf_text_index_pages"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/text-index/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Publish a complete index and retire the preceding generation. */
+        post: operations["complete_pdf_text_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/full-text": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Search indexed attachment text and PDF annotations. The page field identifies a PDF page, EPUB chapter, or webpage text segment. */
+        get: operations["search_literature_text"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/lookup": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Retrieve a bibliographic preview by DOI, ISBN, ISSN, PubMed ID, PubMed Central ID, or arXiv ID using fixed metadata providers. ISSN returns the journal record. */
+        get: operations["lookup_literature_identifier"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}/related": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read related literature records from either side of a symmetric link. */
+        get: operations["list_related_references"];
+        put?: never;
+        /** @description Link two owned native references. */
+        post: operations["add_related_reference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-relations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read a reference link by ID. */
+        get: operations["get_reference_relation"];
+        put?: never;
+        post?: never;
+        /** @description Remove a link from both references. */
+        delete: operations["delete_reference_relation"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-pdfs/{id}/reading-position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read the account’s last saved page for a completed attachment. */
+        get: operations["get_pdf_reading_position"];
+        /** @description Save the last page. Set expected_version to null to require no existing position. */
+        put: operations["put_pdf_reading_position"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{id}/reading-position": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read the account’s last saved page, chapter, or section number for a completed attachment. */
+        get: operations["get_attachment_reading_position"];
+        /** @description Save the last page, chapter, or section number (one-based). Set expected_version to null to require no existing position. */
+        put: operations["put_attachment_reading_position"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List completed personal attachment identities and byte digests for opt-in desktop WebDAV mirroring. */
+        get: operations["list_personal_literature_attachments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List completed attachment attachments. */
+        get: operations["list_reference_attachments"];
+        put?: never;
+        /** @description Start or resume an upload. */
+        post: operations["begin_reference_attachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{id}/chunk": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Upload one contiguous base64 chunk, retryable by offset. */
+        put: operations["put_reference_attachment_chunk"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{id}/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Verify and publish an uploaded attachment. */
+        post: operations["complete_reference_attachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Download an owned completed attachment attachment. */
+        get: operations["download_reference_attachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Cancel an upload or remove a attachment attachment. */
+        delete: operations["delete_reference_attachment"];
+        options?: never;
+        head?: never;
+        /** @description Rename a completed attachment while preserving its ID and reading state. */
+        patch: operations["rename_reference_attachment"];
+        trace?: never;
+    };
+    "/research/attachments/{id}/text-index": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read the active attachment index or pending rebuild. */
+        get: operations["get_attachment_text_index"];
+        put?: never;
+        /** @description Start or resume attachment text indexing. */
+        post: operations["begin_attachment_text_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{id}/text-index/pages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** @description Upload contiguous extracted section text. */
+        put: operations["put_attachment_text_index_pages"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{id}/text-index/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Publish a complete index and retire the preceding generation. */
+        post: operations["complete_attachment_text_index"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}/knowledge-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List Knowledge items linked to a literature reference. */
+        get: operations["list_reference_knowledge_links"];
+        put?: never;
+        /** @description Link an existing owned Knowledge item. */
+        post: operations["create_reference_knowledge_link"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/references/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Create a Knowledge note and its literature link in one transaction. */
+        post: operations["create_reference_note"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/reference-knowledge-links/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read an owned link. */
+        get: operations["get_reference_knowledge_link"];
+        put?: never;
+        post?: never;
+        /** @description Detach a link while preserving both records. */
+        delete: operations["delete_reference_knowledge_link"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/knowledge-items/{id}/reference-links": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List literature references linked to an owned Knowledge item. */
+        get: operations["list_knowledge_linked_references"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Read-only structured library search. At most five levels, 24 rules and 12 conditions in each group. */
+        post: operations["search_literature_conditions"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Import one batch of standalone references. Existing identifiers are reported without updating the matching reference. */
+        post: operations["post_literature_library_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/zotero-rdf/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Atomically import Zotero RDF reference metadata and selected collections, direct child notes, or stand-alone notes. The client parses the RDF locally. Existing records are preserved and other duplicate references receive links only when explicitly selected. */
+        post: operations["post_zotero_rdf_library_import"];
+        delete?: never;
+        options?: never;
+        head?: never;
         patch?: never;
         trace?: never;
     };
@@ -1407,6 +2294,623 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/research/library/feeds/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Preview up to 50 entries from a public HTTPS RSS or Atom feed. Preview does not follow redirects or persist records. */
+        post: operations["preview_literature_feed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/feeds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List up to 25 active subscriptions with unread counts. */
+        get: operations["list_literature_feeds"];
+        put?: never;
+        /** @description Subscribe to a public HTTPS feed. Creation does not fetch the URL. */
+        post: operations["create_literature_feed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/feeds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read a subscription and its unread count. */
+        get: operations["get_literature_feed"];
+        put?: never;
+        post?: never;
+        /** @description Remove this subscription and its feed entries. */
+        delete: operations["delete_literature_feed"];
+        options?: never;
+        head?: never;
+        /** @description Set a custom title or opt in to six-hour automatic refreshes. */
+        patch: operations["rename_literature_feed"];
+        trace?: never;
+    };
+    "/research/library/feeds/{id}/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List the newest retained entries. Each subscription retains up to 200 entries. */
+        get: operations["list_literature_feed_entries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/feeds/{id}/refresh": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Fetch the subscribed public HTTPS feed without redirects and store up to 50 normalized entries per refresh. */
+        post: operations["refresh_literature_feed"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/feed-entries/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Set an entry read or unread. */
+        patch: operations["set_literature_feed_entry_read"];
+        trace?: never;
+    };
+    "/research/references/{id}/citation-key": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** @description Set a stable citation key and preserve the previous effective key as an alias. */
+        patch: operations["change_reference_citation_key"];
+        trace?: never;
+    };
+    "/research/library/batch-edit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Atomically edit selected native references by version. The undo token is valid for 24 hours. */
+        post: operations["batch_edit_literature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/library/batch-edit/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Undo the batch if all affected references still have their post-edit versions. */
+        post: operations["undo_batch_edit_literature"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List private team libraries visible to the signed-in account. */
+        get: operations["list_team_libraries"];
+        put?: never;
+        /** @description Create a private team library. */
+        post: operations["create_team_library"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read a private library as an active member. */
+        get: operations["get_team_library"];
+        put?: never;
+        post?: never;
+        /** @description Archive a private team library as an administrator. */
+        delete: operations["delete_team_library"];
+        options?: never;
+        head?: never;
+        /** @description Change team library settings as an administrator. */
+        patch: operations["update_team_library"];
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/members": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List memberships as an administrator. */
+        get: operations["list_team_library_members"];
+        put?: never;
+        /** @description Add a provisioned account as an administrator. */
+        post: operations["create_team_library_member"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/members/{user_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Revoke a membership as an administrator. */
+        delete: operations["delete_team_library_member"];
+        options?: never;
+        head?: never;
+        /** @description Change an account role as an administrator. */
+        patch: operations["update_team_library_member"];
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List shared bibliography metadata as a member. */
+        get: operations["list_team_library_references"];
+        put?: never;
+        /** @description Create shared metadata or copy selected metadata from an owned reference. */
+        post: operations["create_team_library_reference"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read one team reference as a member. */
+        get: operations["get_team_library_reference"];
+        put?: never;
+        post?: never;
+        /** @description Archive shared metadata as an editor or administrator. */
+        delete: operations["delete_team_library_reference"];
+        options?: never;
+        head?: never;
+        /** @description Edit shared bibliography metadata as an editor or administrator. */
+        patch: operations["update_team_library_reference"];
+        trace?: never;
+    };
+    "/team-library-discovery": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List explicitly published team libraries. */
+        get: operations["list_public_team_libraries"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-library-discovery/{library_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read one explicitly published team library. */
+        get: operations["get_public_team_library"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-library-discovery/{library_id}/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read published bibliography metadata only. */
+        get: operations["list_public_team_library_references"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/join": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** @description Join a public-open library as a reader. Existing active memberships retain their roles. */
+        post: operations["join_public_team_library"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{reference_id}/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List team PDF metadata as a current member. */
+        get: operations["list_team_library_attachments"];
+        put?: never;
+        /** @description Copy an owned ready PDF into a private or public-closed team reference. */
+        post: operations["copy_team_library_attachment"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{reference_id}/attachments/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Remove a team PDF as an editor or administrator. */
+        delete: operations["remove_team_library_attachment"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{reference_id}/attachments/{id}/download": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Download a shared PDF as a current member of a private or public-closed library. */
+        get: operations["download_team_library_attachment"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{reference_id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List team notes in a private or public-closed library. */
+        get: operations["list_team_library_notes"];
+        put?: never;
+        /** @description Create a shared note as editor or administrator. */
+        post: operations["create_team_library_note"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{reference_id}/notes/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read a shared note as an active member. */
+        get: operations["get_team_library_note"];
+        put?: never;
+        post?: never;
+        /** @description Archive a shared note as editor or administrator. */
+        delete: operations["remove_team_library_note"];
+        options?: never;
+        head?: never;
+        /** @description Edit a shared note as editor or administrator. */
+        patch: operations["update_team_library_note"];
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{reference_id}/attachments/{attachment_id}/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List shared PDF annotations as an active team member. */
+        get: operations["list_team_pdf_annotations"];
+        put?: never;
+        /** @description Create a shared PDF annotation as editor or administrator. */
+        post: operations["create_team_pdf_annotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/team-libraries/{library_id}/references/{reference_id}/attachments/{attachment_id}/annotations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read a shared PDF annotation. */
+        get: operations["get_team_pdf_annotation"];
+        put?: never;
+        post?: never;
+        /** @description Archive a shared annotation as its active editor-author or an administrator. */
+        delete: operations["delete_team_pdf_annotation"];
+        options?: never;
+        head?: never;
+        /** @description Edit a shared annotation as its active editor-author or an administrator. */
+        patch: operations["update_team_pdf_annotation"];
+        trace?: never;
+    };
+    "/developer/literature/tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List the account’s active keys without their secret values. */
+        get: operations["list_developer_literature_tokens"];
+        put?: never;
+        /** @description Issue a read-only token. The secret is returned once. The UUID in the body is the issuance retry boundary. */
+        post: operations["issue_developer_literature_token"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/developer/literature/tokens/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** @description Revoke an owned key. Repeat revocation is safe. */
+        delete: operations["revoke_developer_literature_token"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/developer/literature/references": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read personal standalone bibliography metadata. */
+        get: operations["list_developer_literature_references"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/developer/literature/references/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read one personal standalone bibliography record. */
+        get: operations["get_developer_literature_reference"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/developer/literature/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read personal collection names and hierarchy. */
+        get: operations["list_developer_literature_collections"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/developer/literature/attachments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List ready attachment metadata for the account's standalone references. Requires an attachment_manifest token. */
+        get: operations["list_developer_literature_attachments"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/attachments/{attachment_id}/text-annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List EPUB or saved webpage annotations. */
+        get: operations["list_text_attachment_annotations"];
+        put?: never;
+        /** @description Create a text annotation with an immutable UTF-16 anchor. */
+        post: operations["create_text_attachment_annotation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/research/text-annotations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description Read one owned attachment annotation. */
+        get: operations["get_text_attachment_annotation"];
+        put?: never;
+        post?: never;
+        /** @description Archive an owned attachment annotation. */
+        delete: operations["delete_text_attachment_annotation"];
+        options?: never;
+        head?: never;
+        /** @description Edit the color, comment or tags while preserving the anchor. */
+        patch: operations["update_text_attachment_annotation"];
+        trace?: never;
+    };
+    "/research/library/annotations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description List owned annotations on PDF, EPUB and saved webpage attachments. q searches the quote and comment. Team content is excluded. */
+        get: operations["list_literature_annotations"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1414,7 +2918,7 @@ export interface components {
         Error: {
             error: {
                 /** @enum {string} */
-                code: "VALIDATION_ERROR" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "VERSION_CONFLICT" | "IDEMPOTENCY_KEY_REUSED" | "REVIEW_CONFLICT" | "DEPENDENCY_MISSING" | "DEPENDENCY_BLOCKED" | "ENTITY_DELETED" | "SYNC_CURSOR_EXPIRED" | "SNAPSHOT_EXPIRED" | "PRECONDITION_REQUIRED" | "RATE_LIMITED" | "INTERNAL_ERROR";
+                code: "VALIDATION_ERROR" | "UNAUTHENTICATED" | "FORBIDDEN" | "NOT_FOUND" | "VERSION_CONFLICT" | "IDEMPOTENCY_KEY_REUSED" | "REVIEW_CONFLICT" | "DEPENDENCY_MISSING" | "DEPENDENCY_BLOCKED" | "ENTITY_DELETED" | "SYNC_CURSOR_EXPIRED" | "SNAPSHOT_EXPIRED" | "PRECONDITION_REQUIRED" | "RATE_LIMITED" | "FEED_UNAVAILABLE" | "INVALID_FEED" | "INTERNAL_ERROR" | "FEED_REFRESH_BUSY" | "BATCH_UNDO_EXPIRED";
                 message: string;
                 details: {
                     [key: string]: unknown;
@@ -1443,6 +2947,7 @@ export interface components {
             display_name: string;
             timezone: string;
             version: string;
+            team_libraries_enabled?: boolean;
         };
         UserPatch: {
             display_name?: string;
@@ -1763,6 +3268,70 @@ export interface components {
             items: components["schemas"]["ResearchProject"][];
             next_cursor: string | null;
         };
+        ResearchQuestionLinkCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            question_id: string;
+            /** @enum {string} */
+            relation_type: "motivates" | "supports" | "contradicts" | "background" | "attempt" | "experiment" | "result" | "counterexample" | "conjecture";
+            reference_id?: string | null;
+            attachment_id?: string | null;
+            page?: number | null;
+            research_object_id?: string | null;
+            notes?: string;
+        };
+        ResearchQuestionLink: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            deleted_at: string | null;
+            version: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: uuid */
+            question_id: string;
+            /** @enum {string} */
+            relation_type: "motivates" | "supports" | "contradicts" | "background" | "attempt" | "experiment" | "result" | "counterexample" | "conjecture";
+            reference_id: string | null;
+            attachment_id: string | null;
+            page: number | null;
+            research_object_id: string | null;
+            notes: string;
+        };
+        ResearchQuestionLinkSummary: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            deleted_at: string | null;
+            version: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: uuid */
+            question_id: string;
+            /** @enum {string} */
+            relation_type: "motivates" | "supports" | "contradicts" | "background" | "attempt" | "experiment" | "result" | "counterexample" | "conjecture";
+            reference_id: string | null;
+            attachment_id: string | null;
+            page: number | null;
+            research_object_id: string | null;
+            notes: string;
+            question_title: string;
+            target_title: string;
+            /** @enum {string} */
+            target_type: "reference" | "question" | "conjecture" | "theorem" | "lemma" | "proof_attempt" | "counterexample" | "experiment" | "observation" | "literature_note";
+            target_claim_status: ("conjecture" | "computationally_verified" | "proved" | "disproved" | "needs_verification") | null;
+        };
+        ResearchQuestionLinkPage: {
+            items: components["schemas"]["ResearchQuestionLinkSummary"][];
+            next_cursor: string | null;
+        };
         ResearchObject: {
             /** Format: uuid */
             id: string;
@@ -1785,6 +3354,7 @@ export interface components {
             evidence_metadata: {
                 [key: string]: unknown;
             };
+            question_status?: ("open" | "investigating" | "resolved") | null;
         };
         ResearchObjectCreate: {
             /** Format: uuid */
@@ -1800,6 +3370,8 @@ export interface components {
             evidence_metadata?: {
                 [key: string]: unknown;
             };
+            /** @enum {string} */
+            question_status?: "open" | "investigating" | "resolved";
         };
         ResearchObjectPatch: {
             /** @enum {string} */
@@ -1814,9 +3386,44 @@ export interface components {
                 [key: string]: unknown;
             };
             base_snapshot: components["schemas"]["ResearchObject"];
+            /** @enum {string} */
+            question_status?: "open" | "investigating" | "resolved";
         };
         ResearchObjectPage: {
             items: components["schemas"]["ResearchObject"][];
+            next_cursor: string | null;
+        };
+        ResearchActivity: {
+            /** Format: date */
+            start_date: string;
+            /** Format: date */
+            end_date: string;
+            days: {
+                /** Format: date */
+                date: string;
+                count: number;
+            }[];
+        };
+        ResearchActivityEvent: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            object_id: string | null;
+            event_type: string;
+            event_payload: {
+                [key: string]: unknown;
+            };
+            /** Format: date-time */
+            created_at: string;
+            project_title: string;
+            project_open: boolean;
+            object_title: string | null;
+            object_type: string | null;
+        };
+        ResearchActivityDay: {
+            items: components["schemas"]["ResearchActivityEvent"][];
+            timezone: string;
             next_cursor: string | null;
         };
         ResearchEvent: {
@@ -2910,7 +4517,7 @@ export interface components {
         });
         SyncRecord: {
             /** @enum {string} */
-            entity_type: "user" | "preferences" | "knowledge_item" | "knowledge_relation" | "review_card" | "review_event" | "research_project" | "research_object" | "research_event" | "research_knowledge_link" | "research_paper_link" | "task" | "inbox_entry" | "exercise" | "workout_template" | "workout_template_exercise" | "workout_session" | "session_exercise" | "workout_set" | "cardio_entry" | "arxiv_subscription" | "user_paper" | "daily_plan" | "plan_item" | "daily_plan_review_card" | "daily_shutdown" | "conflict" | "research_reference";
+            entity_type: "user" | "preferences" | "knowledge_item" | "knowledge_relation" | "review_card" | "review_event" | "research_project" | "research_object" | "research_event" | "research_knowledge_link" | "research_paper_link" | "task" | "inbox_entry" | "exercise" | "workout_template" | "workout_template_exercise" | "workout_session" | "session_exercise" | "workout_set" | "cardio_entry" | "arxiv_subscription" | "user_paper" | "daily_plan" | "plan_item" | "daily_plan_review_card" | "daily_shutdown" | "conflict" | "research_reference" | "research_reference_link" | "literature_collection" | "literature_collection_membership" | "literature_saved_search" | "research_reference_pdf" | "research_pdf_annotation" | "research_reference_relation" | "research_pdf_reading_position" | "research_reference_knowledge_link" | "literature_feed" | "literature_feed_entry" | "research_text_annotation" | "research_question_link";
             /** Format: uuid */
             entity_id: string;
             entity_version: string;
@@ -3030,6 +4637,58 @@ export interface components {
             /** @constant */
             entity_type?: "research_reference";
             data?: components["schemas"]["ResearchReference"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_reference_link";
+            data?: components["schemas"]["ResearchReferenceLink"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "literature_collection";
+            data?: components["schemas"]["LiteratureCollection"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "literature_collection_membership";
+            data?: components["schemas"]["LiteratureMembership"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "literature_saved_search";
+            data?: components["schemas"]["LiteratureSavedSearch"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_reference_pdf";
+            data?: components["schemas"]["ReferencePdf"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_pdf_annotation";
+            data?: components["schemas"]["PdfAnnotation"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_reference_relation";
+            data?: components["schemas"]["ResearchReferenceRelation"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_pdf_reading_position";
+            data?: components["schemas"]["PdfReadingPosition"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_reference_knowledge_link";
+            data?: components["schemas"]["ResearchReferenceKnowledgeLink"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "literature_feed";
+            data?: components["schemas"]["LiteratureFeed"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "literature_feed_entry";
+            data?: components["schemas"]["LiteratureFeedEntry"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_text_annotation";
+            data?: components["schemas"]["TextAnnotation"] | null;
+        } | {
+            /** @constant */
+            entity_type?: "research_question_link";
+            data?: components["schemas"]["ResearchQuestionLink"] | null;
         });
         SyncResult: {
             /** Format: uuid */
@@ -3116,7 +4775,7 @@ export interface components {
             next_cursor: string | null;
         };
         ExportRequest: {
-            formats: ("json" | "markdown")[];
+            formats: ("json" | "markdown" | "attachments")[];
         };
         ExportManifest: {
             schema_version: string;
@@ -3139,7 +4798,7 @@ export interface components {
             id: string;
             /** @enum {string} */
             status: "pending" | "running" | "ready" | "failed" | "expired";
-            formats: ("json" | "markdown")[];
+            formats: ("json" | "markdown" | "attachments")[];
             expires_at: string | null;
             sha256: string | null;
             bytes: number | null;
@@ -3171,7 +4830,115 @@ export interface components {
             enabled: boolean;
             time: string;
         };
-        ResearchReference: {
+        LiteratureLookupResult: {
+            /** @enum {string} */
+            kind: "doi" | "isbn" | "issn" | "pmid" | "pmcid" | "arxiv";
+            identifier: string;
+            reference: {
+                title: string;
+                authors: string[];
+                year: number | null;
+                doi: string | null;
+                arxiv_id: string | null;
+                url: string | null;
+                publication: components["schemas"]["ReferencePublication"];
+            };
+        };
+        ReferencePublication: {
+            type?: string;
+            journal?: string;
+            booktitle?: string;
+            publisher?: string;
+            volume?: string;
+            number?: string;
+            pages?: string;
+            edition?: string;
+            institution?: string;
+            series?: string;
+            address?: string;
+            isbn?: string;
+            issn?: string;
+            editor?: string;
+            month?: string;
+            keywords?: string;
+            abstract?: string;
+            note?: string;
+            pmid?: string;
+            pmcid?: string;
+            translator?: string;
+        };
+        ReferenceImportItem: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            authors?: string[];
+            year?: number | null;
+            doi?: string | null;
+            arxiv_id?: string | null;
+            url?: string | null;
+            citation_key?: string | null;
+            publication?: components["schemas"]["ReferencePublication"];
+            tags?: string[];
+            creators?: components["schemas"]["ReferenceCreator"][];
+            import_source?: components["schemas"]["ReferenceImportSource"];
+        };
+        ReferenceImportRequest: {
+            items: components["schemas"]["ReferenceImportItem"][];
+        };
+        ReferenceImportResult: {
+            items: {
+                /** Format: uuid */
+                id: string;
+                /** @enum {string} */
+                status: "imported" | "skipped";
+                /** Format: uuid */
+                reference_id: string;
+                citation_key: string | null;
+                /** @constant */
+                reason?: "duplicate";
+                /** @enum {string} */
+                matched_by?: "id" | "doi" | "arxiv_id" | "citation_key";
+            }[];
+        };
+        ZoteroRdfImportRequest: {
+            file_sha256: string;
+            items: components["schemas"]["ReferenceImportItem"][];
+            collections: {
+                resource_sha256: string;
+                parent_resource_sha256: string | null;
+                name: string;
+                reference_ids: string[];
+            }[];
+            notes: {
+                resource_sha256: string;
+                /** Format: uuid */
+                reference_id: string;
+                title: string;
+                content: string;
+            }[];
+            standalone_notes?: {
+                resource_sha256: string;
+                title: string;
+                content: string;
+                collection_paths?: string[][];
+            }[];
+            link_existing: boolean;
+        };
+        ZoteroRdfImportResult: {
+            items: components["schemas"]["ReferenceImportResult"]["items"];
+            collections_created: number;
+            collections_kept: number;
+            memberships_created: number;
+            memberships_kept: number;
+            memberships_skipped: number;
+            notes_created: number;
+            notes_kept: number;
+            notes_skipped: number;
+            standalone_notes_created?: number;
+            standalone_notes_kept?: number;
+            standalone_notes_skipped?: number;
+        };
+        ResearchReferenceLink: {
             /** Format: uuid */
             id: string;
             /** Format: date-time */
@@ -3182,6 +4949,560 @@ export interface components {
             deleted_at: string | null;
             /** Format: uuid */
             project_id: string;
+            /** Format: uuid */
+            reference_id: string;
+        };
+        ResearchReferenceLinkCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            project_id: string;
+            /** Format: uuid */
+            reference_id: string;
+        };
+        ResearchReferenceLinkPage: {
+            items: components["schemas"]["ResearchReferenceLink"][];
+            next_cursor: string | null;
+        };
+        LiteratureCollection: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            name: string;
+            parent_id: string | null;
+        };
+        LiteratureCollectionList: {
+            items: components["schemas"]["LiteratureCollection"][];
+        };
+        LiteratureCollectionCreate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            parent_id?: string | null;
+        };
+        LiteratureCollectionPatch: {
+            name?: string;
+            parent_id?: string | null;
+        };
+        LiteratureMembership: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            reference_id: string;
+            /** Format: uuid */
+            collection_id: string;
+        };
+        LiteratureMembershipCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            collection_id: string;
+            /** Format: uuid */
+            reference_id: string;
+        };
+        LiteratureMembershipPage: {
+            items: components["schemas"]["LiteratureMembership"][];
+            next_cursor: string | null;
+        };
+        ReferenceDuplicateGroups: {
+            items: {
+                /** @enum {string} */
+                matched_by: "doi" | "arxiv_id" | "title_author_year";
+                value: string;
+                references: components["schemas"]["LiteratureLibraryItem"][];
+            }[];
+            truncated: boolean;
+        };
+        ReferenceMergeRequest: {
+            /** Format: uuid */
+            target_id: string;
+            target_version: string;
+            sources: {
+                /** Format: uuid */
+                id: string;
+                version: string;
+            }[];
+        };
+        ReferenceMergeResult: {
+            reference: components["schemas"]["ResearchReference"];
+            merged_ids: string[];
+        };
+        LiteratureSavedSearch: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            name: string;
+            query: string;
+            tag: string;
+            collection_id: string | null;
+            conditions?: components["schemas"]["LiteratureSearchCondition"] | null;
+        };
+        LiteratureSavedSearchList: {
+            items: components["schemas"]["LiteratureSavedSearch"][];
+        };
+        LiteratureSavedSearchCreate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            query?: string;
+            tag?: string;
+            collection_id?: string | null;
+            conditions?: components["schemas"]["LiteratureSearchCondition"] | null;
+        };
+        LiteratureSavedSearchPatch: {
+            name?: string;
+            query?: string;
+            tag?: string;
+            collection_id?: string | null;
+            conditions?: components["schemas"]["LiteratureSearchCondition"] | null;
+        };
+        ReferencePdf: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            reference_id: string;
+            file_name: string;
+            size_bytes: number;
+            sha256: string;
+            /** @enum {string} */
+            status: "uploading" | "ready";
+            next_offset: number;
+            /** @enum {string} */
+            format?: "pdf" | "epub" | "webpage";
+        };
+        ReferenceAttachment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            reference_id: string;
+            file_name: string;
+            size_bytes: number;
+            sha256: string;
+            /** @enum {string} */
+            status: "uploading" | "ready";
+            next_offset: number;
+            /** @enum {string} */
+            format: "pdf" | "epub" | "webpage";
+        };
+        ReferenceAttachmentBegin: {
+            /** Format: uuid */
+            id: string;
+            file_name: string;
+            size_bytes: number;
+            sha256: string;
+            /** @enum {string} */
+            format: "pdf" | "epub" | "webpage";
+        };
+        ReferenceAttachmentList: {
+            items: components["schemas"]["ReferenceAttachment"][];
+        };
+        ReferencePdfRename: {
+            file_name: string;
+        };
+        ReferencePdfBegin: {
+            /** Format: uuid */
+            id: string;
+            file_name: string;
+            size_bytes: number;
+            sha256: string;
+        };
+        ReferencePdfChunk: {
+            offset: number;
+            data: string;
+        };
+        ReferencePdfProgress: {
+            next_offset: number;
+        };
+        ReferencePdfList: {
+            items: components["schemas"]["ReferencePdf"][];
+        };
+        ReferencePdfComplete: Record<string, never>;
+        PdfAnnotation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            pdf_id: string;
+            page: number;
+            /** @enum {string} */
+            kind: "highlight" | "underline" | "note" | "area" | "ink";
+            /** @enum {string} */
+            color: "yellow" | "green" | "blue" | "pink" | "purple";
+            text: string;
+            comment: string;
+            tags?: string[];
+            ink_path?: {
+                x: number;
+                y: number;
+            }[] | null;
+            rects: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            }[];
+        };
+        PdfAnnotationCreate: {
+            /** Format: uuid */
+            id: string;
+            page: number;
+            /** @enum {string} */
+            kind: "highlight" | "underline" | "note" | "area" | "ink";
+            /** @enum {string} */
+            color?: "yellow" | "green" | "blue" | "pink" | "purple";
+            text?: string;
+            comment?: string;
+            tags?: string[];
+            ink_path?: {
+                x: number;
+                y: number;
+            }[];
+            rects: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            }[];
+        };
+        PdfAnnotationPatch: {
+            page?: number;
+            /** @enum {string} */
+            kind?: "highlight" | "underline" | "note" | "area" | "ink";
+            /** @enum {string} */
+            color?: "yellow" | "green" | "blue" | "pink" | "purple";
+            text?: string;
+            comment?: string;
+            tags?: string[];
+            ink_path?: {
+                x: number;
+                y: number;
+            }[];
+            rects?: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            }[];
+        };
+        PdfAnnotationPage: {
+            items: components["schemas"]["PdfAnnotation"][];
+            next_cursor: string | null;
+        };
+        PdfTextIndexStatus: {
+            index_id: string | null;
+            /** @enum {string} */
+            status: "missing" | "indexing" | "ready";
+            /** @enum {unknown} */
+            text_mode: "embedded" | "local-ocr" | null;
+            next_page: number;
+            page_count: number;
+        };
+        PdfTextIndexBegin: {
+            /** @enum {string} */
+            text_mode?: "embedded" | "local-ocr";
+            /** Format: uuid */
+            index_id: string;
+            page_count: number;
+        };
+        PdfTextIndexPages: {
+            /** @enum {string} */
+            text_mode?: "embedded" | "local-ocr";
+            /** Format: uuid */
+            index_id: string;
+            start_page: number;
+            pages: string[];
+        };
+        PdfTextIndexProgress: {
+            next_page: number;
+        };
+        PdfTextIndexComplete: {
+            /** @enum {string} */
+            text_mode?: "embedded" | "local-ocr";
+            /** Format: uuid */
+            index_id: string;
+        };
+        LiteratureTextResult: {
+            /** Format: uuid */
+            pdf_id: string;
+            /** Format: uuid */
+            reference_id: string;
+            title: string;
+            file_name: string;
+            page: number;
+            /** @enum {string} */
+            kind: "page" | "annotation";
+            snippet: string;
+            annotation_id: string | null;
+            /** @enum {string} */
+            format: "pdf" | "epub" | "webpage";
+        };
+        LiteratureTextResultPage: {
+            items: components["schemas"]["LiteratureTextResult"][];
+            next_cursor: string | null;
+        };
+        ResearchReferenceRelation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            first_reference_id: string;
+            /** Format: uuid */
+            second_reference_id: string;
+        };
+        RelatedReference: {
+            /** Format: uuid */
+            id: string;
+            version: string;
+            /** Format: uuid */
+            reference_id: string;
+            title: string;
+            authors: string[];
+            year: number | null;
+        };
+        RelatedReferencePage: {
+            items: components["schemas"]["RelatedReference"][];
+            next_cursor: string | null;
+        };
+        RelatedReferenceCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            reference_id: string;
+        };
+        PdfReadingPosition: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            pdf_id: string;
+            page: number;
+        };
+        PdfReadingPositionResult: {
+            position: components["schemas"]["PdfReadingPosition"] | null;
+        };
+        PdfReadingPositionWrite: {
+            page: number;
+            expected_version?: string | null;
+        };
+        ResearchReferenceKnowledgeLink: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            /** Format: uuid */
+            reference_id: string;
+            /** Format: uuid */
+            knowledge_item_id: string;
+        };
+        ReferenceKnowledgeItem: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            /** Format: uuid */
+            reference_id: string;
+            /** Format: uuid */
+            knowledge_item_id: string;
+            title: string;
+            /** @enum {string} */
+            type: "definition" | "theorem" | "lemma" | "proposition" | "corollary" | "proof" | "example" | "counterexample" | "exercise" | "note";
+            subject: string;
+        };
+        KnowledgeLinkedReference: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            /** Format: uuid */
+            reference_id: string;
+            /** Format: uuid */
+            knowledge_item_id: string;
+            title: string;
+        };
+        KnowledgeLinkedReferencePage: {
+            items: components["schemas"]["KnowledgeLinkedReference"][];
+            next_cursor: string | null;
+        };
+        ReferenceKnowledgePage: {
+            items: components["schemas"]["ReferenceKnowledgeItem"][];
+            next_cursor: string | null;
+        };
+        ReferenceKnowledgeLinkCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            knowledge_item_id: string;
+        };
+        ReferenceNoteCreate: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            content: string;
+            subject?: string;
+            tags?: string[];
+            source_reference?: string | null;
+            /** Format: uuid */
+            link_id: string;
+        };
+        ReferenceNoteResult: {
+            knowledge: components["schemas"]["KnowledgeItem"];
+            link: components["schemas"]["ReferenceKnowledgeItem"];
+        };
+        LiteratureSearchCondition: {
+            all: components["schemas"]["LiteratureSearchCondition"][];
+        } | {
+            any: components["schemas"]["LiteratureSearchCondition"][];
+        } | {
+            not: components["schemas"]["LiteratureSearchCondition"];
+        } | {
+            /** @enum {string} */
+            field: "title" | "author" | "doi" | "arxiv_id" | "isbn" | "pmid" | "pmcid" | "issn" | "publisher" | "journal" | "type";
+            /** @enum {string} */
+            operator: "contains" | "equals";
+            value: string;
+        } | {
+            /** @enum {string} */
+            field: "attachment_text" | "note_text" | "annotation_comment";
+            /** @enum {string} */
+            operator: "contains";
+            value: string;
+        } | {
+            /** @enum {string} */
+            field: "year";
+            /** @enum {string} */
+            operator: "equals" | "gte" | "lte";
+            value: number;
+        } | {
+            /** @enum {string} */
+            field: "date_added" | "date_modified";
+            /** @enum {string} */
+            operator: "equals" | "gte" | "lte";
+            /** Format: date */
+            value: string;
+        } | {
+            /** @enum {string} */
+            field: "tag" | "annotation_tag";
+            /** @enum {string} */
+            operator: "equals";
+            value: string;
+        } | {
+            /** @enum {string} */
+            field: "collection";
+            /** @enum {string} */
+            operator: "equals";
+            /** Format: uuid */
+            value: string;
+        } | {
+            /** @enum {string} */
+            field: "attachment_format";
+            /** @enum {string} */
+            operator: "equals";
+            /** @enum {string} */
+            value: "pdf" | "epub" | "webpage";
+        } | {
+            /** @enum {string} */
+            field: "annotation_color";
+            /** @enum {string} */
+            operator: "equals";
+            /** @enum {string} */
+            value: "yellow" | "green" | "blue" | "pink" | "purple";
+        } | {
+            /** @enum {string} */
+            field: "source";
+            /** @enum {string} */
+            operator: "equals";
+            /** @enum {string} */
+            value: "reference" | "arxiv";
+        } | {
+            /** @enum {string} */
+            field: "has_attachment";
+            /** @enum {string} */
+            operator: "equals";
+            value: boolean;
+        };
+        /**
+         * @description Defaults to title. Author compares the first listed author. Missing values are sorted last.
+         * @enum {string}
+         */
+        LiteratureSortField: "title" | "author" | "year";
+        /**
+         * @description Defaults to ascending.
+         * @enum {string}
+         */
+        LiteratureSortDirection: "asc" | "desc";
+        LiteratureSearchRequest: {
+            conditions: components["schemas"]["LiteratureSearchCondition"];
+            sort?: components["schemas"]["LiteratureSortField"];
+            direction?: components["schemas"]["LiteratureSortDirection"];
+            q?: string;
+            tag?: string;
+            collection_id?: string | null;
+            limit?: number;
+            cursor?: string;
+        };
+        ResearchReference: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            project_id: string | null;
             title: string;
             authors: string[];
             year: number | null;
@@ -3189,12 +5510,18 @@ export interface components {
             arxiv_id: string | null;
             url: string | null;
             zotero_key: string | null;
+            citation_key: string | null;
+            publication: components["schemas"]["ReferencePublication"];
+            tags?: string[];
+            citation_aliases?: string[];
+            merged_into_id?: string | null;
+            creators?: components["schemas"]["ReferenceCreator"][];
+            import_source?: components["schemas"]["ReferenceImportSource"];
         };
         ResearchReferenceCreate: {
             /** Format: uuid */
             id: string;
-            /** Format: uuid */
-            project_id: string;
+            project_id?: string | null;
             title: string;
             authors?: string[];
             year?: number | null;
@@ -3202,6 +5529,21 @@ export interface components {
             arxiv_id?: string | null;
             url?: string | null;
             zotero_key?: string | null;
+            citation_key?: string | null;
+            publication?: components["schemas"]["ReferencePublication"];
+            tags?: string[];
+            creators?: components["schemas"]["ReferenceCreator"][];
+        };
+        ResearchReferencePatch: {
+            title?: string;
+            authors?: string[];
+            year?: number | null;
+            doi?: string | null;
+            arxiv_id?: string | null;
+            url?: string | null;
+            publication?: components["schemas"]["ReferencePublication"];
+            tags?: string[];
+            creators?: components["schemas"]["ReferenceCreator"][];
         };
         ResearchReferencePage: {
             items: components["schemas"]["ResearchReference"][];
@@ -3220,9 +5562,45 @@ export interface components {
             zotero_key: string | null;
             /** @enum {string} */
             kind: "reference" | "arxiv";
+            citation_key?: string | null;
+            publication?: components["schemas"]["ReferencePublication"] | null;
+            link_id?: string | null;
+            link_version?: string | null;
+            tags?: string[];
+            citation_aliases?: string[];
+            creators?: components["schemas"]["ReferenceCreator"][];
         };
         Bibliography: {
             items: components["schemas"]["BibliographyItem"][];
+        };
+        LiteratureLibraryItem: {
+            /** Format: uuid */
+            id: string;
+            version: string;
+            title: string;
+            authors: string[];
+            year: number | null;
+            doi: string | null;
+            arxiv_id: string | null;
+            url: string | null;
+            zotero_key: string | null;
+            /** @enum {string} */
+            kind: "reference" | "arxiv";
+            projects: {
+                /** Format: uuid */
+                id: string;
+                title: string;
+            }[];
+            citation_key?: string | null;
+            publication?: components["schemas"]["ReferencePublication"] | null;
+            project_id: string | null;
+            tags: string[];
+            citation_aliases?: string[];
+            creators?: components["schemas"]["ReferenceCreator"][];
+        };
+        LiteratureLibraryPage: {
+            items: components["schemas"]["LiteratureLibraryItem"][];
+            next_cursor: string | null;
         };
         WorkspaceGraphNode: {
             id: string;
@@ -3236,13 +5614,579 @@ export interface components {
             source: string;
             target: string;
             /** @enum {string} */
-            kind: "related" | "depends_on" | "example_of" | "proof_of" | "project_object" | "project_knowledge" | "object_knowledge" | "project_paper" | "project_reference";
+            kind: "related" | "depends_on" | "example_of" | "proof_of" | "project_object" | "project_knowledge" | "object_knowledge" | "project_paper" | "project_reference" | "question_source" | "question_record";
         };
         WorkspaceGraph: {
             nodes: components["schemas"]["WorkspaceGraphNode"][];
             edges: components["schemas"]["WorkspaceGraphEdge"][];
             /** @description Whether the result exceeded the node or edge limit. */
             truncated: boolean;
+        };
+        LiteratureFeedPreviewRequest: {
+            url: string;
+        };
+        LiteratureFeedItem: {
+            external_id: string;
+            title: string;
+            url: string | null;
+            authors: string[];
+            published_at: string | null;
+            summary: string | null;
+        };
+        LiteratureFeedPreview: {
+            /** Format: uri */
+            url: string;
+            title: string;
+            items: components["schemas"]["LiteratureFeedItem"][];
+        };
+        LiteratureFeed: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uri */
+            url: string;
+            title: string;
+            last_refreshed_at: string | null;
+            last_refresh_error: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            auto_refresh: boolean;
+            next_refresh_at: string | null;
+        };
+        LiteratureFeedView: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uri */
+            url: string;
+            title: string;
+            last_refreshed_at: string | null;
+            last_refresh_error: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+            unread_count: number;
+            auto_refresh: boolean;
+            next_refresh_at: string | null;
+        };
+        LiteratureFeedList: {
+            items: components["schemas"]["LiteratureFeedView"][];
+        };
+        LiteratureFeedCreate: {
+            /** Format: uuid */
+            id: string;
+            url: string;
+            title?: string;
+        };
+        LiteratureFeedPatch: {
+            title?: string;
+            auto_refresh?: boolean;
+        };
+        LiteratureFeedEntry: {
+            external_id: string;
+            title: string;
+            url: string | null;
+            authors: string[];
+            published_at: string | null;
+            summary: string | null;
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            feed_id: string;
+            read_at: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+        };
+        LiteratureFeedEntryPage: {
+            items: components["schemas"]["LiteratureFeedEntry"][];
+            next_cursor: string | null;
+        };
+        LiteratureFeedEntryPatch: {
+            read: boolean;
+        };
+        LiteratureFeedRefresh: {
+            feed: components["schemas"]["LiteratureFeedView"];
+            added: number;
+            pruned: number;
+        };
+        LiteratureBatchReferenceVersion: {
+            /** Format: uuid */
+            id: string;
+            version: string;
+        };
+        LiteratureBatchEditRequest: {
+            items: components["schemas"]["LiteratureBatchReferenceVersion"][];
+            changes: {
+                tags_add?: string[];
+                tags_remove?: string[];
+                year?: number | null;
+                publication?: {
+                    type?: string | null;
+                    journal?: string | null;
+                    publisher?: string | null;
+                };
+            };
+        };
+        LiteratureBatchEditResult: {
+            items: components["schemas"]["LiteratureBatchReferenceVersion"][];
+            changed_count: number;
+            undo_token: string | null;
+        };
+        LiteratureBatchUndoRequest: {
+            /** Format: uuid */
+            undo_token: string;
+        };
+        LiteratureBatchUndoResult: {
+            items: components["schemas"]["LiteratureBatchReferenceVersion"][];
+            changed_count: number;
+        };
+        TeamLibrary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            role: "admin" | "editor" | "reader";
+            /** Format: uuid */
+            created_by: string;
+            /** Format: uuid */
+            updated_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            /** @enum {string} */
+            visibility: "private" | "public_closed" | "public_open";
+        };
+        TeamLibraryPage: {
+            items: components["schemas"]["TeamLibrary"][];
+        };
+        TeamLibraryCreate: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description?: string;
+        };
+        TeamLibraryPatch: {
+            name?: string;
+            description?: string;
+            /** @enum {string} */
+            visibility?: "private" | "public_closed" | "public_open";
+        };
+        TeamLibraryMember: {
+            /** Format: uuid */
+            user_id: string;
+            display_name: string;
+            /** @enum {string} */
+            role: "admin" | "editor" | "reader";
+            version: string;
+        };
+        TeamLibraryMemberPage: {
+            items: components["schemas"]["TeamLibraryMember"][];
+        };
+        TeamLibraryMemberCreate: {
+            /** Format: uuid */
+            user_id: string;
+            /** @enum {string} */
+            role: "admin" | "editor" | "reader";
+        };
+        TeamLibraryMemberPatch: {
+            /** @enum {string} */
+            role: "admin" | "editor" | "reader";
+        };
+        TeamLibraryPublication: {
+            type?: string;
+            journal?: string;
+            booktitle?: string;
+            publisher?: string;
+            volume?: string;
+            number?: string;
+            pages?: string;
+            edition?: string;
+            institution?: string;
+            series?: string;
+            address?: string;
+            isbn?: string;
+            issn?: string;
+            editor?: string;
+            pmid?: string;
+            month?: string;
+        };
+        TeamLibraryReference: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            library_id: string;
+            title: string;
+            authors: string[];
+            year: number | null;
+            doi: string | null;
+            url: string | null;
+            publication: components["schemas"]["TeamLibraryPublication"];
+            /** Format: uuid */
+            created_by: string;
+            /** Format: uuid */
+            updated_by: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            created_by_name: string;
+            updated_by_name: string;
+            tags: string[];
+        };
+        TeamLibraryReferencePage: {
+            items: components["schemas"]["TeamLibraryReference"][];
+            next_cursor: string | null;
+        };
+        TeamLibraryReferenceCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            reference_id: string;
+        } | {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            authors?: string[];
+            year?: number | null;
+            doi?: string | null;
+            url?: string | null;
+            publication?: components["schemas"]["TeamLibraryPublication"];
+            tags?: string[];
+        };
+        TeamLibraryReferencePatch: {
+            title?: string;
+            authors?: string[];
+            year?: number | null;
+            doi?: string | null;
+            url?: string | null;
+            publication?: components["schemas"]["TeamLibraryPublication"];
+            tags?: string[];
+        };
+        PublicTeamLibrary: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            description: string;
+            /** @enum {string} */
+            visibility: "public_closed" | "public_open";
+        };
+        PublicTeamLibraryReference: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            authors: string[];
+            year: number | null;
+            doi: string | null;
+            url: string | null;
+            publication: components["schemas"]["TeamLibraryPublication"];
+        };
+        PublicTeamLibraryPage: {
+            items: components["schemas"]["PublicTeamLibrary"][];
+            next_cursor: string | null;
+        };
+        PublicTeamLibraryReferencePage: {
+            items: components["schemas"]["PublicTeamLibraryReference"][];
+            next_cursor: string | null;
+        };
+        TeamLibraryAttachment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            library_id: string;
+            /** Format: uuid */
+            reference_id: string;
+            file_name: string;
+            size_bytes: number;
+            sha256: string;
+            /** Format: uuid */
+            created_by: string;
+            created_by_name: string;
+            /** Format: date-time */
+            created_at: string;
+            version: string;
+        };
+        TeamLibraryAttachmentList: {
+            items: components["schemas"]["TeamLibraryAttachment"][];
+        };
+        TeamLibraryAttachmentCreate: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            attachment_id: string;
+        };
+        TeamLibraryNote: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            library_id: string;
+            /** Format: uuid */
+            reference_id: string;
+            title: string;
+            content: string;
+            /** Format: uuid */
+            created_by: string;
+            created_by_name: string;
+            /** Format: uuid */
+            updated_by: string;
+            updated_by_name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+        };
+        TeamLibraryNoteList: {
+            items: components["schemas"]["TeamLibraryNote"][];
+        };
+        TeamLibraryNoteCreate: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            content?: string;
+        };
+        TeamLibraryNotePatch: {
+            title?: string;
+            content?: string;
+        };
+        TeamLibraryAnnotation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            page: number;
+            /** @enum {string} */
+            kind: "highlight" | "underline" | "note" | "area" | "ink";
+            /** @enum {string} */
+            color: "yellow" | "green" | "blue" | "pink" | "purple";
+            text: string;
+            comment: string;
+            tags: string[];
+            ink_path: {
+                x: number;
+                y: number;
+            }[] | null;
+            rects: {
+                x: number;
+                y: number;
+                width: number;
+                height: number;
+            }[];
+            /** Format: uuid */
+            library_id: string;
+            /** Format: uuid */
+            reference_id: string;
+            /** Format: uuid */
+            attachment_id: string;
+            /** Format: uuid */
+            created_by: string;
+            created_by_name: string;
+            /** Format: uuid */
+            updated_by: string;
+            updated_by_name: string;
+        };
+        TeamLibraryAnnotationPage: {
+            items: components["schemas"]["TeamLibraryAnnotation"][];
+            next_cursor: string | null;
+        };
+        DeveloperLiteratureReference: {
+            /** Format: uuid */
+            id: string;
+            title: string;
+            authors: string[];
+            year: number | null;
+            doi: string | null;
+            url: string | null;
+            arxiv_id: string | null;
+            citation_key: string | null;
+            tags: string[];
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            publication: {
+                type?: string;
+                journal?: string;
+                booktitle?: string;
+                publisher?: string;
+                volume?: string;
+                number?: string;
+                pages?: string;
+                edition?: string;
+                institution?: string;
+                series?: string;
+                address?: string;
+                isbn?: string;
+                issn?: string;
+                editor?: string;
+                pmid?: string;
+                month?: string;
+                keywords?: string;
+            };
+        };
+        DeveloperLiteratureCollection: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            parent_id: string | null;
+        };
+        DeveloperLiteratureToken: {
+            /** @enum {string} */
+            scope?: "bibliography" | "attachment_manifest";
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            revoked_at: string | null;
+        };
+        DeveloperLiteratureTokenList: {
+            items: components["schemas"]["DeveloperLiteratureToken"][];
+        };
+        DeveloperLiteratureTokenCreate: {
+            /** @enum {string} */
+            scope?: "bibliography" | "attachment_manifest";
+            /** Format: uuid */
+            id: string;
+            name: string;
+            expires_in_days: number;
+        };
+        DeveloperLiteratureIssuedToken: {
+            /** @enum {string} */
+            scope?: "bibliography" | "attachment_manifest";
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            expires_at: string;
+            revoked_at: string | null;
+            token: string;
+        };
+        DeveloperLiteratureAttachment: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            reference_id: string;
+            /** @enum {string} */
+            format: "pdf" | "epub" | "webpage";
+            file_name: string;
+            size_bytes: number;
+            sha256: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        DeveloperLiteratureAttachmentPage: {
+            items: components["schemas"]["DeveloperLiteratureAttachment"][];
+            next_cursor: string | null;
+        };
+        DeveloperLiteratureReferencePage: {
+            items: components["schemas"]["DeveloperLiteratureReference"][];
+            next_cursor: string | null;
+        };
+        DeveloperLiteratureCollectionPage: {
+            items: components["schemas"]["DeveloperLiteratureCollection"][];
+            next_cursor: string | null;
+        };
+        TextAnnotationAnchor: {
+            section: number;
+            section_key: string | null;
+            block: number;
+            start: number;
+            end: number;
+            quote: string;
+        };
+        TextAnnotation: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            attachment_id: string;
+            /** @enum {string} */
+            format: "epub" | "webpage";
+            anchor: components["schemas"]["TextAnnotationAnchor"];
+            /** @enum {string} */
+            color: "yellow" | "green" | "blue" | "pink" | "purple";
+            comment: string;
+            tags: string[];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            version: string;
+            deleted_at: string | null;
+        };
+        TextAnnotationCreate: {
+            /** Format: uuid */
+            id: string;
+            anchor: components["schemas"]["TextAnnotationAnchor"];
+            /** @enum {string} */
+            color?: "yellow" | "green" | "blue" | "pink" | "purple";
+            comment?: string;
+            tags?: string[];
+        };
+        TextAnnotationPatch: {
+            /** @enum {string} */
+            color?: "yellow" | "green" | "blue" | "pink" | "purple";
+            comment?: string;
+            tags?: string[];
+        };
+        TextAnnotationPage: {
+            items: components["schemas"]["TextAnnotation"][];
+            next_cursor: string | null;
+        };
+        ReferenceCreator: {
+            /** @enum {string} */
+            role: "author" | "editor" | "translator";
+            name: string;
+        };
+        LiteratureAnnotationIndexItem: {
+            /** @enum {string} */
+            kind: "highlight" | "underline" | "note" | "area" | "ink";
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            attachment_id: string;
+            /** Format: uuid */
+            reference_id: string;
+            /** @enum {string} */
+            format: "pdf" | "epub" | "webpage";
+            page: number;
+            title: string;
+            file_name: string;
+            quote: string;
+            comment: string;
+            /** @enum {string} */
+            color: "yellow" | "green" | "blue" | "pink" | "purple";
+            tags: string[];
+            /** Format: date-time */
+            created_at: string;
+            href: string;
+        };
+        LiteratureAnnotationIndexPage: {
+            items: components["schemas"]["LiteratureAnnotationIndexItem"][];
+            next_cursor: string | null;
+        };
+        ReferenceImportSource: {
+            /** @constant */
+            format: "zotero-rdf";
+            file_sha256: string;
+            resource_sha256: string;
         };
     };
     responses: {
@@ -4318,6 +7262,8 @@ export interface operations {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
+                object_type?: "question" | "conjecture" | "theorem" | "lemma" | "proof_attempt" | "counterexample" | "experiment" | "observation" | "literature_note";
+                q?: string;
             };
             header?: never;
             path: {
@@ -4370,6 +7316,86 @@ export interface operations {
                 };
             };
             409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_research_question_links: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                question_id?: string;
+                research_object_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchQuestionLinkPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_research_question_links: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchQuestionLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchQuestionLink"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_research_question_link: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
             default: components["responses"]["Error"];
         };
     };
@@ -4460,11 +7486,61 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    get_research_activity: {
+        parameters: {
+            query?: {
+                project_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchActivity"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_research_activity_day: {
+        parameters: {
+            query: {
+                project_id?: string;
+                date: string;
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchActivityDay"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     get_research_projects_id_timeline: {
         parameters: {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
+                object_id?: string;
             };
             header?: never;
             path: {
@@ -4784,6 +7860,7 @@ export interface operations {
             query?: {
                 cursor?: components["parameters"]["Cursor"];
                 limit?: components["parameters"]["Limit"];
+                research_object_id?: string;
             };
             header?: never;
             path?: never;
@@ -7120,6 +10197,1984 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    patch_research_references_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchReferencePatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReference"];
+                };
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_research_reference_links: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                project_id?: string;
+                reference_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReferenceLinkPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_research_reference_links: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResearchReferenceLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReferenceLink"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_research_reference_links_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReferenceLink"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_research_reference_links_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_library: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                q?: string;
+                standalone?: boolean;
+                collection_id?: string;
+                tag?: string;
+                /** @description Return only native literature records, including legacy project references. */
+                native?: boolean;
+                sort?: "title" | "author" | "year";
+                direction?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureLibraryPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_collections: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureCollectionList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_literature_collections: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureCollectionCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureCollection"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_collections_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureCollection"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_literature_collections_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    patch_literature_collections_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureCollectionPatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureCollection"];
+                };
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_memberships: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                collection_id?: string;
+                reference_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureMembershipPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_literature_memberships: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureMembershipCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureMembership"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_memberships_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureMembership"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_literature_memberships_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_library_duplicates: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceDuplicateGroups"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_literature_library_merge: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceMergeResult"];
+                };
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            422: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_saved_searches: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureSavedSearchList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_literature_saved_searches: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureSavedSearchCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureSavedSearch"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_saved_searches_id: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureSavedSearch"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_literature_saved_searches_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    patch_literature_saved_searches_id: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureSavedSearchPatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    /** @description Present for mutable entity responses: quoted decimal version. */
+                    ETag?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureSavedSearch"];
+                };
+            };
+            409: components["responses"]["Error"];
+            412: components["responses"]["Error"];
+            428: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    begin_reference_pdf: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferencePdfBegin"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferencePdf"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_reference_pdfs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferencePdfList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    put_reference_pdf_chunk: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferencePdfChunk"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferencePdfProgress"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    complete_reference_pdf: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferencePdfComplete"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferencePdf"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    discover_open_access_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Open-access candidates */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** @enum {string} */
+                            provider: "arxiv" | "pmc";
+                            identifier: string;
+                            title: string | null;
+                            /** Format: uri */
+                            source_url: string;
+                            license: string | null;
+                        }[];
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    fetch_open_access_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** @enum {string} */
+                    provider: "arxiv" | "pmc";
+                    identifier: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Verified PDF bytes */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    download_reference_pdf: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_reference_pdf: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rename_reference_pdf: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferencePdfRename"];
+            };
+        };
+        responses: {
+            /** @description Updated PDF metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferencePdf"];
+                };
+            };
+            412: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    list_pdf_annotations: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+                page?: number;
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfAnnotationPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfAnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    import_embedded_pdf_annotations: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    annotations: components["schemas"]["PdfAnnotationCreate"][];
+                };
+            };
+        };
+        responses: {
+            /** @description Imported and skipped annotation IDs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        imported: string[];
+                        skipped: string[];
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    patch_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfAnnotationPatch"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_pdf_text_index: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    begin_pdf_text_index: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfTextIndexBegin"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    put_pdf_text_index_pages: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfTextIndexPages"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexProgress"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    complete_pdf_text_index: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfTextIndexComplete"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    search_literature_text: {
+        parameters: {
+            query: {
+                q: string;
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureTextResultPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    lookup_literature_identifier: {
+        parameters: {
+            query: {
+                kind: "doi" | "isbn" | "issn" | "pmid" | "pmcid" | "arxiv";
+                value: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metadata preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureLookupResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_related_references: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedReferencePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    add_related_reference: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RelatedReferenceCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RelatedReference"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_reference_relation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReferenceRelation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_reference_relation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_pdf_reading_position: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reading position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfReadingPositionResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    put_pdf_reading_position: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfReadingPositionWrite"];
+            };
+        };
+        responses: {
+            /** @description Reading position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfReadingPositionResult"];
+                };
+            };
+            412: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_attachment_reading_position: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Reading position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfReadingPositionResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    put_attachment_reading_position: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfReadingPositionWrite"];
+            };
+        };
+        responses: {
+            /** @description Reading position */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfReadingPositionResult"];
+                };
+            };
+            412: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    list_personal_literature_attachments: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of personal attachment identities */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: {
+                            /** Format: uuid */
+                            id: string;
+                            /** Format: uuid */
+                            reference_id: string;
+                            /** @enum {string} */
+                            format: "pdf" | "epub" | "webpage";
+                            size_bytes: number;
+                            sha256: string;
+                        }[];
+                        next_cursor: string | null;
+                    };
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_reference_attachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceAttachmentList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    begin_reference_attachment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceAttachmentBegin"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceAttachment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    put_reference_attachment_chunk: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferencePdfChunk"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferencePdfProgress"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    complete_reference_attachment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferencePdfComplete"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceAttachment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    download_reference_attachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                    "application/epub+zip": string;
+                    "text/plain": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_reference_attachment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rename_reference_attachment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferencePdfRename"];
+            };
+        };
+        responses: {
+            /** @description Updated PDF metadata */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceAttachment"];
+                };
+            };
+            412: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    get_attachment_text_index: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    begin_attachment_text_index: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfTextIndexBegin"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    put_attachment_text_index_pages: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfTextIndexPages"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexProgress"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    complete_attachment_text_index: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfTextIndexComplete"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PdfTextIndexStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_reference_knowledge_links: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceKnowledgePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_reference_knowledge_link: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceKnowledgeLinkCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceKnowledgeItem"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_reference_note: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceNoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceNoteResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_reference_knowledge_link: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReferenceKnowledgeLink"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_reference_knowledge_link: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_knowledge_linked_references: {
+        parameters: {
+            query?: {
+                cursor?: components["parameters"]["Cursor"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KnowledgeLinkedReferencePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    search_literature_conditions: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description Matching literature */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureLibraryPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    post_literature_library_import: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReferenceImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReferenceImportResult"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    post_zotero_rdf_library_import: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ZoteroRdfImportRequest"];
+            };
+        };
+        responses: {
+            /** @description Success */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ZoteroRdfImportResult"];
+                };
+            };
+            409: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
     get_research_project_bibliography: {
         parameters: {
             query?: never;
@@ -7168,6 +12223,1513 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["WorkspaceGraph"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    preview_literature_feed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureFeedPreviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Feed preview */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedPreview"];
+                };
+            };
+            502: components["responses"]["Error"];
+            default: components["responses"]["Error"];
+        };
+    };
+    list_literature_feeds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscriptions */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_literature_feed: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureFeedCreate"];
+            };
+        };
+        responses: {
+            /** @description Subscription */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedView"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_literature_feed: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Subscription */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedView"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_literature_feed: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rename_literature_feed: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureFeedPatch"];
+            };
+        };
+        responses: {
+            /** @description Subscription */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedView"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_literature_feed_entries: {
+        parameters: {
+            query?: {
+                unread?: boolean;
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Entries */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedEntryPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    refresh_literature_feed: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Refresh result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedRefresh"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    set_literature_feed_entry_read: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureFeedEntryPatch"];
+            };
+        };
+        responses: {
+            /** @description Entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureFeedEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    change_reference_citation_key: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    citation_key: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Updated reference */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResearchReference"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    batch_edit_literature: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureBatchEditRequest"];
+            };
+        };
+        responses: {
+            /** @description Batch result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureBatchEditResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    undo_batch_edit_literature: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LiteratureBatchUndoRequest"];
+            };
+        };
+        responses: {
+            /** @description Batch result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureBatchUndoResult"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_team_libraries: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_team_library: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryCreate"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibrary"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_team_library: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibrary"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_team_library: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    update_team_library: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryPatch"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibrary"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_team_library_members: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryMemberPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_team_library_member: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryMemberCreate"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryMember"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_team_library_member: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    update_team_library_member: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                user_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryMemberPatch"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryMember"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_team_library_references: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryReferencePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_team_library_reference: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryReferenceCreate"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryReference"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_team_library_reference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryReference"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_team_library_reference: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    update_team_library_reference: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryReferencePatch"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryReference"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_public_team_libraries: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTeamLibraryPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_public_team_library: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTeamLibrary"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_public_team_library_references: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublicTeamLibraryReferencePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    join_public_team_library: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                library_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibrary"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_team_library_attachments: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                reference_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Team attachments */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryAttachmentList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    copy_team_library_attachment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryAttachmentCreate"];
+            };
+        };
+        responses: {
+            /** @description Already copied */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryAttachment"];
+                };
+            };
+            /** @description Copied PDF */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryAttachment"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    remove_team_library_attachment: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    download_team_library_attachment: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                reference_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description PDF file */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/pdf": string;
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_team_library_notes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                reference_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryNoteList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_team_library_note: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryNoteCreate"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryNote"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_team_library_note: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                reference_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryNote"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    remove_team_library_note: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    update_team_library_note: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TeamLibraryNotePatch"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryNote"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_team_pdf_annotations: {
+        parameters: {
+            query?: {
+                page?: number;
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                library_id: string;
+                reference_id: string;
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryAnnotationPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_team_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfAnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_team_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                library_id: string;
+                reference_id: string;
+                attachment_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_team_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+                attachment_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    update_team_pdf_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                library_id: string;
+                reference_id: string;
+                attachment_id: string;
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PdfAnnotationPatch"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TeamLibraryAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_developer_literature_tokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeveloperLiteratureTokenList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    issue_developer_literature_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeveloperLiteratureTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeveloperLiteratureIssuedToken"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revoke_developer_literature_token: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_developer_literature_references: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+                collection_id?: string;
+                tag?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeveloperLiteratureReferencePage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_developer_literature_reference: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeveloperLiteratureReference"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_developer_literature_collections: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeveloperLiteratureCollectionPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_developer_literature_attachments: {
+        parameters: {
+            query?: {
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+                reference_id?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeveloperLiteratureAttachmentPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_text_attachment_annotations: {
+        parameters: {
+            query?: {
+                section?: number;
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextAnnotationPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    create_text_attachment_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+            };
+            path: {
+                attachment_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextAnnotationCreate"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    get_text_attachment_annotation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    delete_text_attachment_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Result */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    update_text_attachment_annotation: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": components["parameters"]["Idempotency"];
+                "If-Match": components["parameters"]["IfMatch"];
+            };
+            path: {
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TextAnnotationPatch"];
+            };
+        };
+        responses: {
+            /** @description Result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextAnnotation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    list_literature_annotations: {
+        parameters: {
+            query?: {
+                q?: string;
+                tag?: string;
+                color?: "yellow" | "green" | "blue" | "pink" | "purple";
+                limit?: number;
+                cursor?: components["parameters"]["Cursor"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Owned annotation page */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LiteratureAnnotationIndexPage"];
                 };
             };
             default: components["responses"]["Error"];

@@ -1,7 +1,3 @@
-.references {
-  margin-block-end: 16px;
-}
-
 .toolbar,
 .actions,
 .pagination {
@@ -47,15 +43,19 @@
 
 .inlineActions {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   margin-block-start: 4px;
 }
 
-.collection {
-  display: block;
-  width: 100%;
-  text-align: start;
+.renamePdfForm {
+  grid-column: 1 / -1;
+}
+
+.search {
+  flex: 1 1 16rem;
+  min-width: 0;
 }
 
 .pagination {
@@ -75,4 +75,519 @@
   flex: 1;
   min-width: 12ch;
   min-height: 34px;
+}
+
+.libraryShell {
+  container: library / inline-size;
+  min-inline-size: 0;
+  margin-block: 4px 8px;
+}
+
+.libraryHeading,
+.libraryActions,
+.libraryToolGroup {
+  display: flex;
+  align-items: center;
+}
+
+.libraryHeading {
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  margin-block-end: 10px;
+  padding-inline: 4px;
+}
+
+.libraryHeading h1 {
+  margin: 0;
+  font-size: calc(25px * var(--text-scale, 1));
+  font-weight: 670;
+  letter-spacing: -0.025em;
+}
+
+.libraryActions {
+  flex-wrap: wrap;
+  gap: 6px 12px;
+}
+
+.libraryToolGroup {
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.libraryToolGroup + .libraryToolGroup {
+  border-inline-start: 1px solid var(--line);
+  padding-inline-start: 10px;
+}
+
+.libraryToolGroup :global(.icon-button),
+.inspectorTools :global(.icon-button) {
+  inline-size: 33px;
+  block-size: 33px;
+}
+
+.libraryToolGroup :is([aria-pressed='true'], [aria-expanded='true']) {
+  background: var(--hover-tint);
+  color: var(--accent);
+}
+
+.libraryLayout {
+  --library-collections-default: clamp(9rem, 17cqi, 15rem);
+  --library-details-default: clamp(17rem, 32cqi, 31rem);
+  display: grid;
+  grid-template-columns: var(--library-collections-width, var(--library-collections-default)) 1px minmax(0, 1fr)
+    1px var(--library-details-width, var(--library-details-default));
+  block-size: max(25rem, calc(100dvh - 132px - var(--toolbar-inset, 0px)));
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: clip;
+}
+
+.libraryLayout[data-details-collapsed='true'] {
+  grid-template-columns: var(--library-collections-width, var(--library-collections-default)) 1px minmax(0, 1fr);
+}
+
+.libraryLayout[data-details-collapsed='true'] > .libraryInspector {
+  display: none;
+}
+
+.libraryLayout > :is(.collectionNavigation, .libraryResults, .libraryInspector) {
+  min-block-size: 0;
+  min-inline-size: 0;
+  padding: 14px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.libraryDivider {
+  position: relative;
+  z-index: 2;
+  background: var(--line);
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.libraryDivider::after {
+  content: '';
+  position: absolute;
+  inset: 0 -5px;
+  border-radius: 2px;
+}
+
+.libraryDivider:is(:hover, :focus-visible, [data-dragging='true'])::after {
+  inset-inline: -2px;
+  background: color-mix(in srgb, var(--accent) 72%, transparent);
+}
+
+.libraryLayout[data-dragging='true'] {
+  cursor: col-resize;
+  user-select: none;
+}
+
+.libraryLayout :is(h2, h3) {
+  overflow-wrap: anywhere;
+}
+
+.libraryResults {
+  background: color-mix(in srgb, var(--panel) 92%, var(--bg));
+}
+
+.libraryResults > h2 {
+  margin: 0 0 12px;
+  overflow-wrap: anywhere;
+}
+
+.libraryResults > .toolbar {
+  margin-block-end: 12px;
+}
+
+.libraryResults .search {
+  flex-basis: 10rem;
+}
+
+.savedSearchToolbar {
+  margin-block-end: 8px;
+}
+
+.savedSearchToolbar select {
+  flex: 0 1 auto;
+  max-inline-size: 100%;
+}
+
+.libraryTable {
+  width: 100%;
+  margin-block: 10px 5px;
+  table-layout: fixed;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: calc(13px * var(--text-scale, 1));
+  text-align: start;
+}
+
+.libraryAuthorColumn {
+  width: 30%;
+}
+
+.libraryYearColumn {
+  width: 4.1em;
+}
+
+.librarySelectColumn {
+  width: 1.6em;
+}
+
+.libraryTable th {
+  position: sticky;
+  inset-block-start: -1px;
+  z-index: 1;
+  border-block-end: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface-secondary) 96%, var(--ink));
+  text-align: start;
+}
+
+.libraryTable th button {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  width: 100%;
+  min-height: 32px;
+  padding: 5px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+}
+
+.libraryTable th button:is(:hover, :focus-visible) {
+  background: var(--hover-tint);
+  color: var(--ink);
+}
+
+.libraryTable th[aria-sort] button {
+  color: var(--ink);
+}
+
+.libraryTable th button svg {
+  flex: none;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.libraryTable td {
+  padding: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  border-block-end: 1px solid var(--line);
+}
+
+.libraryTable td:has(.libraryRowChoice) {
+  padding: 0;
+}
+
+.libraryTable td:has(input[type='checkbox']) {
+  padding: 2px;
+  text-align: center;
+}
+
+.libraryTable :is(td, th):last-child {
+  font-variant-numeric: tabular-nums;
+}
+
+.libraryTable tbody tr:hover {
+  background: var(--hover-tint);
+}
+
+.libraryTable tbody tr[data-current='true'] {
+  background: var(--active-tint);
+}
+
+.libraryTable tbody tr[data-current='true'] td:first-child {
+  box-shadow: inset 2px 0 var(--accent);
+}
+
+.libraryRowChoice {
+  display: block;
+  width: 100%;
+  padding: 8px 6px;
+  border: 0;
+  color: var(--ink);
+  background: transparent;
+  font: inherit;
+  font-weight: 560;
+  text-align: start;
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.libraryRowChoice:focus-visible {
+  outline-offset: -2px;
+}
+
+.libraryInspector {
+  --library-stacked: 0;
+}
+
+.libraryInspector:focus {
+  outline: none;
+}
+
+.inspectorHeader,
+.inspectorSectionHeader {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.inspectorHeader h2 {
+  line-height: 1.3;
+  margin: 3px 0 0;
+}
+
+.inspectorHeader button {
+  flex: none;
+}
+
+.inspectorMetadata p {
+  margin: 4px 0;
+  overflow-wrap: anywhere;
+}
+
+.inspectorTools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-block: 8px 0;
+}
+
+.inspectorEmpty {
+  margin-block-start: 12px;
+}
+
+.inspectorSection {
+  border-block-start: 1px solid var(--line);
+  padding-block-start: 12px;
+  margin-block: 12px;
+  overflow-wrap: anywhere;
+}
+
+.inspectorSectionHeader {
+  align-items: center;
+  flex-wrap: wrap;
+  margin-block-end: 6px;
+}
+
+.inspectorSectionHeader h3,
+.inspectorSection > h3 {
+  margin: 0 0 4px;
+}
+
+.inspectorSection > a {
+  display: block;
+  margin-block-start: 4px;
+}
+
+.inspectorFiles > li {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.inspectorFiles .inlineActions {
+  gap: 5px;
+  margin-block-start: 0;
+}
+
+.inspectorFiles button {
+  text-align: start;
+}
+
+.inspectorAbstract summary {
+  cursor: pointer;
+  font-weight: 550;
+}
+
+.inspectorBody {
+  margin-block-start: 8px;
+  overflow-wrap: anywhere;
+}
+
+.inspectorBody form :is(input, select, textarea) {
+  min-inline-size: 0;
+  max-inline-size: 100%;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .inspectorBody {
+    animation: inspector-appear 160ms ease-out both;
+  }
+}
+
+@keyframes inspector-appear {
+  from { opacity: 0.45; }
+  to { opacity: 1; }
+}
+
+.collectionNavigation {
+  background: var(--surface-secondary);
+}
+
+.collectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.collectionChoice {
+  display: block;
+  width: 100%;
+  padding: 7px 0.55rem;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.collectionChoice:hover,
+.collectionChoice[aria-current='true'] {
+  background: var(--surface-secondary);
+}
+
+.collectionChoice[aria-current='true'] {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@container library (max-width: 53rem) {
+  .libraryLayout {
+    --library-collections-default: max(7.5rem, 16cqi);
+    --library-details-default: max(14rem, 35cqi);
+  }
+
+  .libraryLayout > :is(.collectionNavigation, .libraryResults, .libraryInspector) {
+    padding: 11px;
+  }
+}
+
+@container library (max-width: 44rem) {
+  .libraryShell .libraryLayout {
+    grid-template-columns: minmax(9rem, 27%) minmax(0, 1fr);
+    block-size: max(24rem, calc(100dvh - 180px - var(--toolbar-inset, 0px)));
+  }
+
+  .libraryDivider {
+    display: none;
+  }
+
+  .libraryLayout > :is(.libraryResults, .libraryInspector) {
+    border-inline-start: 1px solid var(--line);
+  }
+
+  .libraryInspector {
+    --library-stacked: 1;
+    display: none;
+  }
+
+  .libraryLayout[data-inspecting='true'] > .libraryResults {
+    display: none;
+  }
+
+  .libraryLayout[data-inspecting='true'] > .libraryInspector {
+    display: block;
+  }
+}
+
+@container library (max-width: 30rem) {
+  .libraryShell .libraryLayout {
+    block-size: auto;
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .libraryLayout > :is(.libraryResults, .libraryInspector) {
+    border-inline-start: 0;
+    border-block-start: 1px solid var(--line);
+  }
+
+  .collectionNavigation {
+    max-block-size: 10rem;
+  }
+
+  .libraryLayout[data-inspecting='true'] > .collectionNavigation {
+    display: none;
+  }
+}
+
+@media (max-width: 440px) {
+  .libraryResults > .toolbar input {
+    flex-basis: 100%;
+  }
+}
+
+.publicationEditor {
+  margin-block: 10px;
+}
+
+.publicationEditor > summary {
+  cursor: pointer;
+  margin-block-end: 8px;
+}
+
+.relatedReferences {
+  margin-block: 14px;
+  border-block-start: 1px solid var(--line);
+  padding-block-start: 10px;
+}
+
+.relatedReferences h3 {
+  margin-block: 0 8px;
+}
+.referenceFields {
+  display: contents;
+}
+
+.referenceNotes {
+  display: grid;
+  gap: 6px;
+  border-block-start: 1px solid var(--line);
+  padding-block-start: 12px;
+  margin-block: 12px;
+}
+
+.searchCondition {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.searchCondition[data-group] {
+  padding: 8px 10px;
+  border-inline-start: 2px solid var(--line);
+}
+
+.searchCondition :is(input, select) {
+  width: auto;
+  max-width: min(100%, 16rem);
+}
+
+.publicLibraries {
+  width: min(55rem, calc(100% - 2rem));
+  margin: 3rem auto;
 }

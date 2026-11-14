@@ -651,7 +651,12 @@ function GraphScene({
   function openNode(node: GraphNode) {
     if (node.href?.startsWith('/') && !node.href.startsWith('//')) {
       onNavigate?.();
-      router.push(node.href);
+      const target = new URL(node.href, window.location.origin);
+      if (target.pathname === window.location.pathname && target.hash.startsWith('#reference-')) {
+        // Native fragment navigation notifies the reference panel, including on the current route.
+        if (window.location.hash === target.hash) window.dispatchEvent(new Event('hashchange'));
+        else window.location.hash = target.hash;
+      } else router.push(node.href);
     } else if (node.href && /^https?:\/\//i.test(node.href)) {
       window.open(node.href, '_blank', 'noopener,noreferrer');
     } else if (onFocus) {

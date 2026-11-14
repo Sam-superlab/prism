@@ -2,5 +2,5 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": { "jsx": "react-jsx", "plugins": [{ "name": "next" }], "incremental": true },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", ".next/dev/types/**/*.ts"],
-  "exclude": ["node_modules"]
+  "exclude": ["node_modules", "web-build", ".next-e2e"]
 }

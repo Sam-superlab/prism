@@ -36,6 +36,7 @@ test('links knowledge and papers from their source pages to a research project',
   await expect(modal.getByRole('link', { name: projectTitle })).toBeVisible();
   await modal.getByRole('link', { name: projectTitle }).click();
   const materials = page.getByRole('region', { name: 'Project materials' });
+  await materials.getByRole('button', { name: 'Project materials', exact: true }).click();
   await expect(materials.getByRole('link', { name: noteTitle })).toHaveAttribute(
     'href',
     `/knowledge/${noteId}`,
@@ -67,6 +68,7 @@ test('links knowledge and papers from their source pages to a research project',
   await modal.getByLabel('Research project', { exact: true }).selectOption(projectId);
   await modal.getByRole('button', { name: 'Create link', exact: true }).click();
   await modal.getByRole('link', { name: projectTitle }).click();
+  await materials.getByRole('button', { name: 'Project materials', exact: true }).click();
   await expect(materials.getByRole('link', { name: paperTitle })).toHaveAttribute(
     'href',
     /https:\/\/arxiv.org\/abs\//,

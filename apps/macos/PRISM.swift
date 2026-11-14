@@ -1,4 +1,5 @@
 import Cocoa
+import UniformTypeIdentifiers
 import UserNotifications
 import WebKit
 #if PRISM_SPARKLE
@@ -19,6 +20,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
     private var desktopToken: String?
     private var desktopReadyFile: URL?
     private let healthSession = URLSession(configuration: .ephemeral)
+    private var archiveUpload: Task<Void, Never>?
+    private var attachmentTransfer: Task<Void, Never>?
+    private var webDAVAttachmentSync: WebDAVAttachmentSync?
+    private var workspaceBackup: WorkspaceBackup?
+    private var workspaceBackupChannel: Pipe?
+    private var workspaceBackupTask: Task<Void, Never>?
+    private var recoveredWorkspace: RecoveredWorkspace?
+    private let pdfOcrBridge = LocalPdfOcrBridge()
     private var markdownDownloads: [ObjectIdentifier: URL] = [:]
     private let focusNotificationID = "prism.focus-completion"
     private var focusReminder: FocusReminder?
@@ -89,6 +98,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "Settings…", action: #selector(openSettings), keyEquivalent: ",")
         appMenu.addItem(withTitle: "Quit PRISM", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
+        let fileItem = NSMenuItem(); menu.addItem(fileItem)
+        let file = NSMenu(title: "File"); fileItem.submenu = file
+        if packaged {
+            file.addItem(withTitle: "Create Workspace Backup…", action: #selector(createWorkspaceBackup), keyEquivalent: "")
+            file.addItem(withTitle: "Validate Workspace Backup…", action: #selector(validateWorkspaceBackup), keyEquivalent: "")
+            file.addItem(withTitle: "Restore Workspace as Copy…", action: #selector(restoreWorkspaceAsCopy), keyEquivalent: "")
+            file.addItem(withTitle: "Open Recovered Workspace…", action: #selector(openRecoveredWorkspace), keyEquivalent: "")
+            file.addItem(withTitle: "Open with Recovery Code…", action: #selector(openWorkspaceWithRecoveryCode), keyEquivalent: "")
+            file.addItem(withTitle: "Export Backup Recovery Code…", action: #selector(exportWorkspaceRecoveryCode), keyEquivalent: "")
+            file.addItem(withTitle: "WebDAV Attachment Sync…", action: #selector(configureWebDAVAttachmentSync), keyEquivalent: "")
+            file.addItem(.separator())
+        }
+        file.addItem(withTitle: "Back Up Archive to WebDAV…", action: #selector(chooseWebDAVArchive), keyEquivalent: "")
         let editItem = NSMenuItem(); menu.addItem(editItem)
         let edit = NSMenu(title: "Edit"); editItem.submenu = edit
         for (title, action, key) in [("Undo", "undo:", "z"), ("Cut", "cut:", "x"), ("Copy", "copy:", "c"), ("Paste", "paste:", "v"), ("Select All", "selectAll:", "a")] {
@@ -103,6 +125,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         configuration.userContentController.add(self, name: "prismAppearance")
         configuration.userContentController.add(self, name: "prismPrint")
         configuration.userContentController.add(self, name: "prismFocus")
+        if packaged { configuration.userContentController.add(self, name: "prismWebDAVAttachment") }
+        pdfOcrBridge.authorize = { [weak self] message in
+            guard let self, message.frameInfo.isMainFrame,
+                  message.webView === self.web, let url = message.frameInfo.request.url,
+                  url.scheme == "http", url.host == self.address.host, url.port == self.address.port else { return false }
+            return url.path == "/research" || url.path.hasPrefix("/research/")
+        }
+        configuration.userContentController.addScriptMessageHandler(pdfOcrBridge, contentWorld: .page, name: "prismPdfOcr")
         UNUserNotificationCenter.current().delegate = self
         let appearanceScript = """
         (function(){function send(){try{window.webkit.messageHandlers.prismAppearance.postMessage({theme:document.documentElement.dataset.theme||'system'})}catch(e){}}function attach(){if(!document.documentElement)return false;send();new MutationObserver(send).observe(document.documentElement,{attributes:true,attributeFilter:['data-theme']});return true}if(!attach()){var observer=new MutationObserver(function(){if(attach())observer.disconnect()});observer.observe(document,{childList:true,subtree:true})}})();
@@ -158,6 +188,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 #endif
                 try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true,
                     attributes: [.posixPermissions: 0o700])
+                webDAVAttachmentSync = WebDAVAttachmentSync(dataDir: dataDir)
                 let token = (UUID().uuidString + UUID().uuidString).replacingOccurrences(of: "-", with: "").lowercased()
                 desktopToken = token
                 let readyFile = dataDir.appendingPathComponent(".ready-\(UUID().uuidString)")
@@ -170,6 +201,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                     "PRISM_DESKTOP_WEB_PORT": String(webPort),
                     "PRISM_DESKTOP_READY_FILE": readyFile.path,
                     "PRISM_DESKTOP_PARENT_PID": String(ProcessInfo.processInfo.processIdentifier)]
+                if let backup = try? WorkspaceBackup() {
+                    let channel = Pipe()
+                    _ = fcntl(channel.fileHandleForWriting.fileDescriptor, F_SETNOSIGPIPE, 1)
+                    process.standardInput = channel
+                    process.environment?["PRISM_WORKSPACE_BACKUP_DIR"] = backup.root.path
+                    process.environment?["TMPDIR"] = FileManager.default.temporaryDirectory.path
+                    workspaceBackup = backup
+                    workspaceBackupChannel = channel
+                }
             } else {
                 guard let root = Bundle.main.object(forInfoDictionaryKey: "PRISMProjectRoot") as? String,
                       FileManager.default.isExecutableFile(atPath: root + "/start.command") else {
@@ -219,6 +259,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }.resume()
     }
     private func openWorkspace() {
+        if let token = desktopToken, let transfer = try? WebDAVAttachmentTransfer(origin: address, token: token) {
+            webDAVAttachmentSync?.connect(transfer)
+        }
         #if PRISM_SPARKLE
         // The personal feed is served by the local launcher.
         if !packaged { updaterController?.startUpdater() }
@@ -436,6 +479,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             return
         }
         guard message.webView === web else { return }
+        if message.name == "prismWebDAVAttachment" {
+            guard url.path == "/research" || url.path.hasPrefix("/research/") else { return }
+            chooseWebDAVAttachment(message.body)
+            return
+        }
         if message.name == "prismFocus", let state = FocusState(message.body) {
             syncFocusReminder(state)
             syncFocusPet(state)
@@ -471,14 +519,423 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             : "Uses services and data in the current project folder.")
         alert.runModal()
     }
+    @objc private func chooseWebDAVArchive() {
+        guard window.attachedSheet == nil, archiveUpload == nil, attachmentTransfer == nil else { return }
+        let panel = NSOpenPanel()
+        panel.title = "Choose a ZIP archive"
+        panel.message = "Choose the archive you want to send to your WebDAV server."
+        panel.allowedContentTypes = [.zip]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { [weak self] result in
+            guard let self, result == .OK, let archive = panel.url else { return }
+            DispatchQueue.main.async { self.configureWebDAVUpload(archive) }
+        }
+    }
+
+    @objc private func createWorkspaceBackup() {
+        guard window.attachedSheet == nil, workspaceBackupTask == nil else { return }
+        let panel = NSSavePanel()
+        panel.title = "Create Workspace Backup"
+        panel.nameFieldStringValue = "PRISM Workspace \(Date().formatted(.iso8601.year().month().day())).prismbackup"
+        panel.message = "This private archive includes your database and original attachments. Keep it with your Mac’s Keychain backup."
+        panel.allowedContentTypes = [UTType(filenameExtension: "prismbackup") ?? .data]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            DispatchQueue.main.async { self?.runWorkspaceBackup(.create, file: destination) }
+        }
+    }
+
+    @objc private func validateWorkspaceBackup() {
+        chooseWorkspaceBackup(.validate)
+    }
+
+    @objc private func restoreWorkspaceAsCopy() {
+        chooseWorkspaceBackup(.restore)
+    }
+
+    @objc private func openRecoveredWorkspace() {
+        chooseWorkspaceBackup(.open)
+    }
+
+    @objc private func openWorkspaceWithRecoveryCode() {
+        chooseWorkspaceBackup(.open, usingRecoveryCode: true)
+    }
+
+    @objc private func exportWorkspaceRecoveryCode() {
+        guard window.attachedSheet == nil, workspaceBackupTask == nil else { return }
+        let panel = NSSavePanel()
+        panel.title = "Export Backup Recovery Code"
+        panel.message = "Anyone with this code and a backup can read that backup. Save the code to a private location separate from your backups."
+        panel.nameFieldStringValue = "PRISM Recovery Code.txt"
+        panel.allowedContentTypes = [.plainText]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            DispatchQueue.main.async {
+                do {
+                    try WorkspaceBackup.exportRecoveryCode(to: destination)
+                    self?.showArchiveResult("Recovery code saved", "Keep the recovery code private and separate from your workspace backups.")
+                } catch {
+                    self?.showArchiveResult("Could not export recovery code", (error as? WorkspaceBackupError ?? .save).localizedDescription)
+                }
+            }
+        }
+    }
+
+    private func chooseWorkspaceBackup(_ operation: WorkspaceBackup.Operation, usingRecoveryCode: Bool = false) {
+        guard window.attachedSheet == nil, workspaceBackupTask == nil else { return }
+        let panel = NSOpenPanel()
+        switch operation {
+        case .restore: panel.title = "Choose Workspace Backup to Restore"
+        case .open: panel.title = "Open Recovered Workspace"
+        case .validate: panel.title = "Validate Workspace Backup"
+        case .create: return
+        }
+        panel.message = operation == .restore ? "Restore to a new folder. Your current workspace stays open." :
+            "Choose an authenticated backup. Your current workspace stays open."
+        panel.allowedContentTypes = [UTType(filenameExtension: "prismbackup") ?? .data]
+        panel.canChooseDirectories = false
+        panel.allowsMultipleSelection = false
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let archive = panel.url else { return }
+            DispatchQueue.main.async {
+                if operation == .restore { self?.chooseWorkspaceRecoveryDestination(archive) }
+                else if usingRecoveryCode { self?.askForWorkspaceRecoveryCode(archive) }
+                else { self?.runWorkspaceBackup(operation, file: archive) }
+            }
+        }
+    }
+
+    private func askForWorkspaceRecoveryCode(_ archive: URL) {
+        let alert = NSAlert()
+        alert.messageText = "Enter the backup recovery code"
+        alert.informativeText = "PRISM uses the code once to open this backup in a read-only window."
+        alert.addButton(withTitle: "Open Backup")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 325, height: 24))
+        field.setAccessibilityLabel("Recovery code")
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        alert.beginSheetModal(for: window) { [weak self] response in
+            defer { field.stringValue = "" }
+            guard response == .alertFirstButtonReturn else { return }
+            do {
+                let key = try WorkspaceBackup.parseRecoveryCode(field.stringValue)
+                DispatchQueue.main.async { self?.runWorkspaceBackup(.open, file: archive, recoveryKey: key) }
+            } catch {
+                DispatchQueue.main.async { self?.showArchiveResult("Could not open backup", WorkspaceBackupError.invalidRecoveryCode.localizedDescription) }
+            }
+        }
+    }
+
+    private func chooseWorkspaceRecoveryDestination(_ archive: URL) {
+        let panel = NSSavePanel()
+        panel.title = "Restore Workspace as Copy"
+        panel.nameFieldStringValue = "PRISM Recovered Workspace \(Date().formatted(.iso8601.year().month().day())).prismworkspace"
+        panel.message = "Choose a new folder name for this recovered copy."
+        panel.allowedContentTypes = [UTType(filenameExtension: "prismworkspace") ?? .data]
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            DispatchQueue.main.async { self?.runWorkspaceBackup(.restore, file: archive, destination: destination) }
+        }
+    }
+
+    private func runWorkspaceBackup(_ operation: WorkspaceBackup.Operation, file: URL, destination: URL? = nil,
+                                    recoveryKey: Data? = nil) {
+        guard workspaceBackupTask == nil, window.attachedSheet == nil else { return }
+        guard let backup = workspaceBackup, let launcher, launcher.isRunning,
+              let channel = workspaceBackupChannel?.fileHandleForWriting else {
+            showArchiveResult("Workspace backup unavailable", WorkspaceBackupError.unavailable.localizedDescription)
+            return
+        }
+        let progress = NSAlert()
+        switch operation {
+        case .create: progress.messageText = "Creating workspace backup…"
+        case .validate: progress.messageText = "Validating workspace backup…"
+        case .restore: progress.messageText = "Restoring workspace as copy…"
+        case .open: progress.messageText = "Preparing recovered workspace…"
+        }
+        progress.informativeText = "Keep PRISM open until this operation finishes."
+        progress.beginSheetModal(for: window)
+        workspaceBackupTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var scratch: URL?
+            var notice: (String, String)?
+            do {
+                let (id, folder) = try backup.requestFolder()
+                scratch = folder
+                var key = try recoveryKey ?? WorkspaceBackup.key(create: operation == .create)
+                defer { key.resetBytes(in: key.startIndex..<key.endIndex) }
+                if operation != .create { try await Task.detached { try WorkspaceBackup.stage(file, in: folder) }.value }
+                try Task.checkCancellation()
+                try WorkspaceBackup.send(operation, id: id, key: key, using: channel)
+                key.resetBytes(in: key.startIndex..<key.endIndex)
+                let result = try await WorkspaceBackup.wait(in: folder, launcher: launcher)
+                if !result.ok {
+                    throw result.reason == "too-large" ? WorkspaceBackupError.tooLarge :
+                        result.reason == "invalid" ? WorkspaceBackupError.invalid : WorkspaceBackupError.unavailable
+                }
+                switch operation {
+                case .create:
+                    try await Task.detached { try WorkspaceBackup.save(from: folder, to: file) }.value
+                    notice = ("Workspace backup saved", "Saved as \(file.lastPathComponent).")
+                case .validate:
+                    guard let notes = result.knowledgeItems, let attachments = result.attachments else { throw WorkspaceBackupError.invalid }
+                    notice = ("Workspace backup verified", "Opened the backup in isolation and read \(notes) knowledge items and \(attachments) completed attachments.")
+                case .restore:
+                    guard let destination else { throw WorkspaceBackupError.save }
+                    try await Task.detached { try WorkspaceBackup.saveRestoredWorkspace(from: folder, to: destination) }.value
+                    notice = ("Recovered workspace copy saved", "Saved as \(destination.lastPathComponent). Your current workspace is still open.")
+                case .open:
+                    guard let resources = Bundle.main.resourceURL, let executable = Bundle.main.executableURL else {
+                        throw WorkspaceBackupError.unavailable
+                    }
+                    try FileManager.default.removeItem(at: WorkspaceBackup.archive(in: folder))
+                    let recovery = RecoveredWorkspace(scratch: folder, resources: resources, executable: executable)
+                    try recovery.show()
+                    self.recoveredWorkspace?.close()
+                    recovery.didClose = { [weak self, weak recovery] in
+                        guard self?.recoveredWorkspace === recovery else { return }
+                        self?.recoveredWorkspace = nil
+                    }
+                    self.recoveredWorkspace = recovery
+                    scratch = nil
+                }
+            } catch {
+                notice = ("Workspace backup could not finish", (error as? WorkspaceBackupError ?? .unavailable).localizedDescription)
+            }
+            if let scratch { try? FileManager.default.removeItem(at: scratch) }
+            self.workspaceBackupTask = nil
+            if self.window.attachedSheet === progress.window { self.window.endSheet(progress.window) }
+            if !Task.isCancelled, let (title, message) = notice { self.showArchiveResult(title, message) }
+        }
+    }
+
+    private func configureWebDAVUpload(_ archive: URL) {
+        askForWebDAVFolder(title: "Back up this archive?",
+            message: "PRISM sends the selected ZIP to the HTTPS folder below. Your credentials are used for this transfer.",
+            button: "Upload ZIP") { [weak self] result in
+            switch result {
+            case let .success((folder, authorization)): self?.uploadWebDAVArchive(archive, to: folder, authorization: authorization)
+            case let .failure(error): self?.showArchiveResult("Could not upload archive", error.localizedDescription)
+            }
+        }
+    }
+
+    @objc private func configureWebDAVAttachmentSync() {
+        guard window.attachedSheet == nil, let sync = webDAVAttachmentSync else { return }
+        if !sync.enabled {
+            askForWebDAVFolder(title: "Enable WebDAV attachment sync?",
+                message: "While PRISM is open, it will send existing and new personal library attachments to the chosen HTTPS folder. The server can read the copies. PRISM stores credentials in Keychain and verifies each copy. Your notes and library metadata stay in PRISM.",
+                button: "Enable Automatic Copies") { [weak self] result in
+                do {
+                    let (folder, authorization) = try result.get()
+                    try sync.enable(folder: folder, authorization: authorization)
+                    self?.showArchiveResult("WebDAV attachment sync enabled", "Use File → WebDAV Attachment Sync to check progress or turn it off.")
+                } catch { self?.showArchiveResult("Could not enable WebDAV sync", error.localizedDescription) }
+            }
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "WebDAV attachment sync"
+        alert.informativeText = "\(sync.destination?.absoluteString ?? "")\n\n\(sync.status)\n\n\(sync.verifiedCount) verified copies recorded."
+        alert.addButton(withTitle: "Done")
+        alert.addButton(withTitle: "Sync Now")
+        alert.addButton(withTitle: "Turn Off")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertSecondButtonReturn { sync.runNow() }
+            if response == .alertThirdButtonReturn {
+                DispatchQueue.main.async {
+                    do {
+                        try sync.disable()
+                        self?.showArchiveResult("WebDAV attachment sync is off", "Existing copies remain in the WebDAV folder.")
+                    } catch { self?.showArchiveResult("Could not turn off WebDAV sync", "Try again from File → WebDAV Attachment Sync.") }
+                }
+            }
+        }
+    }
+
+    private func askForWebDAVFolder(title: String, message: String, button: String,
+                                    completion: @escaping (Result<(URL, String?), Error>) -> Void) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: button)
+        alert.addButton(withTitle: "Cancel")
+        let folder = NSTextField()
+        folder.placeholderString = "https://backup.example.com/dav/archives/"
+        let username = NSTextField()
+        let password = NSSecureTextField()
+        let rows = [("WebDAV folder", folder), ("Username", username), ("App password", password)].map { label, field in
+            let title = NSTextField(labelWithString: label)
+            title.setContentHuggingPriority(.required, for: .horizontal)
+            field.widthAnchor.constraint(greaterThanOrEqualToConstant: 280).isActive = true
+            field.setAccessibilityLabel(label)
+            return [title, field] as [NSView]
+        }
+        let grid = NSGridView(views: rows)
+        grid.rowSpacing = 8
+        grid.columnSpacing = 10
+        grid.column(at: 0).xPlacement = .trailing
+        alert.accessoryView = grid
+        alert.window.initialFirstResponder = folder
+        alert.beginSheetModal(for: window) { response in
+            defer { password.stringValue = ""; username.stringValue = "" }
+            guard response == .alertFirstButtonReturn else { return }
+            do {
+                let destination = try WebDAVBackup.folder(folder.stringValue)
+                let authorization = try WebDAVBackup.authorization(username: username.stringValue, password: password.stringValue)
+                DispatchQueue.main.async { completion(.success((destination, authorization))) }
+            } catch {
+                DispatchQueue.main.async { completion(.failure(error)) }
+            }
+        }
+    }
+
+    private func chooseWebDAVAttachment(_ value: Any) {
+        guard packaged, window.attachedSheet == nil, archiveUpload == nil, attachmentTransfer == nil,
+              let token = desktopToken, let body = value as? [String: Any],
+              let rawReference = body["referenceId"] as? String, let reference = UUID(uuidString: rawReference),
+              let rawAttachment = body["attachmentId"] as? String, let attachment = UUID(uuidString: rawAttachment),
+              let transfer = try? WebDAVAttachmentTransfer(origin: address, token: token) else { return }
+        attachmentTransfer = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result: Result<WebDAVAttachment, Error>
+            do { result = .success(try await transfer.selected(referenceID: reference, attachmentID: attachment)) }
+            catch { result = .failure(error) }
+            self.attachmentTransfer = nil
+            guard !Task.isCancelled, self.window.attachedSheet == nil else { return }
+            switch result {
+            case let .success(selected): self.showWebDAVAttachmentChoices(selected, transfer: transfer)
+            case let .failure(error): self.showArchiveResult("Could not open WebDAV options", error.localizedDescription)
+            }
+        }
+    }
+
+    private func showWebDAVAttachmentChoices(_ attachment: WebDAVAttachment, transfer: WebDAVAttachmentTransfer) {
+        let alert = NSAlert()
+        alert.messageText = "WebDAV copy"
+        alert.informativeText = "Choose what to do with “\(attachment.displayName)”. PRISM verifies copies against the original attachment."
+        alert.addButton(withTitle: "Send copy…")
+        alert.addButton(withTitle: "Retrieve copy…")
+        alert.addButton(withTitle: "Cancel")
+        alert.beginSheetModal(for: window) { [weak self] response in
+            guard let self, response == .alertFirstButtonReturn || response == .alertSecondButtonReturn else { return }
+            let sending = response == .alertFirstButtonReturn
+            DispatchQueue.main.async {
+                self.askForWebDAVFolder(title: sending ? "Send a WebDAV copy?" : "Retrieve a WebDAV copy?",
+                    message: sending
+                        ? "The server can read this attachment. PRISM sends only the selected file. Your credentials are used for this transfer."
+                        : "Use the same HTTPS folder you sent this attachment to. PRISM verifies the bytes before saving. Your credentials are used for this transfer.",
+                    button: sending ? "Send copy" : "Retrieve copy") { result in
+                    switch result {
+                    case let .success((folder, authorization)):
+                        self.runWebDAVAttachment(attachment, transfer: transfer, folder: folder, authorization: authorization, sending: sending)
+                    case let .failure(error): self.showArchiveResult("Could not use WebDAV folder", error.localizedDescription)
+                    }
+                }
+            }
+        }
+    }
+
+    private func runWebDAVAttachment(_ attachment: WebDAVAttachment, transfer: WebDAVAttachmentTransfer, folder: URL,
+                                     authorization: String?, sending: Bool) {
+        let progress = NSAlert()
+        progress.messageText = sending ? "Sending and verifying copy…" : "Retrieving and verifying copy…"
+        progress.addButton(withTitle: "Cancel")
+        progress.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.attachmentTransfer?.cancel() }
+        }
+        attachmentTransfer = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let result: Result<Data?, Error>
+            do {
+                if sending {
+                    try await transfer.send(attachment, folder: folder, authorization: authorization)
+                    result = .success(nil)
+                } else {
+                    result = .success(try await transfer.retrieve(attachment, folder: folder, authorization: authorization))
+                }
+            } catch { result = .failure(error) }
+            self.attachmentTransfer = nil
+            if self.window.attachedSheet === progress.window { self.window.endSheet(progress.window) }
+            guard !Task.isCancelled else { return }
+            switch result {
+            case let .success(bytes?): self.saveWebDAVAttachment(bytes, name: attachment.displayName)
+            case .success(nil): self.showArchiveResult("WebDAV copy verified", "The selected attachment is available in the chosen folder.")
+            case let .failure(error): self.showArchiveResult("Could not verify WebDAV copy", error.localizedDescription)
+            }
+        }
+    }
+
+    private func saveWebDAVAttachment(_ bytes: Data, name: String) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = name
+        panel.title = "Save verified attachment copy"
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let destination = panel.url else { return }
+            do { try bytes.write(to: destination, options: .atomic) }
+            catch {
+                DispatchQueue.main.async { self?.showArchiveResult("Could not save copy", "Choose a writable local folder and try again.") }
+            }
+        }
+    }
+
+    private func uploadWebDAVArchive(_ archive: URL, to folder: URL, authorization: String?) {
+        let progress = NSAlert()
+        progress.messageText = "Uploading archive…"
+        progress.informativeText = "Keep PRISM open until the transfer finishes."
+        progress.addButton(withTitle: "Cancel")
+        progress.beginSheetModal(for: window) { [weak self] response in
+            if response == .alertFirstButtonReturn { self?.archiveUpload?.cancel() }
+        }
+        archiveUpload = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let title: String
+            let message: String
+            do {
+                let filename = try await WebDAVBackup.upload(archive: archive, folder: folder, authorization: authorization)
+                title = "Archive uploaded"
+                message = "Saved as \(filename)."
+            } catch {
+                title = "Could not upload archive"
+                message = error.localizedDescription
+            }
+            self.archiveUpload = nil
+            if self.window.attachedSheet === progress.window { self.window.endSheet(progress.window) }
+            if !Task.isCancelled { self.showArchiveResult(title, message) }
+        }
+    }
+
+    private func showArchiveResult(_ title: String, _ message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.addButton(withTitle: "OK")
+        alert.beginSheetModal(for: window)
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool { window.makeKeyAndOrderFront(nil); return true }
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        archiveUpload?.cancel()
+        attachmentTransfer?.cancel()
+        pdfOcrBridge.cancelActive()
+        workspaceBackupTask?.cancel()
+        webDAVAttachmentSync?.stop()
+        recoveredWorkspace?.close()
         timer?.invalidate()
         rememberFocusPetPosition()
-        guard let process = launcher, process.isRunning else { return .terminateNow }
+        let backupFolder = workspaceBackup?.root
+        guard let process = launcher, process.isRunning else {
+            if let backupFolder { try? FileManager.default.removeItem(at: backupFolder) }
+            return .terminateNow
+        }
         // Only terminate the process this app started; a reused server's short-lived launcher has already exited.
-        process.terminationHandler = { _ in DispatchQueue.main.async { sender.reply(toApplicationShouldTerminate: true) } }
+        process.terminationHandler = { _ in DispatchQueue.main.async {
+            if let backupFolder { try? FileManager.default.removeItem(at: backupFolder) }
+            sender.reply(toApplicationShouldTerminate: true)
+        } }
         process.terminate()
         return .terminateLater
     }
@@ -494,10 +951,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         if url.scheme == "about" || local {
             decisionHandler(.allow)
         } else {
-            let zoteroItem = url.absoluteString.range(
-                of: "^zotero://select/library/items/[A-Z0-9]{8}$", options: .regularExpression
-            ) != nil
-            if action.navigationType == .linkActivated && (zoteroItem || ["https", "http", "mailto"].contains(url.scheme ?? "")) {
+            if action.navigationType == .linkActivated && ["https", "http", "mailto"].contains(url.scheme ?? "") {
                 NSWorkspace.shared.open(url)
             }
             decisionHandler(.cancel)
@@ -510,6 +964,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         focusPetPanel?.orderFrontRegardless()
         publishFocusPetState()
     }
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        if webView === web { pdfOcrBridge.cancelActive() }
+    }
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        if webView === web { pdfOcrBridge.cancelActive() }
+    }
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration, for action: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
         if let url = action.request.url, ["http", "https"].contains(url.scheme ?? "") { NSWorkspace.shared.open(url) }
         return nil
@@ -519,7 +979,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
               url.scheme == "http", url.host == address.host, url.port == address.port,
               window.attachedSheet == nil else { completionHandler(nil); return }
         let panel = NSOpenPanel()
-        panel.canChooseFiles = true
+        panel.canChooseFiles = !parameters.allowsDirectories
         panel.canChooseDirectories = parameters.allowsDirectories
         panel.allowsMultipleSelection = parameters.allowsMultipleSelection
         panel.beginSheetModal(for: window) { result in
@@ -576,8 +1036,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         web.evaluateJavaScript("window.dispatchEvent(new CustomEvent('prism-markdown-download', { detail: \(literal) }))")
     }
 }
-let app = NSApplication.shared
-let delegate = AppDelegate()
-app.setActivationPolicy(.regular)
-app.delegate = delegate
-app.run()
+@main
+struct PRISMDesktop {
+    static func main() {
+        let app = NSApplication.shared
+        let delegate = AppDelegate()
+        app.setActivationPolicy(.regular)
+        app.delegate = delegate
+        app.run()
+    }
+}

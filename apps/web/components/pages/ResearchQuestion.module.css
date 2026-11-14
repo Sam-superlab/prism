@@ -1,0 +1,128 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(260px, 1fr);
+  gap: 20px;
+  align-items: start;
+}
+
+.column {
+  display: grid;
+  min-width: 0;
+  gap: 20px;
+}
+
+.projectQuestions {
+  margin: 0 0 20px;
+}
+
+.heading {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.panelBody {
+  padding: 0 var(--panel-padding) var(--panel-padding);
+}
+
+.panelBody > :first-child {
+  margin-top: 0;
+}
+
+.links {
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.links li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+
+.linkContent {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.linkTitle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.linkTitle > svg {
+  flex: none;
+}
+
+.linkMeta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 8px;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.note {
+  margin: 7px 0 0;
+  white-space: pre-wrap;
+}
+
+.empty {
+  color: var(--muted);
+  margin: 0;
+}
+
+.taskHeading {
+  line-height: 1.28;
+  font-weight: 600;
+}
+
+.editQuestion {
+  flex-wrap: wrap;
+}
+
+.editorFields {
+  border: 0;
+  padding: 0;
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.originList {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.graph {
+  margin-top: 20px;
+  padding: var(--panel-padding);
+}
+
+.graph > summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.graph[open] > summary {
+  margin-bottom: 12px;
+}
+
+@media (max-width: 1100px) {
+  .layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.projectSidebar > section + section {
+  margin-block-start: 12px;
+}

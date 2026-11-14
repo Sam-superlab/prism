@@ -11,6 +11,7 @@ import {
   unseal,
   validateLogin,
 } from '../../../lib/server-auth';
+import { authReturnPath } from '../../../lib/auth-return-path';
 export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
@@ -35,7 +36,9 @@ export async function GET(request: NextRequest) {
     await validateLogin(session, flow);
     const { idToken: _unused, ...tokens } = session;
     const stored = await createServerSession(tokens);
-    const response = NextResponse.redirect(new URL('/today', request.url));
+    const response = NextResponse.redirect(
+      new URL(authReturnPath(flow.returnTo), process.env.PRISM_WEB_ORIGIN || request.nextUrl.origin),
+    );
     clearCookie(response, FLOW_COOKIE);
     setCookie(response, SESSION_COOKIE, { id: stored.id }, stored.maxAge);
     return response;

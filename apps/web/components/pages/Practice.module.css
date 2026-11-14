@@ -93,19 +93,6 @@
 .comparison > div {
   min-width: 0;
 }
-.latexEditor,
-.work {
-  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
-}
-.mathPreview {
-  display: grid;
-  min-width: 0;
-  gap: 0.5rem;
-  margin-block: 0.5rem;
-}
-.mathPreview .statement {
-  border: 1px solid var(--line);
-}
 .formulaReview {
   padding: 0.7rem 0.85rem;
   border-inline-start: 2px solid var(--warm);

@@ -1,0 +1,43 @@
+.button-tooltip {
+  position: fixed;
+  z-index: 100;
+  inset: auto;
+  margin: 0;
+  inline-size: max-content;
+  max-inline-size: min(21rem, calc(100vw - 16px));
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 5px 14px rgb(0 0 0 / 14%);
+  font: 500 calc(11px * var(--text-scale, 1)) / 1.4 -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif;
+  overflow-wrap: anywhere;
+  text-align: center;
+  pointer-events: none;
+  opacity: 0;
+  translate: 0 -3px;
+  transition: opacity var(--motion-feedback), translate var(--motion-feedback);
+}
+
+.button-tooltip[data-side='above'] {
+  translate: 0 3px;
+}
+
+.button-tooltip[data-visible='true'] {
+  pointer-events: auto;
+  opacity: 1;
+  translate: 0 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .button-tooltip {
+    transition: none;
+    translate: none;
+  }
+}
+
+:root[data-reduced-motion='true'] .button-tooltip {
+  transition: none;
+  translate: none;
+}

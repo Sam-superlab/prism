@@ -1,5 +1,6 @@
-import { beforeAll, afterAll, describe, it, expect } from 'vitest';
-import { randomUUID } from 'node:crypto';
+import { beforeAll, afterAll, describe, it, expect, vi } from 'vitest';
+import { createHash, randomUUID } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,6 +52,7 @@ beforeAll(async () => {
   const dir = await mkdtemp(join(tmpdir(), 'prism-api-test-'));
   app = await buildApp({
     db,
+    rateLimitMax: 1000,
     config: loadConfig({
       PRISM_AUTH_MODE: 'development',
       PRISM_DATA_DIR: dir,
@@ -64,6 +66,47 @@ afterAll(async () => {
   else await db?.close();
 });
 describe('PRISM canonical backend', () => {
+  it('sorts filtered Library results across cursors with ties and missing fields', async () => {
+    const token = `Library ordering ${id()}`;
+    const fixtures = [
+      { title: 'Alpha', authors: ['Zulu', 'Ada'], year: 2024 },
+      { title: 'Beta', authors: ['Ada', 'Zulu'], year: 2021 },
+      { title: 'Delta', authors: [], year: null },
+      { title: 'Gamma', authors: ['ada'], year: 2024 },
+      { title: 'Zeta', authors: [], year: null },
+    ];
+    for (const item of fixtures) {
+      expect((await post('/research/references', { ...item, id: id(), title: `${token} ${item.title}` })).statusCode).toBe(201);
+    }
+    for (const [sort, direction, expected] of [
+      ['year', 'asc', ['Beta', 'Alpha', 'Gamma', 'Delta', 'Zeta']],
+      ['year', 'desc', ['Alpha', 'Gamma', 'Beta', 'Delta', 'Zeta']],
+      ['author', 'asc', ['Beta', 'Gamma', 'Alpha', 'Delta', 'Zeta']],
+      ['author', 'desc', ['Alpha', 'Beta', 'Gamma', 'Delta', 'Zeta']],
+      ['title', 'desc', ['Zeta', 'Gamma', 'Delta', 'Beta', 'Alpha']],
+    ] as const) {
+      const query = new URLSearchParams({ q: token, sort, direction, limit: '1' });
+      const actual: string[] = [];
+      for (let i = 0; i < fixtures.length; i++) {
+        const response = await get(`/research/library?${query}`);
+        expect(response.statusCode).toBe(200);
+        const page = response.json();
+        expect(page.items).toHaveLength(1);
+        actual.push(page.items[0].title.slice(token.length + 1));
+        if (!page.next_cursor) break;
+        query.set('cursor', page.next_cursor);
+      }
+      expect(actual).toEqual(expected);
+    }
+    const conditions = { field: 'title', operator: 'contains', value: token };
+    const search = { conditions, sort: 'year', direction: 'desc', limit: 2 };
+    const first = (await post('/research/library/search', search)).json();
+    expect(first.items.map((item: { year: number }) => item.year)).toEqual([2024, 2024]);
+    const second = (await post('/research/library/search', { ...search, cursor: first.next_cursor })).json();
+    expect(second.items.map((item: { year: number | null }) => item.year)).toEqual([2021, null]);
+    expect((await post('/research/library/search', { ...search, direction: 'asc', cursor: first.next_cursor })).statusCode).toBe(422);
+  });
+
   it('serves initialized user with closed validation', async () => {
     expect((await get('/me')).statusCode).toBe(200);
     const r = await post('/knowledge-items', {
@@ -80,6 +123,1070 @@ describe('PRISM canonical backend', () => {
     expect((await get('/tasks?limit=-1')).statusCode).toBe(422);
     expect((await get('/tasks?project_id=bad')).statusCode).toBe(422);
   });
+  it('persists ordered creator roles and maintains legacy bibliography fields', async () => {
+    const reference = id();
+    const base = '/research/references';
+    const path = `${base}/${reference}`;
+    const creators = [
+      { role: 'translator', name: '  Translator, Téa  ' },
+      { role: 'author', name: 'Example, Ada' },
+      { role: 'editor', name: 'Editor, Eve' },
+      { role: 'author', name: 'Example, Sam' },
+    ];
+    const expected = creators.map((creator) => ({ ...creator, name: creator.name.trim() }));
+    const payload = { id: reference, title: 'Chapter fixture', authors: ['Outdated projection'], creators,
+      publication: { type: 'incollection', booktitle: 'Book of Algebra', editor: 'Outdated editor' } };
+    const created = await post(base, payload);
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json()).toMatchObject({ creators: expected, authors: ['Example, Ada', 'Example, Sam'],
+      publication: { type: 'incollection', booktitle: 'Book of Algebra', editor: 'Editor, Eve', translator: 'Translator, Téa' } });
+    const listing = (await get('/research/library?q=Chapter%20fixture')).json().items;
+    expect(listing).toEqual([expect.objectContaining({ id: reference, creators: expected })]);
+    const project = id();
+    expect((await post('/research/projects', { id: project, title: 'Creator project fixture' })).statusCode).toBe(201);
+    expect((await post('/research/reference-links', { id: id(), project_id: project, reference_id: reference })).statusCode).toBe(201);
+    expect((await get(`/research/projects/${project}/bibliography`)).json().items).toEqual([expect.objectContaining({ creators: expected })]);
+    const oldClient = await patch(path, { authors: ['Example, Uma'] }, '1');
+    expect(oldClient.json()).toMatchObject({ creators: [expected[0], { role: 'author', name: 'Example, Uma' }, expected[2]],
+      publication: { translator: 'Translator, Téa' }, version: '2' });
+    const newClient = await patch(path, { creators: [{ role: 'editor', name: 'Editor, Eva' }] }, '2');
+    expect(newClient.json()).toMatchObject({ authors: [], creators: [{ role: 'editor', name: 'Editor, Eva' }],
+      publication: { type: 'incollection', booktitle: 'Book of Algebra', editor: 'Editor, Eva' }, version: '3' });
+    expect(newClient.json().publication).not.toHaveProperty('translator');
+    const importId = id();
+    const imported = await post('/research/library/import', { items: [{ id: importId, title: 'Imported creators', creators }] });
+    expect(imported.statusCode).toBe(200);
+    expect((await get(`${base}/${importId}`)).json()).toMatchObject({ creators: expected });
+    const oldId = id();
+    const old = await post(base, { id: oldId, title: 'Legacy creators', authors: ['Legacy author'], publication: { editor: 'Legacy editor' } });
+    expect(old.json()).toMatchObject({ authors: ['Legacy author'], publication: { editor: 'Legacy editor' } });
+    expect(old.json()).not.toHaveProperty('creators');
+  });
+  it('pins and reverts native citation keys while keeping existing citations resolvable', async () => {
+    const refId = id();
+    const otherId = id();
+    const sourceId = id();
+    const fallback = `ref-${refId}`;
+    const endpoint = `/research/references/${refId}/citation-key`;
+    const otherEndpoint = `/research/references/${otherId}/citation-key`;
+    expect((await post('/research/references', {
+      id: refId, title: 'Citation fixture', arxiv_id: '2601.12345',
+    })).statusCode).toBe(201);
+    expect((await post('/research/references', {
+      id: otherId, title: 'Other citation fixture', citation_key: 'External:key',
+    })).statusCode).toBe(201);
+    expect((await post('/research/references', { id: sourceId, title: 'Merged citation fixture' })).statusCode).toBe(201);
+    expect((await patch(endpoint, { citation_key: 'arxiv-2601.12345' }, '1')).statusCode).toBe(422);
+    expect((await patch(endpoint, { citation_key: `ref-${otherId}` }, '1')).statusCode).toBe(422);
+    expect((await patch(endpoint, { citation_key: 'External:key' }, '1')).statusCode).toBe(409);
+    expect((await patch(endpoint, { citation_key: fallback }, '1')).json()).toMatchObject({ version: '1', citation_key: null });
+    const key = id();
+    const pinned = await patch(endpoint, { citation_key: 'Author_2026:fixture' }, '1', key);
+    expect(pinned.statusCode, pinned.body).toBe(200);
+    expect(pinned.json()).toMatchObject({ version: '2', citation_key: 'Author_2026:fixture', citation_aliases: [fallback] });
+    expect((await patch(endpoint, { citation_key: 'Author_2026:fixture' }, '1', key)).json()).toEqual(pinned.json());
+    expect((await patch(endpoint, { citation_key: 'Another', }, '1')).statusCode).toBe(412);
+    const next = await patch(endpoint, { citation_key: 'Author.2026' }, '2');
+    expect(next.json()).toMatchObject({ version: '3', citation_key: 'Author.2026', citation_aliases: [fallback, 'Author_2026:fixture'] });
+    expect((await patch(otherEndpoint, { citation_key: 'Author_2026:fixture' }, '1')).statusCode).toBe(409);
+    const merge = await post('/research/library/merge', {
+      target_id: refId, target_version: '3', sources: [{ id: sourceId, version: '1' }],
+    });
+    expect(merge.statusCode, merge.body).toBe(200);
+    expect((await get(`/research/references/${refId}`)).json()).toMatchObject({
+      citation_aliases: [fallback, 'Author_2026:fixture', `ref-${sourceId}`], version: '4',
+    });
+    expect((await patch(endpoint, { citation_key: `ref-${sourceId}` }, '4')).json()).toMatchObject({
+      version: '5', citation_key: `ref-${sourceId}`, citation_aliases: [fallback, 'Author_2026:fixture', 'Author.2026'],
+    });
+    expect((await patch(endpoint, { citation_key: fallback }, '5')).json()).toMatchObject({
+      version: '6', citation_key: null, citation_aliases: ['Author_2026:fixture', 'Author.2026', `ref-${sourceId}`],
+    });
+  });
+  it('edits selected references atomically and undoes only the original fields', async () => {
+    const endpoint = '/research/library/batch-edit';
+    const firstId = id();
+    const secondId = id();
+    const firstPath = `/research/references/${firstId}`;
+    const secondPath = `/research/references/${secondId}`;
+    const base = '/research/references';
+    await post(base, { id: firstId, title: 'Batch reference A', tags: ['Algebra', 'old'], year: 2024,
+      citation_key: 'Batch:ReferenceA', publication: { type: 'article', journal: 'Original Journal', volume: '10' } });
+    await post(base, { id: secondId, title: 'Batch reference B', tags: ['old'],
+      publication: { journal: 'Second Journal', publisher: 'Original Press', pages: '1–3' } });
+    const items = [{ id: firstId, version: '1' }, { id: secondId, version: '1' }];
+    const changes = { tags_add: ['geometry', 'ALGEBRA'], tags_remove: ['OLD'], year: null,
+      publication: { type: 'book', journal: null, publisher: 'New Press' } };
+    const command = { items, changes };
+    expect((await post(endpoint, { ...command, items: [...items, { ...items[0], id: firstId.toUpperCase() }] })).statusCode).toBe(422);
+    expect((await post(endpoint, { ...command, items: [items[0], { ...items[1], version: '2' }] })).statusCode).toBe(412);
+    expect((await post(endpoint, { ...command, items: [items[0], { id: id(), version: '1' }] })).statusCode).toBe(404);
+    expect((await get(firstPath)).json()).toMatchObject({ version: '1', tags: ['Algebra', 'old'] });
+    expect((await post(endpoint, { items: [items[0]], changes: { tags_add: Array.from({ length: 40 }, (_, i) => `tag${i}`) } })).statusCode).toBe(422);
+    expect((await post(endpoint, { items: [items[0]], changes: { tags_add: ['algebra'] } })).json()).toEqual({
+      items: [items[0]], changed_count: 0, undo_token: null,
+    });
+    const key = id();
+    const applied = await post(endpoint, command, key);
+    expect(applied.statusCode, applied.body).toBe(200);
+    expect(applied.json()).toEqual({ items: items.map((item) => ({ ...item, version: '2' })), changed_count: 2, undo_token: key });
+    expect((await post(endpoint, command, key)).json()).toEqual(applied.json());
+    expect((await post(endpoint, { ...command, changes: { year: 2026 } }, key)).statusCode).toBe(409);
+    expect((await get(firstPath)).json()).toMatchObject({ title: 'Batch reference A', year: null,
+      tags: ['Algebra', 'geometry'], citation_key: 'Batch:ReferenceA',
+      publication: { type: 'book', publisher: 'New Press', volume: '10' } });
+    expect((await get(secondPath)).json().publication).toEqual({ type: 'book', publisher: 'New Press', pages: '1–3' });
+
+    const undo = `${endpoint}/undo`;
+    const undoKey = id();
+    expect((await post(undo, { undo_token: id() })).statusCode).toBe(404);
+    const undone = await post(undo, { undo_token: key }, undoKey);
+    expect(undone.statusCode, undone.body).toBe(200);
+    expect(undone.json()).toEqual({ items: items.map((item) => ({ ...item, version: '3' })), changed_count: 2 });
+    expect((await post(undo, { undo_token: key }, undoKey)).json()).toEqual(undone.json());
+    expect((await post(undo, { undo_token: key })).statusCode).toBe(412);
+    expect((await get(firstPath)).json()).toMatchObject({ tags: ['Algebra', 'old'], year: 2024, version: '3' });
+    expect((await get(firstPath)).json().publication).toEqual({ type: 'article', journal: 'Original Journal', volume: '10' });
+    expect((await get(secondPath)).json().publication).toEqual({ journal: 'Second Journal', publisher: 'Original Press', pages: '1–3' });
+
+    const next = await post(endpoint, { items: items.map((item) => ({ ...item, version: '3' })), changes: { year: 2026 } });
+    expect((await patch(secondPath, { title: 'Edit after batch' }, '4')).statusCode).toBe(200);
+    const stale = await post(undo, { undo_token: next.json().undo_token });
+    expect(stale.statusCode).toBe(412);
+    expect(stale.json().error.details).toMatchObject({ id: secondId, current_version: '5' });
+    expect((await get(firstPath)).json()).toMatchObject({ year: 2026, version: '4' });
+    expect((await get(secondPath)).json()).toMatchObject({ year: 2026, version: '5' });
+    const expired = await post(endpoint, { items: [{ id: firstId, version: '4' }], changes: { year: 2027 } });
+    const date = vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 25 * 3_600_000);
+    try {
+      expect((await post(undo, { undo_token: expired.json().undo_token })).statusCode).toBe(410);
+    } finally {
+      date.mockRestore();
+    }
+    expect((await get(firstPath)).json()).toMatchObject({ year: 2027, version: '5' });
+  });
+  it('imports standalone references atomically and preserves metadata and citation keys', async () => {
+    const manual = id(), imported = id(), duplicate = id(), invalid = id();
+    const publication = { type: 'article', journal: 'Synthetic Journal of Rings', keywords: 'rings; ideals' };
+    const citationKey = 'Local_Rings:2026';
+    const manuallyAdded = await post('/research/references', { id: manual, title: 'Standalone fixture' });
+    expect(manuallyAdded.statusCode).toBe(201);
+    expect(manuallyAdded.json()).toMatchObject({ project_id: null, citation_key: null, publication: {} });
+
+    const invalidBatch = await post('/research/library/import', { items: [
+      { id: imported, title: 'Valid entry first' }, { id: invalid, title: 'Invalid URL', url: 'file:///tmp/no.pdf' },
+    ] });
+    expect(invalidBatch.statusCode).toBe(422);
+    expect((await get(`/research/references/${imported}`)).statusCode).toBe(404);
+
+    const importBody = { items: [
+      { id: imported, title: 'Local Rings', doi: '10.5555/LOCAL-RINGS', citation_key: citationKey, publication },
+      { id: duplicate, title: 'Local Rings duplicate', doi: '10.5555/local-rings' },
+    ] };
+    const operation = id();
+    const results = await post('/research/library/import', importBody, operation);
+    expect(results.statusCode).toBe(200);
+    expect(results.json()).toEqual({ items: [
+      { id: imported, status: 'imported', reference_id: imported, citation_key: citationKey },
+      { id: duplicate, status: 'skipped', reference_id: imported, citation_key: citationKey, reason: 'duplicate', matched_by: 'doi' },
+    ] });
+    expect((await post('/research/library/import', importBody, operation)).json()).toEqual(results.json());
+    const entry = (await get('/research/library?q=Synthetic%20Journal%20of%20Rings')).json().items[0];
+    expect(entry).toMatchObject({ id: imported, projects: [], citation_key: citationKey, publication });
+    expect((await get(`/research/references/${duplicate}`)).statusCode).toBe(404);
+    const edited = await patch(`/research/references/${imported}`, { title: 'Rings and ideals' }, entry.version);
+    expect(edited.statusCode).toBe(200);
+    expect(edited.json()).toMatchObject({ id: imported, citation_key: citationKey, publication });
+    expect((await get(`/graph?focus=reference:${manual}`)).json()).toMatchObject({
+      nodes: [{ id: `reference:${manual}`, kind: 'paper', label: 'Standalone fixture', href: `/research/library?reference=${manual}` }],
+      edges: [],
+    });
+  });
+
+  it('imports Zotero collections and linked notes atomically without overwriting earlier imports', async () => {
+    const userId = (await get('/me')).json().id;
+    const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+    const fileHash = sha(id());
+    const item = (name: string, doi?: string) => {
+      const resourceHash = sha(name);
+      const hash = sha(`${userId}:${fileHash}:${resourceHash}`);
+      return { id: `${hash.slice(0, 8)}-${hash.slice(8, 12)}-8${hash.slice(13, 16)}-${((Number.parseInt(hash[16], 16) & 3) | 8).toString(16)}${hash.slice(17, 20)}-${hash.slice(20, 32)}`,
+        title: name, doi, import_source: { format: 'zotero-rdf', file_sha256: fileHash, resource_sha256: resourceHash } };
+    };
+    const duplicateDoi = `10.5555/zotero-${fileHash.slice(0, 10)}`;
+    const manual = (await post('/research/references', { id: id(), title: 'Existing independent Zotero match', doi: duplicateDoi })).json();
+    const existingFileItem = item('Zotero previously imported');
+    const duplicateItem = item('Zotero duplicate by DOI', duplicateDoi);
+    const newItem = item('Zotero newly imported');
+    expect((await post('/research/library/import', { items: [existingFileItem] })).statusCode).toBe(200);
+    const parent = sha('top');
+    const child = sha('child');
+    const body = {
+      file_sha256: fileHash, items: [existingFileItem, duplicateItem, newItem], link_existing: false,
+      collections: [
+        { resource_sha256: child, parent_resource_sha256: parent, name: 'Imported child', reference_ids: [newItem.id, duplicateItem.id] },
+        { resource_sha256: parent, parent_resource_sha256: null, name: 'Imported top', reference_ids: [existingFileItem.id] },
+      ],
+      notes: [
+        { resource_sha256: sha('note1'), reference_id: existingFileItem.id, title: 'Imported source note', content: 'Original Zotero text' },
+        { resource_sha256: sha('note2'), reference_id: duplicateItem.id, title: 'Note for an independent duplicate', content: 'Retain only after confirmation' },
+      ],
+    };
+    const path = '/research/library/zotero-rdf/import';
+    const cyclic = { ...body, collections: [body.collections[0], { ...body.collections[1], parent_resource_sha256: child }] };
+    expect((await post(path, cyclic)).statusCode).toBe(422);
+    expect((await get(`/research/references/${newItem.id}`)).statusCode).toBe(404);
+    expect((await post(path, { ...body, items: [...body.items, { ...item('Late invalid URL'), url: 'file:///fixture/never-read' }] })).statusCode).toBe(422);
+    expect((await get(`/research/references/${newItem.id}`)).statusCode).toBe(404);
+    const key = id();
+    const result = await post(path, body, key);
+    expect(result.statusCode, result.body).toBe(200);
+    expect(result.json()).toMatchObject({ collections_created: 3, memberships_created: 2, memberships_skipped: 1, notes_created: 1, notes_skipped: 1 });
+    expect((await post(path, body, key)).json()).toEqual(result.json());
+    const collectionList = (await get('/research/library/collections')).json().items;
+    const root = collectionList.find((entry: any) => entry.name === `Zotero import ${fileHash.slice(0, 8)}`);
+    const top = collectionList.find((entry: any) => entry.parent_id === root.id);
+    const nested = collectionList.find((entry: any) => entry.parent_id === top.id);
+    expect(nested.name).toBe('Imported child');
+    expect((await get(`/research/library?collection_id=${nested.id}`)).json().items.map((entry: any) => entry.id)).toEqual([newItem.id]);
+    const sourceNote = (await get(`/research/references/${existingFileItem.id}/knowledge-links`)).json().items[0];
+    expect(sourceNote.title).toBe('Imported source note');
+    const snapshot = (await get(`/knowledge-items/${sourceNote.knowledge_item_id}`)).json();
+    const edit = await patch(`/knowledge-items/${sourceNote.knowledge_item_id}`, { content: 'Keep my edits', base_snapshot: snapshot }, snapshot.version);
+    expect(edit.statusCode, edit.body).toBe(200);
+    const reimport = await post(path, { ...body, link_existing: true });
+    expect(reimport.statusCode, reimport.body).toBe(200);
+    expect(reimport.json()).toMatchObject({ collections_kept: 3, memberships_kept: 2, memberships_created: 1, notes_kept: 1, notes_created: 1 });
+    expect((await get(`/knowledge-items/${sourceNote.knowledge_item_id}`)).json().content).toBe('Keep my edits');
+    expect((await get(`/research/references/${manual.id}`)).json().title).toBe('Existing independent Zotero match');
+    expect((await get(`/research/references/${manual.id}/knowledge-links`)).json().items[0].title).toBe('Note for an independent duplicate');
+    expect((await patch(`/research/library/collections/${nested.id}`, { parent_id: null }, nested.version)).statusCode).toBe(200);
+    const afterMove = item('Zotero late transactional rollback');
+    expect((await post(path, { ...body, items: [...body.items, afterMove] })).statusCode).toBe(409);
+    expect((await get(`/research/references/${afterMove.id}`)).statusCode).toBe(404);
+  });
+
+  it('imports a notes-only Zotero export, preserves collection tags and never restores deleted notes', async () => {
+    const sha = (value: string) => createHash('sha256').update(value).digest('hex');
+    const suffix = id();
+    const fileHash = sha(suffix);
+    const title = `Independent Zotero note ${suffix}`;
+    const note = { resource_sha256: sha('note'), title, content: 'Original standalone note',
+      collection_paths: [['Algebra', 'Ideas'], ['Spring reading']] };
+    const body = { file_sha256: fileHash, items: [], collections: [], notes: [], standalone_notes: [note], link_existing: false };
+    const path = '/research/library/zotero-rdf/import';
+    expect((await post('/research/library/import', { items: [] })).statusCode).toBe(422);
+    expect((await post(path, { ...body, standalone_notes: [] })).statusCode).toBe(422);
+    expect((await post(path, { ...body, standalone_notes: [note, note] })).statusCode).toBe(422);
+    expect((await post(path, { ...body, standalone_notes: [note, { ...note, resource_sha256: sha('bad'), collection_paths: [['A'.repeat(120), 'B'.repeat(120), 'C'.repeat(120)]] }] })).statusCode).toBe(422);
+    const lookup = `/knowledge-items?subject=Zotero%20notes&q=${suffix}`;
+    expect((await get(lookup)).json().items).toEqual([]);
+    const result = await post(path, body);
+    expect(result.statusCode, result.body).toBe(200);
+    expect(result.json()).toMatchObject({ items: [], standalone_notes_created: 1, standalone_notes_kept: 0 });
+    const [imported] = (await get(lookup)).json().items;
+    const editPath = `/knowledge-items/${imported.id}`;
+    expect(imported).toMatchObject({ type: 'note', title, content: note.content,
+      tags: ['Zotero collection: Algebra › Ideas', 'Zotero collection: Spring reading'] });
+    expect((await get(`/knowledge-items?tag=${encodeURIComponent('Zotero collection: Algebra › Ideas')}`)).json().items).toContainEqual(imported);
+    const edited = await patch(editPath, { base_snapshot: imported, title: 'My title', content: 'My note edits', tags: ['My tag'] }, imported.version);
+    expect(edited.statusCode, edited.body).toBe(200);
+    expect((await post(path, body)).json()).toMatchObject({ standalone_notes_created: 0, standalone_notes_kept: 1 });
+    expect((await get(editPath)).json()).toMatchObject({ title: 'My title', content: 'My note edits', tags: ['My tag'] });
+    const removed = await app.inject({ method: 'DELETE', url: `/api/v1${editPath}`,
+      headers: { 'If-Match': `"${edited.json().version}"`, 'Idempotency-Key': id() } });
+    expect(removed.statusCode).toBe(204);
+    expect((await post(path, body)).json()).toMatchObject({ standalone_notes_created: 0, standalone_notes_kept: 0, standalone_notes_skipped: 1 });
+    expect((await get(editPath)).statusCode).toBe(404);
+  });
+
+  it('links the same standalone reference to multiple projects and detaches it independently', async () => {
+    const reference = (await post('/research/references', {
+      id: id(), title: 'Canonical link fixture', citation_key: 'Canonical:fixture',
+    })).json();
+    const first = (await post('/research/projects', { id: id(), title: 'Canonical first project' })).json();
+    const second = (await post('/research/projects', { id: id(), title: 'Canonical second project' })).json();
+    const link = (project: string, referenceId = reference.id) => post('/research/reference-links', {
+      id: id(), project_id: project, reference_id: referenceId,
+    });
+    const [firstLink, secondLink] = await Promise.all([link(first.id), link(second.id)]);
+    expect(firstLink.statusCode).toBe(201);
+    expect(secondLink.statusCode).toBe(201);
+    expect((await link(first.id)).statusCode).toBe(409);
+    const legacy = (await post('/research/references', {
+      id: id(), project_id: first.id, title: 'Canonical legacy fixture',
+    })).json();
+    expect((await link(second.id, legacy.id)).statusCode).toBe(422);
+    expect((await get(`/research/reference-links?reference_id=${reference.id}`)).json().items).toHaveLength(2);
+    for (const [project, result] of [[first, firstLink], [second, secondLink]] as const) {
+      const bibliography = (await get(`/research/projects/${project.id}/bibliography`)).json().items;
+      expect(bibliography).toContainEqual(expect.objectContaining({
+        id: reference.id, citation_key: reference.citation_key, link_id: result.json().id, link_version: '1',
+      }));
+    }
+    const library = (await get('/research/library?q=Canonical&standalone=true')).json().items;
+    expect(library).toEqual([expect.objectContaining({ id: reference.id, project_id: null,
+      projects: [{ id: first.id, title: first.title }, { id: second.id, title: second.title }],
+    })]);
+    const graph = (await get(`/graph?focus=reference:${reference.id}&depth=1`)).json();
+    expect(graph.edges).toEqual(expect.arrayContaining([first, second].map((project) => ({
+      source: `project:${project.id}`, target: `reference:${reference.id}`, kind: 'project_reference',
+    }))));
+    const remove = (path: string, version: string) => app.inject({
+      method: 'DELETE', url: `/api/v1${path}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': `"${version}"` },
+    });
+    expect((await remove(`/research/reference-links/${firstLink.json().id}`, '1')).statusCode).toBe(204);
+    expect((await remove(`/research/projects/${second.id}`, '1')).statusCode).toBe(204);
+    expect((await get(`/research/references/${reference.id}`)).json()).toMatchObject({ version: '1' });
+    expect((await get(`/research/reference-links?reference_id=${reference.id}`)).json().items).toEqual([]);
+    expect((await link(first.id)).statusCode).toBe(201);
+    expect((await remove(`/research/references/${reference.id}`, '1')).statusCode).toBe(204);
+    expect((await get(`/research/reference-links?reference_id=${reference.id}`)).json().items).toEqual([]);
+  });
+
+  it('organizes references in nested collections with independent membership and exact tags', async () => {
+    const collections = '/research/library/collections';
+    const memberships = '/research/library/memberships';
+    const createCollection = (name: string, parentId: string | null = null) =>
+      post(collections, { id: id(), name, parent_id: parentId });
+    const root = (await createCollection('  Algebra  ')).json();
+    expect(root).toMatchObject({ name: 'Algebra', parent_id: null, version: '1' });
+    expect((await createCollection('algebra')).statusCode).toBe(409);
+    const child = (await createCollection('Commutative', root.id)).json();
+    const grandchild = (await createCollection('Ideals', child.id)).json();
+    const otherRoot = (await createCollection('Geometry')).json();
+    expect((await patch(`${collections}/${root.id}`, { parent_id: grandchild.id }, '1')).statusCode).toBe(422);
+    expect((await patch(`${collections}/${root.id}`, { parent_id: root.id }, '1')).statusCode).toBe(422);
+    expect((await patch(`${collections}/${child.id}`, { parent_id: id() }, '1')).statusCode).toBe(404);
+    const moved = await patch(`${collections}/${child.id}`, { name: 'Rings', parent_id: otherRoot.id }, '1');
+    expect(moved.json()).toMatchObject({ name: 'Rings', parent_id: otherRoot.id, version: '2' });
+    expect((await patch(`${collections}/${child.id}`, { parent_id: null }, '1')).statusCode).toBe(412);
+    expect((await get(collections)).json().items.map((row: { id: string }) => row.id)).toEqual(
+      expect.arrayContaining([root.id, child.id, grandchild.id, otherRoot.id]),
+    );
+
+    const fixture = (await post('/research/references', {
+      id: id(), title: 'Bibliography membership fixture', tags: [' Rings ', 'rings', ' Abstract Algebra ', ' '],
+    })).json();
+    expect(fixture.tags).toEqual(['Rings', 'Abstract Algebra']);
+    const link = (collection: string) => post(memberships, { id: id(), collection_id: collection, reference_id: fixture.id });
+    const first = (await link(child.id)).json();
+    expect((await link(child.id)).statusCode).toBe(409);
+    const second = (await link(root.id)).json();
+    expect((await get(`${memberships}?reference_id=${fixture.id}`)).json().items.map((row: { id: string }) => row.id)).toEqual(
+      expect.arrayContaining([first.id, second.id]),
+    );
+    const inCollection = (await get(`/research/library?collection_id=${child.id}&tag=RINGS`)).json().items;
+    expect(inCollection.map((row: { id: string }) => row.id)).toEqual([fixture.id]);
+    expect((await get(`/research/library?collection_id=${child.id}&tag=RING`)).json().items).toEqual([]);
+    expect((await get(`/research/library?collection_id=${grandchild.id}`)).json().items).toEqual([]);
+    expect((await get(`/research/library?q=Abstract%20Algebra`)).json().items).toContainEqual(
+      expect.objectContaining({ id: fixture.id }),
+    );
+    const remove = (path: string, version = '1') => app.inject({
+      method: 'DELETE', url: `/api/v1${path}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': `"${version}"` },
+    });
+    expect((await remove(`${collections}/${root.id}`)).statusCode).toBe(409);
+    expect((await remove(`${collections}/${child.id}`, '2')).statusCode).toBe(409);
+    expect((await remove(`${memberships}/${second.id}`)).statusCode).toBe(204);
+    expect((await remove(`${collections}/${root.id}`)).statusCode).toBe(204);
+    expect((await get(`/research/references/${fixture.id}`)).statusCode).toBe(200);
+    expect((await get(`/research/library?collection_id=${root.id}`)).statusCode).toBe(404);
+    expect((await remove(`/research/references/${fixture.id}`)).statusCode).toBe(204);
+    expect((await get(`${memberships}?collection_id=${child.id}`)).json().items).toEqual([]);
+    expect((await get(`${collections}/${child.id}`)).statusCode).toBe(200);
+  });
+
+  it('merges versioned standalone duplicates without losing citations or relationships', async () => {
+    const target = (await post('/research/references', {
+      id: id(), title: 'Canonical Merge Rings', authors: ['Example, Ada'], year: 2026,
+      citation_key: 'Merge:target', arxiv_id: '2611.12341v1', tags: ['Rings'],
+      publication: { journal: 'Target journal' },
+    })).json();
+    const source = (await post('/research/references', {
+      id: id(), title: 'Canonical  Merge Rings', authors: ['EXAMPLE, ADA'], year: 2026,
+      citation_key: 'Merge:source', arxiv_id: '2611.12341v2', doi: '10.5555/merge-fixture',
+      tags: ['rings', 'Ideals'], publication: { journal: 'Source journal', volume: '10' },
+    })).json();
+    const project = (await post('/research/projects', { id: id(), title: 'Duplicate merge project' })).json();
+    const collection = (await post('/research/library/collections', { id: id(), name: 'Duplicate merge collection' })).json();
+    const sourceLink = (await post('/research/reference-links', {
+      id: id(), project_id: project.id, reference_id: source.id,
+    })).json();
+    const targetMembership = (await post('/research/library/memberships', {
+      id: id(), collection_id: collection.id, reference_id: target.id,
+    })).json();
+    expect((await post('/research/library/memberships', {
+      id: id(), collection_id: collection.id, reference_id: source.id,
+    })).statusCode).toBe(201);
+    const duplicates = await get('/research/library/duplicates');
+    expect(duplicates.statusCode).toBe(200);
+    expect(duplicates.json().items).toContainEqual(expect.objectContaining({
+      matched_by: 'arxiv_id', value: '2611.12341', references: expect.arrayContaining([
+        expect.objectContaining({ id: target.id }), expect.objectContaining({ id: source.id }),
+      ]),
+    }));
+    const mergePath = '/research/library/merge';
+    const body = { target_id: target.id, target_version: target.version, sources: [{ id: source.id, version: source.version }] };
+    expect((await post(mergePath, { ...body, sources: [{ id: source.id, version: '999' }] })).statusCode).toBe(412);
+    expect((await get(`/research/references/${source.id}`)).json().id).toBe(source.id);
+    expect((await post(mergePath, { ...body, sources: [{ id: id(), version: '1' }] })).statusCode).toBe(404);
+    const mismatch = (await post('/research/references', {
+      id: id(), title: 'Different identifier', arxiv_id: '2611.12342',
+    })).json();
+    expect((await post(mergePath, { ...body, sources: [...body.sources, { id: mismatch.id, version: '1' }] })).statusCode).toBe(422);
+    expect((await get(`/research/references/${source.id}`)).json().id).toBe(source.id);
+    const key = id();
+    const result = await post(mergePath, body, key);
+    expect(result.statusCode, result.body).toBe(200);
+    expect(result.json()).toMatchObject({ reference: {
+      id: target.id, version: '2', citation_key: 'Merge:target',
+      citation_aliases: [`ref-${source.id}`, 'Merge:source'],
+      doi: '10.5555/merge-fixture', arxiv_id: '2611.12341v1', tags: ['Rings', 'Ideals'],
+      publication: { journal: 'Target journal', volume: '10' },
+    }, merged_ids: [source.id] });
+    expect((await post(mergePath, body, key)).json()).toEqual(result.json());
+    expect((await get(`/research/references/${source.id}`)).json().id).toBe(target.id);
+    expect((await get(`/graph?focus=reference:${source.id}`)).json().nodes).toContainEqual(
+      expect.objectContaining({ id: `reference:${target.id}` }),
+    );
+    expect((await get(`/research/projects/${project.id}/bibliography`)).json().items).toEqual([
+      expect.objectContaining({ id: target.id, link_id: sourceLink.id, citation_aliases: [`ref-${source.id}`, 'Merge:source'] }),
+    ]);
+    expect((await get(`/research/library/memberships?collection_id=${collection.id}`)).json().items).toEqual([
+      expect.objectContaining({ id: targetMembership.id, reference_id: target.id }),
+    ]);
+    expect((await post('/research/references', { id: id(), title: 'Conflicting key', citation_key: 'Merge:source' })).statusCode).toBe(409);
+    expect((await post('/research/library/import', { items: [{ id: id(), title: 'Old citation', citation_key: 'Merge:source' }] })).json().items).toEqual([
+      expect.objectContaining({ status: 'skipped', matched_by: 'citation_key', reference_id: target.id }),
+    ]);
+    expect((await get('/research/library/duplicates')).json().items).not.toContainEqual(
+      expect.objectContaining({ matched_by: 'arxiv_id', value: '2611.12341' }),
+    );
+  });
+
+  it('syncs saved search filters without broadening deleted collection scope', async () => {
+    const searches = '/research/library/saved-searches';
+    const collection = (await post('/research/library/collections', { id: id(), name: 'Saved-search fixture collection' })).json();
+    const searchId = id();
+    const payload = { id: searchId, name: '  Read later  ', query: '  module  ', tag: ' Algebra ', collection_id: collection.id };
+    const created = await post(searches, payload);
+    expect(created.statusCode).toBe(201);
+    expect(created.json()).toMatchObject({ id: searchId, name: 'Read later', query: 'module', tag: 'Algebra', collection_id: collection.id });
+    expect((await post(searches, { id: id(), name: 'read later' })).statusCode).toBe(409);
+    expect((await post(searches, { id: id(), name: 'Foreign collection', collection_id: id() })).statusCode).toBe(404);
+    const remove = (path: string, version: string) => app.inject({
+      method: 'DELETE', url: `/api/v1${path}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': `"${version}"` },
+    });
+    expect((await remove(`/research/library/collections/${collection.id}`, '1')).statusCode).toBe(204);
+    expect((await get(`/research/library?collection_id=${collection.id}`)).statusCode).toBe(404);
+    const stillSaved = (await get(searches)).json().items.find((search: { id: string }) => search.id === searchId);
+    expect(stillSaved.collection_id).toBe(collection.id);
+    const renamed = await patch(`${searches}/${searchId}`, { name: 'Old collection search' }, '1');
+    expect(renamed.json()).toMatchObject({ name: 'Old collection search', version: '2', collection_id: collection.id });
+    expect((await patch(`${searches}/${searchId}`, { collection_id: null }, '1')).statusCode).toBe(412);
+    const device = (await post('/devices', { id: id(), name: 'Literature sync', platform: 'web' })).json();
+    const snapshot = (await post('/sync/snapshots', { device_id: device.id })).json();
+    const page = (await get(`/sync/snapshots/${snapshot.id}/records?limit=500`)).json();
+    expect(page.records).toContainEqual(expect.objectContaining({
+      entity_type: 'literature_saved_search', entity_id: searchId,
+      data: expect.objectContaining({ collection_id: collection.id, name: 'Old collection search' }),
+    }));
+    expect((await remove(`${searches}/${searchId}`, '2')).statusCode).toBe(204);
+    expect((await get(`${searches}/${searchId}`)).statusCode).toBe(404);
+  });
+
+  it('combines bounded advanced literature conditions and preserves saved filters', async () => {
+    const reference = async (title: string, authors: string[], year: number, tags: string[]) =>
+      (await post('/research/references', { id: id(), title, authors, year, tags })).json();
+    const first = await reference('Search fixture algebra', ['Ada Example'], 2023, ['Rings']);
+    const second = await reference('Search fixture geometry', ['Benoit Example'], 2024, ['Rings']);
+    const third = await reference('Search fixture obsolete', ['Ada Example'], 2020, ['Geometry']);
+    const collection = (await post('/research/library/collections', { id: id(), name: 'Advanced search fixture' })).json();
+    const member = await post('/research/library/memberships', { id: id(), collection_id: collection.id, reference_id: first.id });
+    expect(member.statusCode).toBe(201);
+    const conditions = { all: [
+      { any: [
+        { field: 'author', operator: 'contains', value: 'Ada' },
+        { field: 'year', operator: 'gte', value: 2024 },
+      ] },
+      { not: { field: 'tag', operator: 'equals', value: 'GEOMETRY' } },
+    ] };
+    const searchPath = '/research/library/search';
+    const search = (body: Record<string, unknown>) => post(searchPath, body);
+    const page = await search({ conditions, q: 'search fixture', limit: 1 });
+    expect(page.statusCode, page.body).toBe(200);
+    expect(page.json().items).toEqual([expect.objectContaining({ id: first.id })]);
+    const cursor = page.json().next_cursor;
+    expect(cursor).toBeTruthy();
+    expect((await search({ conditions, q: 'search fixture', cursor })).json().items).toEqual([
+      expect.objectContaining({ id: second.id }),
+    ]);
+    expect((await search({ conditions, q: 'fixture', cursor })).statusCode).toBe(422);
+    expect((await search({ conditions, tag: 'geometry' })).json().items).toEqual([]);
+    expect((await search({ conditions, collection_id: collection.id })).json().items).toEqual([
+      expect.objectContaining({ id: first.id }),
+    ]);
+    expect((await search({ conditions: { field: 'title', operator: 'contains', value: "%' OR 1=1 --" } })).json().items).toEqual([]);
+    expect((await search({ conditions: { all: [] } })).statusCode).toBe(422);
+    expect((await search({ conditions: { field: 'year', operator: 'contains', value: 2024 } })).statusCode).toBe(422);
+    let deep: Record<string, unknown> = { field: 'year', operator: 'equals', value: 2024 };
+    for (let index = 0; index < 5; index++) deep = { not: deep };
+    expect((await search({ conditions: deep })).statusCode).toBe(422);
+    expect((await search({ conditions: { not: { field: 'collection', operator: 'equals', value: id() } } })).statusCode).toBe(404);
+    expect((await search({ conditions: { all: [
+      { field: 'title', operator: 'equals', value: third.title },
+      { field: 'has_attachment', operator: 'equals', value: false },
+      { field: 'source', operator: 'equals', value: 'reference' },
+    ] } })).json().items).toEqual([expect.objectContaining({ id: third.id })]);
+
+    const savedPath = '/research/library/saved-searches';
+    const saved = await post(savedPath, { id: id(), name: 'Advanced fixture', conditions });
+    expect(saved.statusCode, saved.body).toBe(201);
+    const savedId = saved.json().id;
+    expect((await get(`${savedPath}/${savedId}`)).json().conditions).toEqual(conditions);
+    const cleared = await patch(`${savedPath}/${savedId}`, { conditions: null }, '1');
+    expect(cleared.statusCode, cleared.body).toBe(200);
+    expect(cleared.json().conditions).toBeNull();
+    const basic = await post(savedPath, { id: id(), name: 'Basic fixture', query: 'rings', conditions: null });
+    expect(basic.statusCode, basic.body).toBe(201);
+    expect(basic.json()).toMatchObject({ name: 'Basic fixture', query: 'rings', conditions: null });
+  });
+
+  it('searches live linked Knowledge note content with normalized advanced conditions', async () => {
+    const token = id();
+    const first = id(), second = id(), third = id();
+    for (const [reference, title] of [[first, `Linked ${token}`], [second, `Theorem ${token}`], [third, `Unlinked ${token}`]])
+      expect((await post('/research/references', { id: reference, title })).statusCode).toBe(201);
+    const body = 'The GRÖBNER\n\t basis argument includes the literal characters % and _.';
+    const note = { id: id(), link_id: id(), title: 'Research note', content: body };
+    expect((await post(`/research/references/${first}/notes`, note)).statusCode).toBe(201);
+    const theorem = (await post('/knowledge-items', { id: id(), title: 'Research theorem', content: body, type: 'theorem' })).json();
+    expect((await post(`/research/references/${second}/knowledge-links`, { id: id(), knowledge_item_id: theorem.id })).statusCode).toBe(201);
+    expect((await post('/knowledge-items', { id: id(), title: 'Unlinked matching note', content: body, type: 'note' })).statusCode).toBe(201);
+    const match = { field: 'note_text', operator: 'contains', value: '  grobner   BASIS  ' };
+    const search = (conditions: Record<string, unknown>) => post('/research/library/search', { q: token, conditions });
+    expect((await search({ all: [{ field: 'source', operator: 'equals', value: 'reference' }, match] })).json().items)
+      .toEqual([expect.objectContaining({ id: first })]);
+    expect((await search({ not: match })).json().items.map((item: { id: string }) => item.id).sort()).toEqual([second, third].sort());
+    expect((await search({ ...match, value: '%' })).json().items).toEqual([expect.objectContaining({ id: first })]);
+    expect((await search({ ...match, value: "%' OR 1=1 --" })).json().items).toEqual([]);
+    expect((await search({ ...match, operator: 'equals' })).statusCode).toBe(422);
+    const saved = await post('/research/library/saved-searches', { id: id(), name: `Linked note ${token}`, conditions: match });
+    expect(saved.statusCode).toBe(201);
+    expect((await get(`/research/library/saved-searches/${saved.json().id}`)).json().conditions).toEqual(match);
+    const remove = (path: string, version = '1') => app.inject({ method: 'DELETE', url: `/api/v1${path}`,
+      headers: { 'If-Match': `"${version}"`, 'Idempotency-Key': id() } });
+    expect((await remove(`/research/reference-knowledge-links/${note.link_id}`)).statusCode).toBe(204);
+    expect((await search(match)).json().items).toEqual([]);
+    expect((await post(`/research/references/${first}/knowledge-links`, { id: id(), knowledge_item_id: note.id })).statusCode).toBe(201);
+    expect((await search(match)).json().items).toHaveLength(1);
+    expect((await remove(`/knowledge-items/${note.id}`)).statusCode).toBe(204);
+    expect((await search(match)).json().items).toEqual([]);
+  });
+
+  it('filters literature by identifiers and workspace-local calendar dates across midnight', async () => {
+    const referenceId = id();
+    const title = 'Calendar and identifier fixture';
+    expect((await post('/research/references', { id: referenceId, title,
+      publication: { pmcid: 'PMC1234567', issn: '1234-5679' },
+    })).statusCode).toBe(201);
+    const profile = (await get('/me')).json();
+    expect((await patch('/me', { timezone: 'Europe/Budapest' }, profile.version)).statusCode).toBe(200);
+    await db.transaction(app.prism.config.userId, (sql) => sql.query(`UPDATE research_references
+      SET created_at='2025-12-31T23:30:00Z'::timestamptz, updated_at='2026-01-02T23:30:00Z'::timestamptz WHERE id=$1`, [referenceId]));
+    const search = (condition: Record<string, unknown>) => post('/research/library/search', { q: title, conditions: condition });
+    expect((await search({ all: [
+      { field: 'date_added', operator: 'equals', value: '2026-01-01' },
+      { field: 'date_modified', operator: 'gte', value: '2026-01-03' },
+      { field: 'pmcid', operator: 'equals', value: 'pmc1234567' },
+      { field: 'issn', operator: 'equals', value: '1234-5679' },
+    ] })).json().items).toEqual([expect.objectContaining({ id: referenceId })]);
+    expect((await search({ field: 'date_added', operator: 'lte', value: '2025-12-31' })).json().items).toEqual([]);
+    expect((await search({ field: 'date_added', operator: 'equals', value: '2026-02-30' })).statusCode).toBe(422);
+    expect((await get('/research/library?q=PMC1234567')).json().items).toEqual([expect.objectContaining({ id: referenceId })]);
+    if (profile.timezone !== 'Europe/Budapest') {
+      const changed = (await get('/me')).json();
+      await patch('/me', { timezone: profile.timezone }, changed.version);
+    }
+  });
+
+  it('publishes verified PDF attachments without exposing partial files or upload bytes', async () => {
+    const original = (await post('/research/references', { id: id(), title: 'PDF fixture reference' })).json();
+    const target = (await post('/research/references', { id: id(), title: 'PDF fixture merge target' })).json();
+    const attachmentId = id();
+    const bytes = Buffer.concat([Buffer.from('%PDF-1.7\n'), Buffer.alloc(524288), Buffer.from('\n%%EOF\n')]);
+    const upload = {
+      id: attachmentId, file_name: 'Épreuve λ.pdf', size_bytes: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    };
+    const begin = `/research/references/${original.id}/pdf`;
+    const list = (referenceId: string) => `/research/references/${referenceId}/pdfs`;
+    const base = `/research/reference-pdfs/${attachmentId}`;
+    const send = (offset: number, data: string) => app.inject({
+      method: 'PUT', url: '/api/v1' + base + '/chunk',
+      headers: { 'Idempotency-Key': id() }, payload: { offset, data },
+    });
+    const started = await post(begin, upload);
+    expect(started.statusCode, started.body).toBe(200);
+    expect(started.json()).toMatchObject({ id: attachmentId, status: 'uploading', next_offset: 0, version: '1' });
+    expect((await get(list(original.id))).json().items).toEqual([]);
+    expect((await get(base + '/download')).statusCode).toBe(404);
+    const readingPosition = base + '/reading-position';
+    const setPage = (payload: { page: number; expected_version?: string | null }, key = id()) => app.inject({
+      method: 'PUT', url: '/api/v1' + readingPosition, headers: { 'Idempotency-Key': key }, payload,
+    });
+    expect((await get(readingPosition)).statusCode).toBe(404);
+    expect((await setPage({ page: 2 })).statusCode).toBe(404);
+    const annotations = base + '/annotations';
+    const annotationId = id();
+    const annotation = {
+      id: annotationId, page: 2, kind: 'highlight', color: 'green', text: 'Selected text',
+      comment: 'Connection to proof', rects: [{ x: 0.2, y: 0.3, width: 0.4, height: 0.04 }],
+    };
+    expect((await post(annotations, annotation)).statusCode).toBe(404);
+    const first = bytes.subarray(0, 524288).toString('base64');
+    const last = bytes.subarray(524288).toString('base64');
+    expect((await send(524288, last)).statusCode).toBe(409);
+    expect((await send(0, first)).json()).toEqual({ next_offset: 524288 });
+    expect((await send(0, first)).json()).toEqual({ next_offset: 524288 });
+    expect((await send(0, last)).statusCode).toBe(409);
+    expect((await post(base + '/complete', {})).statusCode).toBe(409);
+    expect((await send(524288, last)).json()).toEqual({ next_offset: bytes.length });
+    const ready = await post(base + '/complete', {});
+    expect(ready.statusCode, ready.body).toBe(200);
+    expect(ready.json()).toMatchObject({ id: attachmentId, status: 'ready', version: '2' });
+    expect((await post(begin, { ...upload, id: id() })).json().id).toBe(attachmentId);
+    const exportJob = await post('/exports', { formats: ['json', 'attachments'] });
+    expect(exportJob.statusCode).toBe(202);
+    await app.prism.service.processExports();
+    const archivePath = `/exports/${exportJob.json().id}`;
+    const exported = (await get(archivePath)).json();
+    expect(exported.status, JSON.stringify(exported)).toBe('ready');
+    const name = `attachments/${attachmentId}.pdf`;
+    expect(exported.manifest.files).toContainEqual(expect.objectContaining({ path: name, sha256: upload.sha256 }));
+    const archive = await get(archivePath + '/download');
+    const { unzipSync } = createRequire(new URL('../../packages/core/package.json', import.meta.url))('fflate') as {
+      unzipSync: (input: Uint8Array) => Record<string, Uint8Array>;
+    };
+    const files = unzipSync(archive.rawPayload);
+    expect(Buffer.from(files[name])).toEqual(bytes);
+    expect(JSON.parse(Buffer.from(files['attachments.json']).toString())).toContainEqual(expect.objectContaining({
+      id: attachmentId, reference_id: original.id, sha256: upload.sha256, path: name,
+    }));
+
+    expect((await get(readingPosition)).json()).toEqual({ position: null });
+    expect((await setPage({ page: 0 })).statusCode).toBe(422);
+    const positionKey = id();
+    const position = await setPage({ page: 2, expected_version: null }, positionKey);
+    expect(position.statusCode).toBe(200);
+    expect(await validateApiResponse('PUT', readingPosition, position.statusCode, position.json())).toEqual([]);
+    expect(position.json()).toMatchObject({ position: { id: attachmentId, pdf_id: attachmentId, page: 2, version: '1' } });
+    expect((await setPage({ page: 2, expected_version: null }, positionKey)).json()).toEqual(position.json());
+    expect((await setPage({ page: 2 })).json()).toEqual(position.json());
+    expect((await setPage({ page: 4, expected_version: null })).statusCode).toBe(412);
+    expect((await setPage({ page: 3, expected_version: '1' })).json()).toMatchObject({ position: { page: 3, version: '2' } });
+    expect((await get(readingPosition)).json()).toMatchObject({ position: { page: 3, version: '2' } });
+
+    expect((await post(annotations, { ...annotation, rects: [{ x: 0.9, y: 0.3, width: 0.4, height: 0.04 }] })).statusCode).toBe(422);
+    const createdAnnotation = await post(annotations, annotation);
+    expect(createdAnnotation.statusCode, createdAnnotation.body).toBe(201);
+    expect(createdAnnotation.json()).toMatchObject({ ...annotation, pdf_id: attachmentId, version: '1' });
+    expect((await get(annotations + '?page=1')).json().items).toEqual([]);
+    expect((await get(annotations + '?page=2')).json().items).toHaveLength(1);
+    const edited = await patch(`/research/pdf-annotations/${annotationId}`, { color: 'blue', kind: 'underline' }, '1');
+    expect(edited.json()).toMatchObject({ color: 'blue', kind: 'underline', version: '2' });
+    expect((await patch(`/research/pdf-annotations/${annotationId}`, { comment: 'stale' }, '1')).statusCode).toBe(412);
+
+    const stickyId = id();
+    const sticky = {
+      id: stickyId, page: 1, kind: 'note', color: 'pink', comment: 'Sticky note on a syzygy',
+      rects: [{ x: 0.2, y: 0.3, width: 0.04, height: 0.04 }],
+    };
+    expect((await post(annotations, { ...sticky, comment: '   ' })).statusCode).toBe(422);
+    expect((await post(annotations, { ...sticky, rects: [...sticky.rects, ...sticky.rects] })).statusCode).toBe(422);
+    const stickyResult = await post(annotations, sticky);
+    expect(stickyResult.statusCode, stickyResult.body).toBe(201);
+    expect(stickyResult.json()).toMatchObject({ ...sticky, text: '', pdf_id: attachmentId, version: '1' });
+    expect((await patch(`/research/pdf-annotations/${stickyId}`, { comment: '' }, '1')).statusCode).toBe(422);
+    expect((await patch(`/research/pdf-annotations/${stickyId}`, { comment: 'Revised note on a syzygy' }, '1')).json()).toMatchObject({
+      kind: 'note', comment: 'Revised note on a syzygy', version: '2',
+    });
+    expect((await get('/research/library/full-text?q=syzygy')).json().items).toEqual([
+      expect.objectContaining({ annotation_id: stickyId, kind: 'annotation', page: 1 }),
+    ]);
+
+    const areaId = id();
+    const areaPath = `/research/pdf-annotations/${areaId}`;
+    const area = {
+      id: areaId, page: 2, kind: 'area', color: 'green',
+      rects: [{ x: 0.2, y: 0.3, width: 0.35, height: 0.2 }],
+    };
+    expect((await post(annotations, { ...area, rects: [...area.rects, ...area.rects] })).statusCode).toBe(422);
+    const createdArea = await post(annotations, area);
+    expect(createdArea.statusCode, createdArea.body).toBe(201);
+    expect(createdArea.json()).toMatchObject({ ...area, comment: '', text: '', pdf_id: attachmentId, version: '1' });
+    expect((await patch(areaPath, { rects: [...area.rects, ...area.rects] }, '1')).statusCode).toBe(422);
+    expect((await patch(areaPath, { comment: 'Highlighted area depicts a monomial diagram' }, '1')).json())
+      .toMatchObject({ kind: 'area', comment: 'Highlighted area depicts a monomial diagram', version: '2' });
+    expect((await get('/research/library/full-text?q=monomial%20diagram')).json().items).toEqual([
+      expect.objectContaining({ annotation_id: areaId, kind: 'annotation', page: 2 }),
+    ]);
+
+    const inkId = id();
+    const ink = {
+      ...area, id: inkId, kind: 'ink', color: 'purple', comment: 'A hand-drawn arrow',
+      tags: ['Proof technique', 'proof technique', ' reread '],
+      ink_path: [{ x: 0.21, y: 0.31 }, { x: 0.38, y: 0.43 }, { x: 0.52, y: 0.32 }],
+    };
+    expect((await post(annotations, { ...ink, ink_path: [{ x: 0.8, y: 0.4 }, ink.ink_path[0]] })).statusCode).toBe(422);
+    expect((await post(annotations, { ...ink, kind: 'area' })).statusCode).toBe(422);
+    const createdInk = await post(annotations, ink);
+    expect(createdInk.statusCode, createdInk.body).toBe(201);
+    expect(createdInk.json()).toMatchObject({ ...ink, tags: ['Proof technique', 'reread'] });
+    expect((await patch(`/research/pdf-annotations/${inkId}`, { color: 'blue' }, '1')).json())
+      .toMatchObject({ color: 'blue', ink_path: ink.ink_path, version: '2' });
+    expect((await post('/research/library/search', { conditions: { field: 'annotation_tag', operator: 'equals', value: 'PROOF TECHNIQUE' } })).json().items)
+      .toMatchObject([{ id: original.id }]);
+
+    const index = base + '/text-index';
+    expect((await get(index)).json()).toEqual({ status: 'missing', index_id: null, page_count: 0, next_page: 1, text_mode: null });
+    const indexId = id();
+    expect((await post(index, { index_id: indexId, page_count: 2 })).json()).toEqual({
+      index_id: indexId, status: 'indexing', next_page: 1, page_count: 2, text_mode: 'embedded',
+    });
+    const put = (index_id: string, start_page: number, pages: string[], text_mode?: 'local-ocr') => app.inject({
+      method: 'PUT', url: `/api/v1${index}/pages`,
+      headers: { 'Idempotency-Key': id() }, payload: { index_id, start_page, pages, ...(text_mode && { text_mode }) },
+    });
+    expect((await post(index, { index_id: id(), page_count: 2, text_mode: 'local-ocr' })).statusCode).toBe(409);
+    expect((await put(indexId, 2, ['Out of order'])).statusCode).toBe(409);
+    const firstPage = 'Intro '.repeat(80) + 'The Bézout theorem connects graded ideals.';
+    expect((await put(indexId, 1, [firstPage])).json()).toEqual({ next_page: 2 });
+    expect((await put(indexId, 1, [firstPage])).json()).toEqual({ next_page: 2 });
+    expect((await put(indexId, 1, ['Different content'])).statusCode).toBe(409);
+    expect((await post(index + '/complete', { index_id: indexId })).statusCode).toBe(409);
+    expect((await post(index, { index_id: id(), page_count: 2 })).json().index_id).toBe(indexId);
+    expect((await get('/research/library/full-text?q=bezout')).json().items).toEqual([]);
+    expect((await put(indexId, 2, ['A second Bézout result in commutative algebra.'])).json()).toEqual({ next_page: 3 });
+    expect((await post(index + '/complete', { index_id: indexId })).json()).toMatchObject({
+      status: 'ready', index_id: indexId, next_page: 3,
+    });
+    const search = '/research/library/full-text';
+    const firstResult = (await get(search + '?q=BEZOUT&limit=1')).json();
+    expect(firstResult.items).toEqual([expect.objectContaining({
+      pdf_id: attachmentId, reference_id: original.id, page: 1, kind: 'page', format: 'pdf',
+      snippet: expect.stringContaining('Bézout'), annotation_id: null,
+    })]);
+    expect(firstResult.next_cursor).toBeTruthy();
+    expect((await get(search + '?q=bezout&limit=1&cursor=' + encodeURIComponent(firstResult.next_cursor))).json().items).toEqual([
+      expect.objectContaining({ page: 2, pdf_id: attachmentId }),
+    ]);
+    expect((await get(search + '?q=unrelated&cursor=' + encodeURIComponent(firstResult.next_cursor))).statusCode).toBe(422);
+    expect((await get(search + '?q=selected%20proof')).json().items).toEqual([
+      expect.objectContaining({ page: 2, kind: 'annotation', annotation_id: annotationId }),
+    ]);
+    const rebuild = id();
+    expect((await post(index, { index_id: rebuild, page_count: 1, text_mode: 'local-ocr' })).json())
+      .toMatchObject({ status: 'indexing', text_mode: 'local-ocr' });
+    expect((await get(index)).json()).toMatchObject({ index_id: rebuild, text_mode: 'local-ocr' });
+    expect((await get(search + '?q=bezout')).json().items).toHaveLength(2);
+    expect((await put(rebuild, 1, ['A plain fallback must not replace the scan text.'])).statusCode).toBe(409);
+    expect((await put(rebuild, 1, ['A new Gröbner basis index.'], 'local-ocr')).json()).toEqual({ next_page: 2 });
+    expect((await post(index + '/complete', { index_id: rebuild })).statusCode).toBe(409);
+    expect((await post(index + '/complete', { index_id: rebuild, text_mode: 'local-ocr' })).statusCode).toBe(200);
+    expect((await get(search + '?q=bezout')).json().items).toEqual([]);
+    expect((await get(search + '?q=grobner')).json().items).toHaveLength(1);
+
+    const advanced = await post('/research/library/search', { conditions: { all: [
+      { field: 'attachment_format', operator: 'equals', value: 'pdf' },
+      { field: 'attachment_text', operator: 'contains', value: 'grobner' },
+      { field: 'annotation_comment', operator: 'contains', value: 'SYZYGY' },
+      { field: 'annotation_color', operator: 'equals', value: 'pink' },
+    ] } });
+    expect(advanced.statusCode, advanced.body).toBe(200);
+    expect(advanced.json().items).toEqual([expect.objectContaining({ id: original.id })]);
+
+    const result = await get(base + '/download');
+    expect(result.statusCode).toBe(200);
+    expect(result.headers['content-type']).toBe('application/pdf');
+    expect(result.headers['content-disposition']).toContain("filename*=UTF-8''%C3%89preuve%20%CE%BB.pdf");
+    expect(result.headers['cache-control']).toContain('no-store');
+    expect(result.rawPayload.equals(bytes)).toBe(true);
+
+    const device = (await post('/devices', { id: id(), name: 'PDF sync', platform: 'web' })).json();
+    const snapshot = (await post('/sync/snapshots', { device_id: device.id })).json();
+    const { records } = (await get(`/sync/snapshots/${snapshot.id}/records?limit=500`)).json();
+    const syncPdf = records.find((record: { entity_id: string; entity_type: string }) =>
+      record.entity_id === attachmentId && record.entity_type === 'research_reference_pdf');
+    expect(records).toContainEqual(expect.objectContaining({
+      entity_type: 'research_pdf_reading_position', entity_id: attachmentId,
+      data: expect.objectContaining({ page: 3, version: '2' }),
+    }));
+    expect(syncPdf).toMatchObject({ entity_type: 'research_reference_pdf', data: { id: attachmentId, sha256: upload.sha256 } });
+    expect(syncPdf.data).not.toHaveProperty('data');
+    expect(records).toContainEqual(expect.objectContaining({
+      entity_type: 'research_pdf_annotation', entity_id: annotationId,
+      data: expect.objectContaining({ pdf_id: attachmentId, color: 'blue', kind: 'underline' }),
+    }));
+    expect(records).toContainEqual(expect.objectContaining({
+      entity_type: 'research_pdf_annotation', entity_id: areaId,
+      data: expect.objectContaining({ pdf_id: attachmentId, kind: 'area', rects: area.rects }),
+    }));
+    expect(records).toContainEqual(expect.objectContaining({
+      entity_type: 'research_pdf_annotation', entity_id: inkId,
+      data: expect.objectContaining({ pdf_id: attachmentId, kind: 'ink', ink_path: ink.ink_path, tags: ['Proof technique', 'reread'] }),
+    }));
+    await db.transaction(undefined, async (sql) => {
+      const receipts = (await sql.query('SELECT response_body FROM api_idempotency')).rows;
+      expect(JSON.stringify(receipts)).not.toContain(first);
+    });
+
+    const merge = await post('/research/library/merge', {
+      target_id: target.id, target_version: target.version, sources: [{ id: original.id, version: original.version }],
+    });
+    expect(merge.statusCode).toBe(200);
+    expect((await get(list(target.id))).json().items).toEqual([
+      expect.objectContaining({ id: attachmentId, reference_id: target.id, version: '3' }),
+    ]);
+    expect((await get(annotations)).json().items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: annotationId, pdf_id: attachmentId, kind: 'underline' }),
+      expect.objectContaining({ id: stickyId, pdf_id: attachmentId, kind: 'note' }),
+      expect.objectContaining({ id: areaId, pdf_id: attachmentId, kind: 'area' }),
+      expect.objectContaining({ id: inkId, pdf_id: attachmentId, kind: 'ink', ink_path: ink.ink_path }),
+    ]));
+    expect((await get(readingPosition)).json()).toMatchObject({ position: { page: 3, version: '2' } });
+    expect((await get(search + '?q=grobner')).json().items).toEqual([
+      expect.objectContaining({ reference_id: target.id, pdf_id: attachmentId }),
+    ]);
+    const rename = await patch(base, { file_name: 'Revised proof.pdf' }, '3');
+    expect(rename.statusCode, rename.body).toBe(200);
+    expect(rename.json()).toMatchObject({ id: attachmentId, file_name: 'Revised proof.pdf', version: '4', sha256: upload.sha256 });
+    expect((await patch(base, { file_name: 'Another proof.pdf' }, '3')).statusCode).toBe(412);
+    expect((await patch(base, { file_name: 'Revised proof' }, '4')).statusCode).toBe(422);
+    expect((await patch(base, { file_name: 'Revised proof.pdf' }, '4')).json().version).toBe('4');
+    const renamedDownload = await get(base + '/download');
+    expect(renamedDownload.headers['content-disposition']).toContain('Revised%20proof.pdf');
+    expect(renamedDownload.rawPayload.equals(bytes)).toBe(true);
+    expect((await get(readingPosition)).json()).toMatchObject({ position: { page: 3, version: '2' } });
+    expect((await get(annotations)).json().items).toContainEqual(expect.objectContaining({ id: annotationId }));
+    const removed = await app.inject({
+      method: 'DELETE', url: `/api/v1${base}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': '"4"' },
+    });
+    expect(removed.statusCode).toBe(204);
+    expect((await get(base + '/download')).statusCode).toBe(404);
+    expect((await get(search + '?q=grobner')).json().items).toEqual([]);
+    expect((await get(search + '?q=selected%20proof')).json().items).toEqual([]);
+    expect((await get(readingPosition)).statusCode).toBe(404);
+    expect((await setPage({ page: 5 })).statusCode).toBe(404);
+    expect((await get(annotations)).statusCode).toBe(404);
+    expect((await get(`/research/pdf-annotations/${annotationId}`)).statusCode).toBe(404);
+    expect((await get(`/research/pdf-annotations/${stickyId}`)).statusCode).toBe(404);
+    expect((await get(list(target.id))).json().items).toEqual([]);
+  });
+
+  it('keeps related references symmetric, versioned, and linked after canonical merge', async () => {
+    const create = async (title: string) => (await post('/research/references', { id: id(), title })).json();
+    const target = await create('Symmetric reference target');
+    const source = await create('Symmetric reference source');
+    const shared = await create('Symmetric shared neighbor');
+    const moved = await create('Symmetric transferred neighbor');
+    const related = (reference: string) => `/research/references/${reference}/related`;
+    const add = (first: string, second: string) => post(related(first), { id: id(), reference_id: second });
+    expect((await add(target.id, target.id)).statusCode).toBe(422);
+    expect((await add(target.id, id())).statusCode).toBe(404);
+    const original = await add(target.id, shared.id);
+    expect(original.statusCode).toBe(201);
+    expect(original.json()).toMatchObject({ reference_id: shared.id, version: '1' });
+    expect((await add(shared.id, target.id)).statusCode).toBe(409);
+    expect((await get(related(shared.id))).json().items).toEqual([
+      expect.objectContaining({ id: original.json().id, reference_id: target.id }),
+    ]);
+    const shadow = await add(source.id, shared.id);
+    const sourceOnly = await add(source.id, moved.id);
+    const selfAfterMerge = await add(target.id, source.id);
+    expect([shadow, sourceOnly, selfAfterMerge].map((r) => r.statusCode)).toEqual([201, 201, 201]);
+    const first = (await get(related(target.id) + '?limit=1')).json();
+    expect(first.items).toHaveLength(1);
+    expect(first.next_cursor).toBeTruthy();
+    expect((await get(related(shared.id) + '?cursor=' + encodeURIComponent(first.next_cursor))).statusCode).toBe(422);
+    const before = (await get(`/graph?focus=reference:${target.id}&depth=1`)).json();
+    expect(before.edges).toEqual(expect.arrayContaining([expect.objectContaining({ kind: 'related' })]));
+
+    const merge = await post('/research/library/merge', {
+      target_id: target.id, target_version: target.version, sources: [{ id: source.id, version: source.version }],
+    });
+    expect(merge.statusCode).toBe(200);
+    const list = (await get(related(source.id))).json().items;
+    expect(list).toHaveLength(2);
+    expect(list).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: original.json().id, reference_id: shared.id, version: '1' }),
+      expect.objectContaining({ id: sourceOnly.json().id, reference_id: moved.id, version: '2' }),
+    ]));
+    expect((await get(`/research/reference-relations/${shadow.json().id}`)).statusCode).toBe(404);
+    expect((await get(`/research/reference-relations/${selfAfterMerge.json().id}`)).statusCode).toBe(404);
+    const graph = (await get(`/graph?focus=reference:${moved.id}&depth=1`)).json();
+    const pair = [`reference:${target.id}`, `reference:${moved.id}`].sort();
+    expect(graph.edges).toContainEqual({ source: pair[0], target: pair[1], kind: 'related' });
+    expect(graph.nodes).toContainEqual(expect.objectContaining({ id: `reference:${target.id}` }));
+
+    const remove = (path: string, version: string) => app.inject({
+      method: 'DELETE', url: `/api/v1${path}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': `"${version}"` },
+    });
+    const linkPath = `/research/reference-relations/${sourceOnly.json().id}`;
+    expect((await remove(linkPath, '1')).statusCode).toBe(412);
+    expect((await remove(linkPath, '2')).statusCode).toBe(204);
+    expect((await get(related(moved.id))).json().items).toEqual([]);
+    expect((await remove(`/research/references/${shared.id}`, '1')).statusCode).toBe(204);
+    expect((await get(related(target.id))).json().items).toEqual([]);
+  });
+
+  it('creates reference notes atomically and keeps Knowledge when links or references are removed', async () => {
+    const target = (await post('/research/references', { id: id(), title: 'Linked Knowledge merge target' })).json();
+    const source = (await post('/research/references', { id: id(), title: 'Linked Knowledge source' })).json();
+    const linkPath = (reference: string) => `/research/references/${reference}/knowledge-links`;
+    const notePath = `/research/references/${source.id}/notes`;
+    const existing = (await post('/knowledge-items', {
+      id: id(), title: 'An existing theorem', type: 'theorem', content: 'An existing mathematical statement.',
+    })).json();
+    const existingLink = (await post(linkPath(target.id), { id: id(), knowledge_item_id: existing.id })).json();
+    expect(existingLink).toMatchObject({ reference_id: target.id, knowledge_item_id: existing.id, type: 'theorem', version: '1' });
+    expect((await post(linkPath(target.id), { id: id(), knowledge_item_id: existing.id })).statusCode).toBe(409);
+    expect((await post(linkPath(target.id), { id: id(), knowledge_item_id: id() })).statusCode).toBe(404);
+    const duplicate = (await post(linkPath(source.id), { id: id(), knowledge_item_id: existing.id })).json();
+    const note = {
+      id: id(), link_id: id(), title: 'Reading notes', content: 'A Markdown note with $x$.', subject: 'Algebra',
+      source_reference: `/research/library?reference=${source.id}`,
+    };
+    const invalid = { ...note, id: id(), link_id: existingLink.id };
+    expect((await post(notePath, invalid)).statusCode).toBe(409);
+    expect((await get(`/knowledge-items/${invalid.id}`)).statusCode).toBe(404);
+    const key = id();
+    const created = await post(notePath, note, key);
+    expect(created.statusCode, created.body).toBe(201);
+    expect(created.json()).toMatchObject({
+      knowledge: { id: note.id, type: 'note', content: note.content, source_reference: note.source_reference },
+      link: { id: note.link_id, knowledge_item_id: note.id, reference_id: source.id, version: '1' },
+    });
+    expect((await post(notePath, note, key)).json()).toEqual(created.json());
+
+    const graph = (await get(`/graph?focus=reference:${source.id}&depth=1`)).json();
+    expect(graph.edges).toContainEqual({ source: `reference:${source.id}`, target: `knowledge:${note.id}`, kind: 'related' });
+    const firstPage = (await get(linkPath(source.id) + '?limit=1')).json();
+    expect(firstPage.items).toHaveLength(1);
+    expect(firstPage.next_cursor).toBeTruthy();
+    expect((await get(linkPath(target.id) + '?cursor=' + encodeURIComponent(firstPage.next_cursor))).statusCode).toBe(422);
+    expect((await post('/research/library/merge', {
+      target_id: target.id, target_version: target.version, sources: [{ id: source.id, version: source.version }],
+    })).statusCode).toBe(200);
+    const canonical = (await get(linkPath(source.id))).json().items;
+    expect(canonical).toHaveLength(2);
+    expect(canonical).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: existingLink.id, reference_id: target.id, version: '1' }),
+      expect.objectContaining({ id: note.link_id, reference_id: target.id, version: '2' }),
+    ]));
+    expect((await get(`/research/reference-knowledge-links/${duplicate.id}`)).statusCode).toBe(404);
+    const reverse = (await get(`/knowledge-items/${note.id}/reference-links`)).json().items;
+    expect(reverse).toEqual([expect.objectContaining({
+      id: note.link_id, knowledge_item_id: note.id, reference_id: target.id, title: target.title, version: '2',
+    })]);
+    expect((await get(`/knowledge-items/${id()}/reference-links`)).statusCode).toBe(404);
+    const remove = (path: string, version: string) => app.inject({
+      method: 'DELETE', url: `/api/v1${path}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': `"${version}"` },
+    });
+    const createdLinkPath = `/research/reference-knowledge-links/${note.link_id}`;
+    expect((await remove(createdLinkPath, '1')).statusCode).toBe(412);
+    expect((await remove(createdLinkPath, '2')).statusCode).toBe(204);
+    expect((await get(`/knowledge-items/${note.id}`)).statusCode).toBe(200);
+    const relink = (await post(linkPath(target.id), { id: id(), knowledge_item_id: note.id })).json();
+    expect((await remove(`/knowledge-items/${note.id}`, '1')).statusCode).toBe(204);
+    expect((await get(`/research/reference-knowledge-links/${relink.id}`)).statusCode).toBe(404);
+    expect((await remove(`/research/references/${target.id}`, '2')).statusCode).toBe(204);
+    expect((await get(`/knowledge-items/${existing.id}`)).statusCode).toBe(200);
+    expect((await get(`/research/reference-knowledge-links/${existingLink.id}`)).statusCode).toBe(404);
+  });
+
+  it('preserves question evidence across a reference merge and emits audit events for its lifecycle and links', async () => {
+    const project = (await post('/research/projects', { id: id(), title: 'Question provenance fixture' })).json();
+    const objects = `/research/projects/${project.id}/objects`;
+    const create = (type: string) => post(objects, { id: id(), object_type: type, title: type, content: 'Fixture' });
+    const question = (await create('question')).json();
+    const attempt = (await create('proof_attempt')).json();
+    expect(question.question_status).toBe('open');
+    expect(attempt.question_status).toBeNull();
+    expect((await get(`${objects}?object_type=question`)).json().items.map((row: { id: string }) => row.id)).toEqual([question.id]);
+
+    const source = (await post('/research/references', { id: id(), title: 'Source fixture' })).json();
+    const target = (await post('/research/references', { id: id(), title: 'Reference merge fixture' })).json();
+    const attachment = id();
+    const bytes = Buffer.from('%PDF-1.7\nQuestion evidence fixture\n%%EOF\n');
+    const base = `/research/attachments/${attachment}`;
+    const upload = await post(`/research/references/${source.id}/attachments`, {
+      id: attachment, format: 'pdf', file_name: 'Source.pdf', size_bytes: bytes.length,
+      sha256: createHash('sha256').update(bytes).digest('hex'),
+    });
+    expect(upload.statusCode, upload.body).toBe(200);
+    const sent = await app.inject({ method: 'PUT', url: `/api/v1${base}/chunk`,
+      headers: { 'Idempotency-Key': id() }, payload: { offset: 0, data: bytes.toString('base64') } });
+    expect(sent.statusCode, sent.body).toBe(200);
+    expect((await post(`${base}/complete`, {})).statusCode).toBe(200);
+
+    const links = '/research/question-links';
+    const sourceLink = { id: id(), question_id: question.id, relation_type: 'motivates',
+      reference_id: source.id, attachment_id: attachment, page: 2, notes: '  Read the highlighted argument.  ' };
+    const recordLink = { id: id(), question_id: question.id, relation_type: 'attempt', research_object_id: attempt.id };
+    expect((await post(links, { ...sourceLink, reference_id: target.id })).statusCode).toBe(422);
+    expect((await post(links, { ...sourceLink, attachment_id: null })).statusCode).toBe(422);
+    expect((await post(links, { ...sourceLink, page: 0 })).statusCode).toBe(422);
+    expect((await post(links, { ...recordLink, relation_type: 'result' })).statusCode).toBe(422);
+    const savedSource = await post(links, sourceLink);
+    expect(savedSource.statusCode, savedSource.body).toBe(201);
+    expect(savedSource.json()).toMatchObject({ notes: sourceLink.notes.trim(), page: 2, attachment_id: attachment });
+    expect((await post(links, { ...sourceLink, id: id() })).statusCode).toBe(409);
+    expect((await post(links, recordLink)).statusCode).toBe(201);
+    const byQuestion = `${links}?question_id=${question.id}`;
+    const byRecord = `${links}?research_object_id=${attempt.id}`;
+    expect((await get(byRecord)).json().items).toEqual([expect.objectContaining({
+      id: recordLink.id, question_id: question.id, question_title: question.title, target_type: attempt.object_type,
+    })]);
+    const firstPage = (await get(`${byQuestion}&limit=1`)).json();
+    expect(firstPage.items).toHaveLength(1);
+    const secondPage = (await get(`${byQuestion}&limit=1&cursor=${encodeURIComponent(firstPage.next_cursor)}`)).json();
+    expect([firstPage.items[0].id, secondPage.items[0].id].sort()).toEqual([sourceLink.id, recordLink.id].sort());
+
+    const status = await patch(`/research/objects/${question.id}`, { base_snapshot: question, question_status: 'investigating' }, question.version);
+    expect(status.statusCode, status.body).toBe(200);
+    expect(status.json()).toMatchObject({ question_status: 'investigating', claim_status: 'needs_verification' });
+    const merge = await post('/research/library/merge', {
+      target_id: target.id, target_version: target.version, sources: [{ id: source.id, version: source.version }],
+    });
+    expect(merge.statusCode, merge.body).toBe(200);
+    expect((await get(byQuestion)).json().items).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: sourceLink.id, reference_id: target.id, attachment_id: attachment, page: 2, target_title: target.title,
+    })]));
+    expect((await get(`${base}/download`)).rawPayload).toEqual(bytes);
+    expect((await get(`/graph?focus=research:${question.id}&depth=1`)).json().edges).toEqual(expect.arrayContaining([
+      { source: `research:${question.id}`, target: `reference:${target.id}`, kind: 'question_source' },
+      { source: `research:${question.id}`, target: `research:${attempt.id}`, kind: 'question_record' },
+    ]));
+
+    const remove = await app.inject({ method: 'DELETE', url: `/api/v1${base}`,
+      headers: { 'Idempotency-Key': id(), 'If-Match': '"3"' } });
+    expect(remove.statusCode, remove.body).toBe(204);
+    expect((await get(byQuestion)).json().items).toEqual([expect.objectContaining({ id: recordLink.id })]);
+    expect((await get(`/research/projects/${project.id}/timeline?object_id=${question.id}`)).json().items)
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ event_type: 'question_status_changed', event_payload: expect.objectContaining({ question_status: 'investigating' }) }),
+        expect.objectContaining({ event_type: 'question_link_removed', event_payload: expect.objectContaining({ link_id: sourceLink.id, page: 2 }) }),
+      ]));
+  });
+
   it('builds a bounded workspace graph from active records and explicit links owned by the user', async () => {
     const project = (await post('/research/projects', { id: id(), title: 'Graph research project' })).json();
     const createdObject = await post(`/research/projects/${project.id}/objects`, {
@@ -164,6 +1271,29 @@ describe('PRISM canonical backend', () => {
       ]);
     });
 
+    expect((await get('/research/library?q=Graph&native=true')).json().items).toEqual([
+      expect.objectContaining({ id: reference.id, kind: 'reference' }),
+    ]);
+    const library = (await get('/research/library?q=Graph')).json();
+    expect(library.items.map((item: { id: string }) => item.id).sort()).toEqual(
+      [reference.id, linkedPaper, savedPaper].sort(),
+    );
+    expect(library.items.find((item: { id: string }) => item.id === linkedPaper).projects).toEqual([
+      { id: project.id, title: project.title },
+    ]);
+    const firstPage = (await get('/research/library?q=Graph%20Author&limit=1')).json();
+    expect(firstPage.items).toHaveLength(1);
+    expect(firstPage.next_cursor).toBeTruthy();
+    const secondPage = (await get(
+      `/research/library?q=Graph%20Author&limit=1&cursor=${encodeURIComponent(firstPage.next_cursor)}`,
+    )).json();
+    expect(secondPage.items).toHaveLength(1);
+    expect([firstPage.items[0].id, secondPage.items[0].id].sort()).toEqual([linkedPaper, savedPaper].sort());
+    expect(secondPage.next_cursor).toBeNull();
+    expect((await get(
+      `/research/library?q=elsewhere&cursor=${encodeURIComponent(firstPage.next_cursor)}`,
+    )).statusCode).toBe(422);
+
     const all = await get('/graph');
     expect(all.statusCode).toBe(200);
     expect(all.json().nodes).toEqual(
@@ -188,7 +1318,7 @@ describe('PRISM canonical backend', () => {
         expect.objectContaining({ id: `paper:${linkedPaper}` }),
         expect.objectContaining({
           id: `research:${object.id}`,
-          href: `/research/${project.id}?object=${object.id}`,
+          href: `/research/${project.id}/questions/${object.id}`,
         }),
         expect.objectContaining({ id: `reference:${reference.id}`, href: 'https://doi.org/10.1234/graph' }),
       ]),

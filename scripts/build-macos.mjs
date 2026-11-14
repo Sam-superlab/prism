@@ -209,6 +209,12 @@ ${updaterInfo}
     'WebKit',
     ...(withUpdater ? sparkleSwiftFlags(frameworks) : []),
     join(root, 'apps/macos/PRISM.swift'),
+    join(root, 'apps/macos/WebDAVBackup.swift'),
+    join(root, 'apps/macos/WebDAVAttachment.swift'),
+    join(root, 'apps/macos/WebDAVAttachmentSync.swift'),
+    join(root, 'apps/macos/WorkspaceBackup.swift'),
+    join(root, 'apps/macos/RecoveredWorkspace.swift'),
+    join(root, 'apps/macos/LocalPdfOcr.swift'),
     '-o',
     join(binaries, 'PRISM'),
   ]);

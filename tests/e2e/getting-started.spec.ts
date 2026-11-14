@@ -43,11 +43,12 @@ test('skips and resumes onboarding, then schedules a review of the card just cre
   await checklist.getByRole('button', { name: 'Create note' }).click();
   const note = page.getByRole('dialog');
   await note.getByLabel('Title', { exact: true }).fill('Identity element');
-  await note.getByLabel('Mathematical content').fill('The identity element leaves every element unchanged.');
+  await note.getByLabel('Mathematical content', { exact: true }).fill('The identity element leaves every element unchanged.');
   await note.getByRole('button', { name: 'Save knowledge' }).click();
 
   await checklist.getByRole('button', { name: 'Make a card' }).click();
   const card = page.getByRole('dialog');
+  await card.getByRole('button', { name: 'Markdown source for Prompt', exact: true }).click();
   await card.getByLabel('Prompt', { exact: true }).fill('What does the identity element do?');
   await card.getByRole('button', { name: 'Save card' }).click();
   await checklist.getByRole('link', { name: 'Start first review' }).click();
@@ -110,7 +111,7 @@ test('switches tutorial languages without losing progress and shows the new guid
   const editor = page.getByRole('dialog');
   await editor.getByLabel('Title', { exact: true }).fill('Tutorial language note');
   await editor
-    .getByLabel('Mathematical content')
+    .getByLabel('Mathematical content', { exact: true })
     .fill('A note to preserve when changing the guide language.');
   await editor.getByRole('button', { name: 'Save knowledge' }).click();
   await expect(editor).toBeHidden();

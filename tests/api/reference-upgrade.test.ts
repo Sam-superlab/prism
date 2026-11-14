@@ -37,11 +37,39 @@ it('upgrades a local preview References table while preserving existing entries'
       ).statusCode,
     ).toBe(201);
 
-    await db.query('ALTER TABLE prism.research_references DROP COLUMN arxiv_id');
+    await db.query('DROP TABLE prism.research_question_links');
+    await db.query('ALTER TABLE prism.research_objects DROP COLUMN question_status');
+    await db.query('DROP TABLE prism.research_reference_knowledge_links');
+    await db.query('DROP TABLE prism.research_pdf_reading_positions');
+    await db.query('DROP TABLE prism.research_reference_relations');
+    await db.query('DROP TABLE prism.research_pdf_page_text,prism.research_pdf_text_indexes');
+    await db.query('DROP TABLE prism.research_pdf_annotations');
+    await db.query('DROP TABLE prism.research_text_annotations');
+    await db.query('DROP FUNCTION prism.protect_text_annotation_anchor()');
+    await db.query('DROP TABLE prism.research_reference_pdf_chunks,prism.research_reference_pdfs');
+    await db.query('DROP TABLE prism.literature_saved_searches');
+    await db.query('DROP TABLE prism.literature_collection_memberships,prism.literature_collections');
+    await db.query('DROP TABLE prism.research_reference_links');
+    await db.query(`ALTER TABLE prism.research_references
+      DROP COLUMN arxiv_id,DROP COLUMN citation_key,DROP COLUMN publication,DROP COLUMN tags,DROP COLUMN citation_aliases,DROP COLUMN merged_into_id,ALTER COLUMN project_id SET NOT NULL`);
     await db.initialize();
     const earlier = await app.inject({ url: `/api/v1/research/references/${reference}` });
     expect(earlier.statusCode).toBe(200);
-    expect(earlier.json()).toMatchObject({ id: reference, title: 'Earlier reference', arxiv_id: null });
+    expect(earlier.json()).toMatchObject({
+      id: reference, project_id: project, title: 'Earlier reference', arxiv_id: null, citation_key: null, publication: {},
+    });
+
+    const standalone = randomUUID();
+    expect((await create('research/references', { id: standalone, title: 'Standalone reference' })).statusCode).toBe(201);
+    expect((await create('research/reference-links', {
+      id: randomUUID(), reference_id: standalone, project_id: project,
+    })).statusCode).toBe(201);
+
+    const collection = randomUUID();
+    expect((await create('research/library/collections', { id: collection, name: 'Fixture collection' })).statusCode).toBe(201);
+    expect((await create('research/library/memberships', {
+      id: randomUUID(), reference_id: reference, collection_id: collection,
+    })).statusCode).toBe(201);
 
     const arxivReference = {
       id: randomUUID(),

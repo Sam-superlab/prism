@@ -49,3 +49,118 @@ Download the ZIP for the processor shown in **Apple menu → About This Mac**, e
 Sparkle uses the public `appcast.xml` for Apple silicon and `appcast-intel.xml` for Intel. Set `PRISM_MACOS_UPDATE_FEED_URL` to the corresponding feed on `https://sam-superlab.github.io/prism/` and `PRISM_MACOS_UPDATE_PUBLIC_KEY` to the release signing key's public value when building for distribution. Stage the matching signed archive and appcast together with `scripts/sign-macos-appcast.mjs`.
 
 The default build is an ad-hoc signed preview. For Developer ID signing and Apple notarization, set `PRISM_MACOS_SIGN_IDENTITY` to the installed Developer ID Application identity and `PRISM_MACOS_NOTARY_PROFILE` to a keychain profile previously saved with `notarytool`. `PRISM_RELEASE_VERSION` sets the numeric app version.
+
+For an isolated local preview, also set `PRISM_MACOS_LOCAL_PREVIEW_ID` to a new
+8–32 character lowercase alphanumeric ID and `PRISM_MACOS_LOCAL_PREVIEW_PORT`
+to an unused loopback port other than `38741`. `PRISM_MACOS_OUTPUT_DIR` can point
+to a separate package directory. The resulting PRISM Literature Preview uses a
+separate workspace and update checks are disabled.
+
+## Back up an archive to WebDAV
+
+Create a workspace export in **Settings → Export your data**, or select a ZIP you
+made from a complete local backup. In the Mac menu, choose **File → Back Up
+Archive to WebDAV…**. Select the archive, enter an existing HTTPS WebDAV folder,
+and supply your server’s username and app password if required. **Upload ZIP**
+sends only the chosen file. PRISM uses a new filename for each transfer and
+requests that the server refuse overwrites. Credentials are held for this transfer
+only. Your WebDAV server can read the uploaded archive. For an encrypted remote
+copy, encrypt the archive before uploading.
+
+The workspace export includes attachment metadata and can optionally include
+up to 1,000 original attachment files and 64 MiB total. For a complete local backup
+with original attachments, quit PRISM before copying and archiving its data
+directory. The transfer supports ZIPs up to 512 MiB and requires the server to
+accept WebDAV PUT with normal HTTPS certificate validation. There is no scheduled
+upload, restore, or cross-device attachment sync in this feature.
+
+## Send or retrieve an attachment copy with WebDAV
+
+In the packaged Mac app, open a reference's **Attachments** and choose **WebDAV…**
+next to the file. Select **Send copy…** or **Retrieve copy…** and enter the
+existing HTTPS folder and any app password. PRISM uploads only the selected
+attachment and checks the remote bytes against its SHA-256 digest. It requests
+that the server refuse overwrites and checks a pre-existing copy before accepting
+it. Use the same folder to retrieve a copy and choose where to save it after
+verification. PDF, EPUB, and plain-text snapshots up to 32 MiB are supported.
+
+The folder receives the attachment's bytes and a digest-based filename. Your
+WebDAV server can read that copy. Credentials are held for the individual
+transfer, and the local workspace remains authoritative. This manual mirror does
+not synchronize the library, annotation metadata, or reading positions.
+
+## Automatically mirror attachments to WebDAV
+
+In the packaged Mac app, choose **File → WebDAV Attachment Sync…** to explicitly
+enable automatic copies for one HTTPS folder. The server receives your personal
+library's completed attachment files and digest-based names. PRISM keeps the
+destination and credentials pinned together in Keychain. It remembers which
+copies it has verified for that destination. Configure a WebDAV folder that
+honors conditional PUT. PRISM checks for existing copies before uploading and
+verifies downloaded bytes before it marks a copy complete.
+
+The sync menu shows status and offers **Sync Now** and **Turn Off**. A completed
+scan checks again in 15 minutes while PRISM is open. Temporary errors retry up to
+three times before pausing. Turning sync off stops background transfers and
+leaves existing remote copies available. Use the **WebDAV… → Retrieve copy…**
+action on a reference to save a verified file from its known digest. This
+mirrors attachment bytes. Library metadata and annotations stay in the canonical
+workspace, and devices on that backend already share those records and files.
+
+## Create and validate a local workspace backup
+
+In the packaged Mac app, choose **File → Create Workspace Backup…** and save to
+a new `.prismbackup` file. The backup includes knowledge, research, database
+settings, and original attachment bytes. PRISM uses the Mac Keychain to verify
+and encrypt new backups with AES-256-GCM. Keep access to that Keychain alongside
+the backup. Earlier v1 backups are authenticated plaintext and can still be opened.
+
+Use **File → Validate Workspace Backup…** to open a verified copy in an isolated
+database and count knowledge items and completed attachments. Your current
+workspace stays open. **File → Restore Workspace as Copy…** creates a new
+`.prismworkspace` folder containing an independently opened and closed local
+database. The copy has a new sync generation, and previously generated export
+downloads are marked expired. Keep the recovered folder private. The archive is specific to the
+bundled PGlite/PostgreSQL format and supports database snapshots up to 128 MiB.
+Appearance, open tabs, macOS preferences, and generated export ZIPs are stored
+outside this database.
+
+Use **File → Open Recovered Workspace…** to open an authenticated `.prismbackup`
+in a separate, temporary, read-only PRISM window. It starts isolated local services
+with a fresh session and without background jobs or update checks. Close the
+window to discard the temporary database. A `.prismworkspace` folder saved for
+manual recovery is a separate durable copy.
+
+To inspect a recovered directory using the packaged runtime in a separate
+session, run the following commands in a terminal. Set both paths to your
+actual bundle and recovered folder. This starts a separate loopback workspace
+with an ephemeral token. Use a disposable browser profile if you want to open
+its UI. Do not point these commands at a workspace already in use.
+
+```sh
+prism_bundle="/path/to/PRISM.app"
+prism_recovered="/path/to/Recovered.prismworkspace"
+prism_scratch=$(mktemp -d)
+prism_token=$(openssl rand -hex 32)
+PRISM_DATA_DIR="$prism_recovered" PRISM_DESKTOP_TOKEN="$prism_token" \
+PRISM_DESKTOP_READY_FILE="$prism_scratch/ready" PRISM_DESKTOP_WEB_PORT=38891 \
+PRISM_WORKER_ENABLED=false "$prism_bundle/Contents/MacOS/node" \
+  "$prism_bundle/Contents/Resources/desktop/launch.mjs" &
+prism_recovery_pid=$!
+# Wait for the launcher to report readiness, then check the isolated copy.
+curl --cookie "prism_desktop=$prism_token" http://127.0.0.1:38891/api/v1/knowledge-items
+kill "$prism_recovery_pid"
+wait "$prism_recovery_pid"
+rmdir "$prism_scratch"
+unset prism_token
+```
+
+To inspect a backup on another Mac, explicitly export its code with
+**File → Export Backup Recovery Code…** and transfer the code separately from
+the backup. On the other Mac choose **File → Open with Recovery Code…**. PRISM
+asks for the code in a secure field, uses it for that read-only session, and
+leaves the other Mac's backup key intact. The exported code file is itself a
+secret and should be kept private. Live workspace replacement is separate.
+
+Run the synthetic database check with
+`pnpm --filter @prism/api exec vitest run ../../tests/api/local-workspace-backup.test.ts`.

@@ -13,6 +13,7 @@ import {
 } from '../lib/paper-folders';
 import type { Entity, Knowledge, Page, Paper, Project, ResearchObject, UserPaper } from '../lib/types';
 import { ErrorState, Field, Icon, Loading, Modal, Notice } from './ui';
+import { ResearchSidebarPanel, visibleCount } from './ResearchSidebarPanel';
 import styles from './ResearchLinks.module.css';
 
 type Material = { kind: 'knowledge' | 'paper'; id: string; title: string };
@@ -214,6 +215,7 @@ export function ProjectMaterials({
   guideHint?: ReactNode;
 }) {
   const section = useRef<HTMLElement>(null);
+  const [expanded, setExpanded] = useState(false);
   const notes = useResource<Page<KnowledgeLink>>(
     `/research/knowledge-links?project_id=${projectId}&limit=500`,
   );
@@ -230,41 +232,43 @@ export function ProjectMaterials({
     });
 
   return (
-    <section ref={section} tabIndex={-1} className={`panel ${styles.card}`} aria-label="Project materials">
-      <div className={`panel-heading ${styles.heading}`}>
-        <h2>Project materials</h2>
-        <button className="button small" onClick={onOpenPicker}>
+    <>
+      <ResearchSidebarPanel title="Project materials" sectionRef={section}
+        open={expanded} onToggle={setExpanded}
+        count={notes.data && papers.data ? visibleCount(notes.data.items.length + papers.data.items.length,
+          Boolean(notes.data.next_cursor || papers.data.next_cursor)) : undefined}
+        action={<button type="button" className="button small" onClick={onOpenPicker}>
           <Icon name="plus" size={15} /> Add material
-        </button>
-      </div>
-      <ErrorState error={notes.error} retry={notes.reload} />
-      <ErrorState error={papers.error} retry={papers.reload} />
-      {action.error && <Notice tone="error">{action.error}</Notice>}
-      {(notes.loading || papers.loading) && <Loading />}
-      {notes.data?.items.map((link) => (
-        <MaterialRow
-          key={link.id}
-          kind="knowledge"
-          id={link.knowledge_item_id}
-          onRemove={() => remove('knowledge', link)}
-          busy={action.busy}
-        />
-      ))}
-      {papers.data?.items.map((link) => (
-        <MaterialRow
-          key={link.id}
-          kind="paper"
-          id={link.paper_id}
-          onRemove={() => remove('paper', link)}
-          busy={action.busy}
-        />
-      ))}
-      {notes.data?.items.length === 0 && papers.data?.items.length === 0 && (
-        <p className="muted small-text">
-          Use Link to research in <Link href="/knowledge">Knowledge</Link> or{' '}
-          <Link href="/discover">Discover</Link> to bring materials here.
-        </p>
-      )}
+        </button>}>
+        <ErrorState error={notes.error} retry={notes.reload} />
+        <ErrorState error={papers.error} retry={papers.reload} />
+        {action.error && <Notice tone="error">{action.error}</Notice>}
+        {(notes.loading || papers.loading) && <Loading />}
+        {notes.data?.items.map((link) => (
+          <MaterialRow
+            key={link.id}
+            kind="knowledge"
+            id={link.knowledge_item_id}
+            onRemove={() => remove('knowledge', link)}
+            busy={action.busy}
+          />
+        ))}
+        {papers.data?.items.map((link) => (
+          <MaterialRow
+            key={link.id}
+            kind="paper"
+            id={link.paper_id}
+            onRemove={() => remove('paper', link)}
+            busy={action.busy}
+          />
+        ))}
+        {notes.data?.items.length === 0 && papers.data?.items.length === 0 && (
+          <p className="muted small-text">
+            Use Link to research in <Link href="/knowledge">Knowledge</Link> or{' '}
+            <Link href="/discover">Discover</Link> to bring materials here.
+          </p>
+        )}
+      </ResearchSidebarPanel>
       {pickerOpen && (
         <ProjectMaterialPicker
           projectId={projectId}
@@ -279,11 +283,12 @@ export function ProjectMaterials({
             papers.reload();
             if (kind === 'paper') onPaperLinksChanged?.();
             onLinked();
+            setExpanded(true);
             window.requestAnimationFrame(() => section.current?.focus());
           }}
         />
       )}
-    </section>
+    </>
   );
 }
 

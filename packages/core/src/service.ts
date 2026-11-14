@@ -28,7 +28,33 @@ import { buildArxivDeck } from './arxiv-for-you';
 import { arxivResearchContext } from './arxiv-research-context';
 import { DailyReviewDrafts } from './daily-review-drafts';
 import { workspaceGraph } from './workspace-graph';
+import { referenceDuplicateGroups, referenceIdentity } from './literature-duplicates';
+import {
+  appendReferenceAttachment,
+  beginReferenceAttachment,
+  completeReferenceAttachment,
+  downloadReferenceAttachment,
+  moveReferencePdfs,
+  removeReferencePdf,
+  safeAttachmentFileName,
+  workspaceAttachmentArchive,
+  type ReferenceAttachmentFormat,
+} from './reference-pdfs';
+import {
+  appendPdfTextPages,
+  beginPdfTextIndex,
+  completePdfTextIndex,
+  listLiteratureAnnotations,
+  normalizeLiteratureSearch,
+  pdfTextIndexStatus,
+  retirePdfTextIndexes,
+  searchLiteratureText,
+} from './literature-text';
+import { compileLiteratureCondition, parseLiteratureConditions } from './literature-search';
+import { normalizeLiteratureFeedUrl, type LiteratureFeedPreview } from './literature-feeds';
+import { authorizeTeamCommand, downloadTeamLibraryPdf, mutateTeamLibraries, queryPublicTeamLibraries, queryTeamLibraries, readTeamLibrary, saveTeamAccountName, serializeTeamLibrary } from './team-libraries';
 import type { ApiConfig } from './config';
+import { validatePdfAnnotation } from './pdf-annotation-validation';
 export interface Command {
   userId: string;
   key: string;
@@ -47,6 +73,7 @@ export interface Result {
   body: any;
   headers?: Record<string, string>;
   replayed?: boolean;
+  receiptData?: Row;
 }
 interface Context {
   sql: Sql;
@@ -59,6 +86,46 @@ interface Context {
   dependsOn?: string;
 }
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const reservedCitationKey = /^(?:ref-[0-9a-f-]{36}|arxiv-(?:[0-9]{4}\.[0-9]{4,5}|[a-z-]+(?:\.[a-z-]+)?\/[0-9]{7})(?:v[1-9][0-9]*)?)$/i;
+const maxCitationAliases = 100;
+const referenceBatchEditPath = 'research/library/batch-edit';
+const referenceBatchUndoLifetime = 86_400_000;
+function zoteroRdfId(userId: string, fileHash: string, resourceHash: string, domain?: string) {
+  const key = `${userId.toLowerCase()}:${fileHash}:${resourceHash}`;
+  const bytes = createHash('sha256').update(domain ? `${domain}:${key}` : key).digest().subarray(0, 16);
+  bytes[6] = (bytes[6] & 0x0f) | 0x80;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+const creatorRoles = ['author', 'editor', 'translator'] as const;
+type CreatorRole = typeof creatorRoles[number];
+type ReferenceCreator = { role: CreatorRole; name: string };
+const splitLegacyCreators = (names: string = '') => names.split(/\s+and\s+|\s*;\s*/i).map((name) => name.trim()).filter(Boolean);
+function legacyReferenceCreators(row: Row): ReferenceCreator[] {
+  return creatorRoles.flatMap((role) => {
+    const names: string[] = role === 'author' ? row.authors ?? [] : splitLegacyCreators(row.publication?.[role]);
+    return names.map((name) => ({ role, name }));
+  });
+}
+const literatureFeeds = 'literature_feeds';
+const literatureFeedEntries = 'literature_feed_entries';
+const textAnnotations = 'research_text_annotations';
+const questionLinks = 'research_question_links';
+const questionSourceRelations = new Set(['motivates', 'supports', 'contradicts', 'background']);
+const questionRecordRelations: Record<string, readonly string[]> = {
+  attempt: ['proof_attempt'],
+  experiment: ['experiment'],
+  result: ['theorem', 'lemma', 'observation'],
+  counterexample: ['counterexample'],
+  conjecture: ['conjecture'],
+};
+const questionStatuses = new Set(['open', 'investigating', 'resolved']);
+const feedEntryOrder = 'coalesce(published_at,created_at)';
+const maxFeedSubscriptions = 25;
+const maxFeedEntries = 200;
+const feedScheduleSpacingMs = 60_000;
+const feedScheduleIntervalMs = 6 * 3_600_000;
 const immutable = new Set([
   'review_events',
   'research_events',
@@ -78,6 +145,11 @@ const numeric = new Set([
   'relevance_score',
   'bytes',
 ]);
+function publicCommandReceipt(row: Row) {
+  if (row.path !== referenceBatchEditPath || !row.response_body?.batch_undo) return row.response_body;
+  const { batch_undo: _undo, ...body } = row.response_body;
+  return body;
+}
 function canonical(value: any): string {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
   if (value && typeof value === 'object')
@@ -147,6 +219,121 @@ export class PrismService {
     if (!uuid.test(key)) throw validation('Idempotency-Key must be a UUID');
     return this.reviewDrafts.generate(userId, body.date, key, body.retry === true);
   }
+  async uploadReferenceAttachmentChunk(
+    userId: string, key: string, id: string, body: Row, onlyFormat?: ReferenceAttachmentFormat,
+  ) {
+    if (!uuid.test(key)) throw validation('Idempotency-Key must be a UUID');
+    // Offsets and exact chunk contents make retries idempotent without logging bytes in command receipts.
+    return this.db.transaction(userId, async (sql) => {
+      await sql.query('SELECT revision FROM user_sync_state WHERE user_id=$1 FOR UPDATE', [userId]);
+      return appendReferenceAttachment(this, { sql, userId }, id, body, onlyFormat);
+    });
+  }
+  downloadReferenceAttachment(userId: string, id: string, onlyFormat?: ReferenceAttachmentFormat) {
+    return downloadReferenceAttachment(this, userId, id, onlyFormat);
+  }
+  downloadTeamLibraryAttachment(userId: string, libraryId: string, refId: string, id: string) {
+    if (!this.config.hostedAccounts || this.config.authMode !== 'oidc') throw notFound();
+    return this.read(userId, (sql) => downloadTeamLibraryPdf({ sql, userId }, libraryId, refId, id));
+  }
+  async refreshDueLiteratureFeed(
+    userId: string, fetchFeed: (url: string) => Promise<LiteratureFeedPreview>, abort?: AbortSignal,
+  ): Promise<{ feed_id: string; status: number } | null> {
+    if (abort?.aborted) return null;
+    const due = await this.read(userId, (sql) => sql.query(
+      `SELECT id FROM literature_feeds WHERE user_id=$1 AND auto_refresh AND deleted_at IS NULL
+       AND next_refresh_at<=now() AND (refresh_token IS NULL OR refresh_started_at<now()-interval '30 seconds')
+       AND NOT EXISTS (SELECT 1 FROM literature_feeds recent WHERE recent.user_id=$1
+         AND recent.scheduled_refresh_started_at>now()-interval '1 minute')
+       ORDER BY next_refresh_at,id LIMIT 1`,
+      [userId],
+    ));
+    const feedId = due.rows[0]?.id;
+    if (!feedId || abort?.aborted) return null;
+    try {
+      const result = await this.refreshLiteratureFeed({
+        userId, key: randomUUID(), method: 'POST', path: `research/library/feeds/${feedId}/refresh`,
+      }, feedId, fetchFeed, { abort });
+      return { feed_id: feedId, status: result.status };
+    } catch (error) {
+      if (abort?.aborted || (error instanceof ApiError && [404, 409, 429].includes(error.status))) return null;
+      throw error;
+    }
+  }
+  async refreshLiteratureFeed(
+    command: Command, feedId: string, fetchFeed: (url: string) => Promise<LiteratureFeedPreview>,
+    scheduled?: { abort?: AbortSignal },
+  ): Promise<Result> {
+    if (!uuid.test(command.key)) throw validation('Idempotency-Key must be a UUID');
+    const userId = command.userId;
+    const token = randomUUID();
+    const claim = await this.db.transaction(userId, async (sql) => {
+      await sql.query('SELECT revision FROM user_sync_state WHERE user_id=$1 FOR UPDATE', [userId]);
+      const { rows } = await sql.query(
+        'SELECT request_hash,response_status,response_body FROM api_idempotency WHERE user_id=$1 AND idempotency_key=$2',
+        [userId, command.key],
+      );
+      const prior = rows[0];
+      if (prior) {
+        if (prior.request_hash !== commandHash(command))
+          throw new ApiError(409, 'IDEMPOTENCY_KEY_REUSED', 'Operation ID was already used with different content');
+        return { receipt: { status: prior.response_status, body: prior.response_body, replayed: true } };
+      }
+      const feed = await this.row(sql, userId, literatureFeeds, feedId);
+      const claimed = await sql.query(
+        `UPDATE literature_feeds SET refresh_token=$3,refresh_started_at=now(),refresh_scheduled=$4,
+           scheduled_refresh_started_at=CASE WHEN $4 THEN now() ELSE scheduled_refresh_started_at END
+         WHERE user_id=$1 AND id=$2 AND (refresh_token IS NULL OR refresh_started_at<now()-interval '30 seconds')
+         AND (NOT $4 OR (auto_refresh AND next_refresh_at<=now() AND NOT EXISTS (
+           SELECT 1 FROM literature_feeds recent WHERE recent.user_id=$1
+           AND recent.scheduled_refresh_started_at>now()-interval '1 minute'
+         )))
+         RETURNING id`,
+        [userId, feedId, token, Boolean(scheduled)],
+      );
+      if (!claimed.rows.length)
+        throw new ApiError(409, 'FEED_REFRESH_BUSY', 'A refresh is already in progress for this feed.');
+      return { url: feed.url as string };
+    });
+    if (claim.receipt) return claim.receipt;
+
+    try {
+      let preview: LiteratureFeedPreview;
+      try {
+        scheduled?.abort?.throwIfAborted();
+        preview = await fetchFeed(claim.url);
+      } catch (error) {
+        scheduled?.abort?.throwIfAborted();
+        if (error instanceof ApiError && error.status === 429)
+          throw new ApiError(429, 'RATE_LIMITED', 'Too many feed previews are running. Try again shortly.');
+        const invalid = error instanceof ApiError && error.status === 422;
+        const message = invalid
+          ? 'The feed URL must return a supported public RSS or Atom feed.'
+          : 'The feed could not be reached. Try again shortly.';
+        return await this.execute(command, async (ctx) => {
+          const current = await this.claimedLiteratureFeed(ctx, feedId, token, Boolean(scheduled));
+          const feed = await this.update(ctx.sql, userId, literatureFeeds, feedId, {
+            ...this.nextLiteratureFeedSchedule(current, false), last_refresh_error: message,
+          });
+          await this.change(ctx, literatureFeeds, feed);
+          return {
+            status: invalid ? 422 : 502,
+            body: { error: { code: invalid ? 'INVALID_FEED' : 'FEED_UNAVAILABLE', message, details: {} } },
+          };
+        });
+      }
+      scheduled?.abort?.throwIfAborted();
+      return await this.execute(command, async (ctx) => {
+        const feed = await this.claimedLiteratureFeed(ctx, feedId, token, Boolean(scheduled));
+        return this.saveLiteratureFeedEntries(ctx, feed, preview);
+      });
+    } finally {
+      await this.db.transaction(userId, (sql) => sql.query(
+        'UPDATE literature_feeds SET refresh_token=NULL,refresh_started_at=NULL,refresh_scheduled=false WHERE user_id=$1 AND id=$2 AND refresh_token=$3',
+        [userId, feedId, token],
+      ));
+    }
+  }
   async initialize() {
     const cols = await this.db.query(
       "SELECT table_name,column_name FROM information_schema.columns WHERE table_schema='prism'",
@@ -171,18 +358,21 @@ export class PrismService {
           [randomUUID(), this.config.userId],
         );
       });
-    if (this.config.authMode === 'oidc')
-      await this.db.transaction(this.config.userId, async (sql) => {
+    if (this.config.authMode === 'oidc') {
+      const accounts = this.config.hostedAccounts ?? [{ userId: this.config.userId, subject: this.config.allowedSubject }];
+      for (const account of accounts) await this.db.transaction(account.userId, async (sql) => {
         const u = (
-          await sql.query('SELECT * FROM users WHERE id=$1 AND deleted_at IS NULL', [this.config.userId])
+          await sql.query('SELECT oidc_subject,display_name FROM users WHERE id=$1 AND deleted_at IS NULL', [account.userId])
         ).rows[0];
-        const p = (await sql.query('SELECT id FROM user_preferences WHERE user_id=$1', [this.config.userId]))
+        const p = (await sql.query('SELECT id FROM user_preferences WHERE user_id=$1', [account.userId]))
           .rows[0];
-        const h = (await sql.query('SELECT id FROM user_sync_state WHERE user_id=$1', [this.config.userId]))
+        const h = (await sql.query('SELECT id FROM user_sync_state WHERE user_id=$1', [account.userId]))
           .rows[0];
-        if (!u || u.oidc_subject !== this.config.allowedSubject || !p || !h)
+        if (!u || u.oidc_subject !== account.subject || !p || !h)
           throw new Error('Configured account has not been provisioned with preferences and sync state');
+        if (this.config.hostedAccounts) await saveTeamAccountName(sql, account.userId, u.display_name);
       });
+    }
   }
   async read<T>(userId: string, fn: (sql: Sql) => Promise<T>): Promise<T> {
     return this.db.transaction(userId, fn);
@@ -256,6 +446,8 @@ export class PrismService {
     return result.rows[0];
   }
   private value(v: any, key = ''): any {
+    if (key === 'conditions' && v === null) return null;
+    if (key === 'ink_path') return v === null ? null : JSON.stringify(v);
     const json = new Set([
       'changes',
       'payload',
@@ -277,6 +469,11 @@ export class PrismService {
       'proof_steps',
       'proof_stuck_steps',
       'resolved_payload',
+      'publication',
+      'rects',
+      'anchor',
+      'creators',
+      'import_source',
       'client_payload',
       'base_payload',
       'server_payload',
@@ -322,6 +519,23 @@ export class PrismService {
     delete row.oidc_subject;
     delete row.push_token_ciphertext;
     delete row.__cursor_time;
+    if (table === 'research_objects' && row.object_type === 'question')
+      row.question_status ??= 'open';
+    if (table === literatureFeeds) {
+      delete row.custom_title;
+      delete row.refresh_token;
+      delete row.refresh_started_at;
+      delete row.refresh_failures;
+      delete row.refresh_scheduled;
+      delete row.scheduled_refresh_started_at;
+    }
+    if (table === 'research_pdf_annotations') delete row.search_text;
+    if (table === textAnnotations) {
+      delete row.search_text;
+      delete row.section;
+    }
+    if (table === 'research_references' && row.creators === null) delete row.creators;
+    if (table === 'research_references' && row.import_source === null) delete row.import_source;
     if (table === 'devices') {
       row.push_registered = !!raw.push_token_ciphertext;
       delete row.last_ack_revision;
@@ -507,6 +721,8 @@ export class PrismService {
       command.userId,
       async (sql) => {
         await sql.query('SELECT revision FROM user_sync_state WHERE user_id=$1 FOR UPDATE', [command.userId]);
+        if (this.config.hostedAccounts && command.path.split('/')[0] === 'team-libraries')
+          await authorizeTeamCommand(sql, command);
         const prior = await sql.query(
           'SELECT * FROM api_idempotency WHERE user_id=$1 AND idempotency_key=$2',
           [command.userId, command.key],
@@ -518,7 +734,10 @@ export class PrismService {
               'IDEMPOTENCY_KEY_REUSED',
               'Operation ID was already used with different content',
             );
-          const result = { status: prior.rows[0].response_status, body: prior.rows[0].response_body };
+          if (this.config.hostedAccounts && /^team-libraries\/[^/]+\/join$/.test(command.path))
+            return { status: 200, body: serializeTeamLibrary(await readTeamLibrary({ sql, userId: command.userId },
+              command.path.split('/')[1])), replayed: true };
+          const result = { status: prior.rows[0].response_status, body: publicCommandReceipt(prior.rows[0]) };
           if (result.body?.error && !result.body.error.request_id)
             result.body.error.request_id = randomUUID();
           if (command.sync && command.deviceId) {
@@ -648,6 +867,7 @@ export class PrismService {
           );
         }
         if (result.body && result.body.sync_revision === null) result.body.sync_revision = revision;
+        const { receiptData, ...publicResult } = result;
         await this.insert(
           sql,
           'api_idempotency',
@@ -657,7 +877,7 @@ export class PrismService {
             path: command.path,
             request_hash: fingerprint,
             response_status: result.status,
-            response_body: result.body ?? null,
+            response_body: receiptData ? { ...result.body, ...receiptData } : result.body ?? null,
           },
           command.userId,
         );
@@ -680,13 +900,13 @@ export class PrismService {
             payload: command.body ?? {},
             payload_hash: fingerprint,
             status: result.status === 409 ? 'conflict' : 'applied',
-            result: { ...result, sync_revision: revision, records: ctx.changes },
+                  result: { ...publicResult, sync_revision: revision, records: ctx.changes },
           };
           if (existing.rows[0])
             await this.update(sql, command.userId, 'sync_operations', existing.rows[0].id, receipt);
           else await this.insert(sql, 'sync_operations', receipt, command.userId);
         }
-        return result;
+        return publicResult;
       },
       command.path === 'sync/snapshots' ? 'repeatable read' : 'read committed',
     );
@@ -699,6 +919,16 @@ export class PrismService {
       ctx.userId,
     );
     await this.change(ctx, 'research_events', event);
+  }
+  private async auditQuestionLink(ctx: Context, link: Row, type: string) {
+    await this.audit(ctx, link.project_id, link.question_id, type, {
+      link_id: link.id,
+      relation_type: link.relation_type,
+      reference_id: link.reference_id,
+      attachment_id: link.attachment_id,
+      page: link.page,
+      research_object_id: link.research_object_id,
+    });
   }
   private async validateRefs(ctx: Context, body: Row): Promise<void> {
     const refs: Record<string, string> = {
@@ -720,30 +950,561 @@ export class PrismService {
     if (body.paper_id) await this.paper(ctx.sql, body.paper_id);
     if (body.timezone && !validTimezone(body.timezone)) throw validation('Invalid IANA timezone');
   }
+  private rethrowEntityWriteError(table: string, error: any): never {
+    if (
+      table === 'research_references' &&
+      error?.code === '23505' &&
+      [
+        'research_references_doi', 'research_references_arxiv', 'research_references_zotero',
+        'research_references_standalone_doi', 'research_references_standalone_arxiv',
+        'research_references_standalone_zotero', 'research_references_citation_key', 'research_references_pkey',
+      ].includes(error.constraint)
+    )
+      throw new ApiError(409, 'VALIDATION_ERROR', 'A reference with this identifier or citation key already exists.');
+    if (table === 'research_reference_links' && error?.code === '23505' &&
+        error.constraint === 'research_reference_links_project')
+      throw new ApiError(409, 'VALIDATION_ERROR', 'This reference is already in the project.');
+    if (table === 'research_reference_knowledge_links' && error?.code === '23505' &&
+        ['research_reference_knowledge_pair', 'research_reference_knowledge_links_pkey'].includes(error.constraint))
+      throw new ApiError(409, 'VALIDATION_ERROR', 'This Knowledge item is already linked or the link ID is in use.');
+    if (table === 'research_reference_relations' && error?.code === '23505' &&
+        error.constraint === 'research_reference_relation_pair')
+      throw new ApiError(409, 'VALIDATION_ERROR', 'These references are already related.');
+    if (table === questionLinks && error?.code === '23505')
+      throw new ApiError(409, 'VALIDATION_ERROR', 'This evidence is already linked to the question or the link ID is in use.');
+    if (error?.code === '23505' && ['literature_collection_root_name', 'literature_collection_child_name'].includes(error.constraint))
+      throw new ApiError(409, 'VALIDATION_ERROR', 'A collection with this name already exists here.');
+    if (error?.code === '23505' && error.constraint === 'literature_membership_collection_reference')
+      throw new ApiError(409, 'VALIDATION_ERROR', 'This reference is already in the collection.');
+    if (error?.code === '23505' && error.constraint === 'literature_saved_search_name')
+      throw new ApiError(409, 'VALIDATION_ERROR', 'A saved search with this name already exists.');
+    throw error;
+  }
+  private normalizeReference(body: Row, previous?: Row) {
+    if ('title' in body) {
+      body.title = String(body.title ?? '').trim();
+      if (!body.title) throw validation('Enter a reference title.');
+    }
+    if (body.authors) body.authors = body.authors.map((author: string) => author.trim()).filter(Boolean);
+    if (body.tags) {
+      const tags = new Map<string, string>();
+      for (const raw of body.tags as string[]) {
+        const tag = raw.trim();
+        if (tag && !tags.has(tag.toLowerCase())) tags.set(tag.toLowerCase(), tag);
+      }
+      body.tags = [...tags.values()];
+    }
+    if (body.doi) body.doi = body.doi.toLowerCase();
+    if (body.arxiv_id) body.arxiv_id = body.arxiv_id.toLowerCase();
+    if (body.citation_key && reservedCitationKey.test(body.citation_key))
+      body.citation_key = null;
+    if (body.publication)
+      body.publication = Object.fromEntries(
+        Object.entries(body.publication)
+          .map(([key, value]) => [key, (value as string).trim()])
+          .filter(([, value]) => value),
+      );
+    if (body.creators !== undefined) {
+      const creators: ReferenceCreator[] = body.creators.map(({ role, name }: ReferenceCreator) => ({ role, name: name.trim() }));
+      if (creators.some(({ name }) => !name)) throw validation('Enter a name for every reference creator.');
+      body.creators = creators;
+      body.authors = creators.filter(({ role }) => role === 'author').map(({ name }) => name);
+      const publication = { ...(body.publication ?? previous?.publication ?? {}) };
+      for (const role of ['editor', 'translator'] as const) {
+        const names = creators.filter((creator) => creator.role === role).map(({ name }) => name);
+        if (names.length) publication[role] = [...names.join('; ')].slice(0, 2000).join('');
+        else delete publication[role];
+      }
+      if (body.authors.length > 100) throw validation('A reference can have at most 100 authors.');
+      if (creators.length > 300) throw validation('A reference can have at most 300 creators.');
+      body.publication = publication;
+    } else if (previous?.creators && (body.authors !== undefined || body.publication !== undefined)) {
+      const replacements = new Map<CreatorRole, string[]>();
+      if (body.authors !== undefined && canonical(body.authors) !== canonical(previous.authors))
+        replacements.set('author', body.authors);
+      for (const role of ['editor', 'translator'] as const) {
+        if (body.publication !== undefined && body.publication[role] !== previous.publication?.[role])
+          replacements.set(role, splitLegacyCreators(body.publication[role]));
+      }
+      if (replacements.size) {
+        const pending = new Map(replacements);
+        const creators: ReferenceCreator[] = previous.creators.flatMap((creator: ReferenceCreator) => {
+          if (!replacements.has(creator.role)) return [creator];
+          const names = pending.get(creator.role) ?? [];
+          pending.delete(creator.role);
+          return names.map((name) => ({ role: creator.role, name }));
+        });
+        for (const [role, names] of pending) creators.push(...names.map((name) => ({ role, name })));
+        if (creators.length > 300 || creators.some(({ name }) => [...name].length > 300))
+          throw validation('Use up to 300 creator names of at most 300 characters each.');
+        body.creators = creators;
+      }
+    }
+    if (body.url) {
+      let url: URL;
+      try {
+        url = new URL(body.url);
+      } catch {
+        throw validation('Enter a valid reference URL.');
+      }
+      if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password)
+        throw validation('Use an HTTP or HTTPS URL without credentials.');
+      if (url.href.length > 2000) throw validation('Reference URLs must be at most 2,000 characters.');
+      body.url = url.href;
+    }
+  }
+  private async changeReferenceCitationKey(ctx: Context, id: string, key: string): Promise<Result> {
+    const table = 'research_references';
+    const reference = await this.row(ctx.sql, ctx.userId, table, id);
+    this.version(reference, ctx.expected);
+    const fallback = `ref-${reference.id}`;
+    const current = reference.citation_key ?? fallback;
+    const previousAliases = new Set<string>(reference.citation_aliases);
+    if (key === current)
+      return { status: 200, body: await this.serialize(ctx.sql, ctx.userId, table, reference) };
+    if (key !== fallback && reservedCitationKey.test(key) && !(key.startsWith('ref-') && previousAliases.has(key)))
+      throw validation('This citation key is reserved for generated citations.');
+    const { rows } = await ctx.sql.query(
+      `SELECT id FROM research_references WHERE user_id=$1 AND id<>$2 AND deleted_at IS NULL
+        AND (citation_key=$3 OR $3=ANY(citation_aliases)) LIMIT 1`,
+      [ctx.userId, reference.id, key],
+    );
+    if (rows.length) throw new ApiError(409, 'VALIDATION_ERROR', 'This citation key is already used by another reference.');
+    previousAliases.delete(key);
+    previousAliases.add(current);
+    if (previousAliases.size > Math.max(maxCitationAliases, reference.citation_aliases.length))
+      throw validation('This reference has reached its citation key history limit. You can reuse a previous key.');
+    const updated = await this.update(ctx.sql, ctx.userId, table, id, {
+      citation_key: key === fallback ? null : key,
+      citation_aliases: [...previousAliases],
+    });
+    await this.change(ctx, table, updated);
+    return { status: 200, body: await this.serialize(ctx.sql, ctx.userId, table, updated) };
+  }
+  private async validateCollection(ctx: Context, body: Row, id?: string) {
+    if (body.name !== undefined) {
+      body.name = body.name.trim();
+      if (!body.name) throw validation('Enter a collection name.');
+    }
+    if (!body.parent_id) return;
+    await this.row(ctx.sql, ctx.userId, 'literature_collections', body.parent_id);
+    if (!id) return;
+    const { rows } = await ctx.sql.query(
+      `WITH RECURSIVE ancestors(id,parent_id) AS (
+         SELECT id,parent_id FROM literature_collections WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL
+         UNION
+         SELECT p.id,p.parent_id FROM literature_collections p
+         JOIN ancestors a ON a.parent_id=p.id
+         WHERE p.user_id=$1 AND p.deleted_at IS NULL
+       )
+       SELECT id FROM ancestors WHERE id=$3`,
+      [ctx.userId, body.parent_id, id],
+    );
+    if (rows.length) throw validation('A collection cannot be moved inside itself or its descendants.');
+  }
+  private async validateSavedSearch(ctx: Context, body: Row) {
+    for (const field of ['name', 'query', 'tag']) {
+      if (body[field] !== undefined) body[field] = body[field].trim();
+    }
+    if (body.name === '') throw validation('Enter a saved search name.');
+    if (body.collection_id) await this.row(ctx.sql, ctx.userId, 'literature_collections', body.collection_id);
+    if (body.conditions != null) {
+      const { collections } = parseLiteratureConditions(body.conditions);
+      for (const collectionId of collections)
+        await this.row(ctx.sql, ctx.userId, 'literature_collections', collectionId);
+    }
+  }
+  private literatureFeedTitle(value: string): string {
+    const title = value.replace(/[\u0000-\u001f\u007f\s]+/g, ' ').trim();
+    if (!title) throw validation('Enter a feed title.');
+    return title;
+  }
+  private async literatureFeed(sql: Sql, userId: string, feed: Row): Promise<Row> {
+    const { rows } = await sql.query(
+      'SELECT count(*)::int AS unread_count FROM literature_feed_entries WHERE user_id=$1 AND feed_id=$2 AND read_at IS NULL',
+      [userId, feed.id],
+    );
+    return { ...await this.serialize(sql, userId, literatureFeeds, feed), unread_count: rows[0].unread_count };
+  }
+  private async claimedLiteratureFeed(ctx: Context, feedId: string, token: string, scheduled: boolean): Promise<Row> {
+    const feed = await this.row(ctx.sql, ctx.userId, literatureFeeds, feedId);
+    if (feed.refresh_token !== token || (scheduled && !feed.auto_refresh))
+      throw new ApiError(409, 'FEED_REFRESH_BUSY', 'This feed refresh was superseded.');
+    return feed;
+  }
+  private nextLiteratureFeedSchedule(feed: Row, succeeded: boolean): Row {
+    if (!feed.auto_refresh) return {};
+    const failures = succeeded ? 0 : Math.min(6, Number(feed.refresh_failures) + 1);
+    const delay = succeeded ? feedScheduleIntervalMs : Math.min(24, 2 ** (failures - 1)) * 3_600_000;
+    return { refresh_failures: failures, next_refresh_at: new Date(Date.now() + delay) };
+  }
+  private async saveLiteratureFeedEntries(ctx: Context, feed: Row, preview: LiteratureFeedPreview): Promise<Result> {
+    const { sql, userId } = ctx;
+    const { rows } = await sql.query(
+      `SELECT * FROM literature_feed_entries WHERE user_id=$1 AND feed_id=$2`, [userId, feed.id],
+    );
+    const known = new Map(rows.map((row) => [row.external_id, row]));
+    const added = new Set<string>();
+    const changed: Row[] = [];
+    for (const item of preview.items) {
+      const existing = known.get(item.external_id);
+      const fields = { title: item.title, url: item.url, authors: item.authors, published_at: item.published_at, summary: item.summary };
+      if (existing) {
+        const previousDate = existing.published_at && new Date(existing.published_at).toISOString();
+        if (fields.title === existing.title && fields.url === existing.url && fields.published_at === previousDate &&
+            fields.summary === existing.summary && canonical(fields.authors) === canonical(existing.authors)) continue;
+        changed.push(await this.update(sql, userId, literatureFeedEntries, existing.id, fields));
+      } else {
+        const row = await this.insert(sql, literatureFeedEntries, { ...fields, feed_id: feed.id, external_id: item.external_id }, userId);
+        added.add(row.id);
+        changed.push(row);
+        known.set(item.external_id, row);
+      }
+    }
+    const pruned = await sql.query(
+      `WITH older AS (
+        SELECT id FROM literature_feed_entries WHERE user_id=$1 AND feed_id=$2
+        ORDER BY ${feedEntryOrder} DESC,id DESC OFFSET $3
+      )
+      DELETE FROM literature_feed_entries WHERE user_id=$1 AND feed_id=$2 AND id IN (SELECT id FROM older)
+      RETURNING id,version`,
+      [userId, feed.id, maxFeedEntries],
+    );
+    const prunedIds = new Set(pruned.rows.map((row) => row.id));
+    for (const row of changed) if (!prunedIds.has(row.id)) await this.change(ctx, literatureFeedEntries, row);
+    for (const row of pruned.rows) {
+      if (added.delete(row.id)) continue;
+      await this.change(ctx, literatureFeedEntries, {
+        ...row, version: (BigInt(row.version) + 1n).toString(), deleted_at: new Date(),
+      });
+    }
+    const updated = await this.update(sql, userId, literatureFeeds, feed.id, {
+      ...this.nextLiteratureFeedSchedule(feed, true),
+      ...(!feed.custom_title && { title: preview.title }), last_refreshed_at: new Date(), last_refresh_error: null,
+    });
+    await this.change(ctx, literatureFeeds, updated);
+    return {
+      status: 200,
+      body: { feed: await this.literatureFeed(sql, userId, updated), added: added.size, pruned: pruned.rows.length },
+    };
+  }
+  private async listLiteratureFeedEntries(sql: Sql, userId: string, feedId: string, query: Row): Promise<Row> {
+    await this.row(sql, userId, literatureFeeds, feedId);
+    const limit = Math.max(1, Math.min(100, Number(query.limit) || 30));
+    const binding = hash({ feedId, unread: query.unread === true });
+    const cursor = query.cursor ? this.decode(query.cursor, userId, 'literature-feed-entries') : undefined;
+    if (cursor && cursor.binding !== binding) throw validation('Cursor filters changed');
+    const { rows } = await sql.query(
+      `SELECT *,${feedEntryOrder}::text AS __cursor_time FROM literature_feed_entries WHERE user_id=$1 AND feed_id=$2
+       ${query.unread === true ? 'AND read_at IS NULL' : ''}
+       ${cursor ? `AND (${feedEntryOrder},id)<($4::timestamptz,$5::uuid)` : ''}
+       ORDER BY ${feedEntryOrder} DESC,id DESC LIMIT $3`,
+      [userId, feedId, limit + 1, ...(cursor ? [cursor.time, cursor.id] : [])],
+    );
+    const selected = rows.slice(0, limit);
+    const last = selected.at(-1);
+    return {
+      items: await Promise.all(selected.map((row) => this.serialize(sql, userId, literatureFeedEntries, row))),
+      next_cursor: rows.length > limit && last ? this.cursor(userId, 'literature-feed-entries', {
+        binding, time: last.__cursor_time, id: last.id,
+      }) : null,
+    };
+  }
+  private async mutateLiteratureFeed(ctx: Context, method: string, body: Row, feedId?: string): Promise<Result> {
+    const { sql, userId } = ctx;
+    if (method === 'POST' && !feedId) {
+      const url = normalizeLiteratureFeedUrl(body.url);
+      const { rows } = await sql.query(
+        `SELECT count(*)::int AS count,coalesce(bool_or(url=$2),false) AS duplicate
+         FROM literature_feeds WHERE user_id=$1 AND deleted_at IS NULL`,
+        [userId, url.href],
+      );
+      if (rows[0].duplicate) throw new ApiError(409, 'VALIDATION_ERROR', 'You already subscribe to this feed.');
+      if (rows[0].count >= maxFeedSubscriptions) throw validation('Your library already has 25 feed subscriptions.');
+      const feed = await this.insert(sql, literatureFeeds, {
+        id: body.id, url: url.href, title: body.title === undefined ? url.hostname : this.literatureFeedTitle(body.title),
+        custom_title: body.title !== undefined,
+      }, userId);
+      await this.change(ctx, literatureFeeds, feed);
+      return { status: 201, body: { ...await this.serialize(sql, userId, literatureFeeds, feed), unread_count: 0 } };
+    }
+    if (!feedId) throw notFound();
+    const feed = await this.row(sql, userId, literatureFeeds, feedId);
+    this.version(feed, ctx.expected);
+    if (method === 'PATCH') {
+      const patch: Row = {};
+      if (body.title !== undefined) {
+        const title = this.literatureFeedTitle(body.title);
+        if (!feed.custom_title || feed.title !== title) Object.assign(patch, { title, custom_title: true });
+      }
+      if (body.auto_refresh !== undefined && body.auto_refresh !== feed.auto_refresh) {
+        patch.auto_refresh = body.auto_refresh;
+        patch.next_refresh_at = body.auto_refresh ? new Date(Date.now() + feedScheduleSpacingMs) : null;
+        patch.refresh_failures = 0;
+        if (!body.auto_refresh && feed.refresh_scheduled) {
+          patch.refresh_scheduled = false;
+          patch.refresh_token = null;
+          patch.refresh_started_at = null;
+        }
+      }
+      const updated = Object.keys(patch).length ? await this.update(sql, userId, literatureFeeds, feedId, patch) : feed;
+      if (updated !== feed) await this.change(ctx, literatureFeeds, updated);
+      return { status: 200, body: await this.literatureFeed(sql, userId, updated) };
+    }
+    if (method !== 'DELETE') throw notFound();
+    const { rows } = await sql.query(
+      'DELETE FROM literature_feed_entries WHERE user_id=$1 AND feed_id=$2 RETURNING id,version', [userId, feedId],
+    );
+    const deleted_at = new Date();
+    for (const row of rows)
+      await this.change(ctx, literatureFeedEntries, { ...row, version: (BigInt(row.version) + 1n).toString(), deleted_at });
+    await this.change(ctx, literatureFeeds, await this.update(sql, userId, literatureFeeds, feedId, { deleted_at }));
+    return { status: 204, body: null };
+  }
+  private async markLiteratureFeedEntry(ctx: Context, entryId: string, read: boolean): Promise<Result> {
+    const { sql, userId } = ctx;
+    const old = await this.row(sql, userId, literatureFeedEntries, entryId);
+    this.version(old, ctx.expected);
+    const entry = Boolean(old.read_at) === read
+      ? old : await this.update(sql, userId, literatureFeedEntries, entryId, { read_at: read ? new Date() : null });
+    if (entry !== old) await this.change(ctx, literatureFeedEntries, entry);
+    return { status: 200, body: await this.serialize(sql, userId, literatureFeedEntries, entry) };
+  }
+  private async referenceAttachment(
+    sql: Sql, userId: string, id: string, onlyFormat?: ReferenceAttachmentFormat,
+  ) {
+    const attachment = await this.row(sql, userId, 'research_reference_pdfs', id);
+    if (onlyFormat && attachment.format !== onlyFormat) throw notFound();
+    return attachment;
+  }
+  private async readyReferenceAttachment(
+    sql: Sql, userId: string, id: string, onlyFormat?: ReferenceAttachmentFormat,
+  ) {
+    const attachment = await this.referenceAttachment(sql, userId, id, onlyFormat);
+    if (attachment.status !== 'ready') throw notFound();
+    return attachment;
+  }
+  private readyReferencePdf(sql: Sql, userId: string, pdfId: string) {
+    return this.readyReferenceAttachment(sql, userId, pdfId, 'pdf');
+  }
+  private async serializeReferenceAttachment(sql: Sql, userId: string, row: Row, legacy: boolean) {
+    const data = await this.serialize(sql, userId, 'research_reference_pdfs', row);
+    if (legacy) delete data.format;
+    return data;
+  }
+  private async pdfReadingPosition(sql: Sql, userId: string, pdfId: string) {
+    const { rows } = await sql.query(
+      'SELECT * FROM research_pdf_reading_positions WHERE user_id=$1 AND id=$2 AND deleted_at IS NULL',
+      [userId, pdfId],
+    );
+    return rows[0];
+  }
+  private async saveAttachmentReadingPosition(ctx: Context, attachmentId: string, body: Row, onlyFormat?: ReferenceAttachmentFormat): Promise<Result> {
+    const attachment = await this.readyReferenceAttachment(ctx.sql, ctx.userId, attachmentId, onlyFormat);
+    const table = 'research_pdf_reading_positions';
+    let row = await this.pdfReadingPosition(ctx.sql, ctx.userId, attachment.id);
+    const previousVersion = row ? String(row.version) : null;
+    if (body.expected_version !== undefined && body.expected_version !== previousVersion)
+      throw new ApiError(412, 'VERSION_CONFLICT', 'The reading position changed on another device.', {
+        current_version: previousVersion,
+      });
+    if (row?.page !== body.page) {
+      row = row
+        ? await this.update(ctx.sql, ctx.userId, table, attachment.id, { page: body.page })
+        : await this.insert(ctx.sql, table, { id: attachment.id, pdf_id: attachment.id, page: body.page }, ctx.userId);
+      await this.change(ctx, table, row);
+    }
+    return { status: 200, body: { position: await this.serialize(ctx.sql, ctx.userId, table, row) } };
+  }
+  private async markReferencePdfDeleted(ctx: Context, pdfId: string) {
+    const position = await this.pdfReadingPosition(ctx.sql, ctx.userId, pdfId);
+    if (position) await this.removeEntity(ctx, 'research_pdf_reading_positions', position.id, false);
+    await retirePdfTextIndexes(ctx.sql, ctx.userId, pdfId);
+    const { rows } = await ctx.sql.query(
+      'SELECT id FROM research_pdf_annotations WHERE user_id=$1 AND pdf_id=$2 AND deleted_at IS NULL ORDER BY id',
+      [ctx.userId, pdfId],
+    );
+    for (const annotation of rows) await this.removeEntity(ctx, 'research_pdf_annotations', annotation.id, false);
+    const text = await ctx.sql.query(`SELECT id FROM research_text_annotations
+      WHERE user_id=$1 AND attachment_id=$2 AND deleted_at IS NULL ORDER BY id`, [ctx.userId, pdfId]);
+    for (const annotation of text.rows) await this.removeEntity(ctx, textAnnotations, annotation.id, false);
+    const evidence = await ctx.sql.query(
+      'SELECT id FROM research_question_links WHERE user_id=$1 AND attachment_id=$2 AND deleted_at IS NULL',
+      [ctx.userId, pdfId],
+    );
+    for (const link of evidence.rows) await this.removeEntity(ctx, questionLinks, link.id, false);
+    await removeReferencePdf(this, ctx, pdfId, (row) => this.change(ctx, 'research_reference_pdfs', row));
+  }
+  private async textAnnotationAttachment(sql: Sql, userId: string, id: string) {
+    const file = await this.readyReferenceAttachment(sql, userId, id);
+    if (file.format === 'pdf') throw notFound();
+    return file;
+  }
+  private normalizeTextAnnotationTags(tags: string[] = []) {
+    const normalized = new Map<string, string>();
+    for (const value of tags) {
+      const tag = value.trim();
+      const key = tag.toLowerCase();
+      if (tag && !normalized.has(key)) normalized.set(key, tag);
+    }
+    return [...normalized.values()];
+  }
+  private async createTextAnnotation(ctx: Context, attachmentId: string, body: Row): Promise<Result> {
+    const { sql, userId } = ctx;
+    const file = await this.textAnnotationAttachment(sql, userId, attachmentId);
+    const anchor = body.anchor;
+    const { section, section_key: sectionKey, block, start, end, quote } = anchor;
+    if (end <= start || end - start !== quote.length || !quote.trim() || /[\u0000\uD800-\uDFFF]/u.test(quote))
+      throw validation('Select exact text within one paragraph or chapter block.');
+    if (file.format === 'epub') {
+      if (section > 600 || block > 10001 || typeof sectionKey !== 'string' || sectionKey.length > 512 ||
+          !sectionKey.trim() || /[\u0000-\u001f\u007f]/u.test(sectionKey)) throw validation('Choose a valid EPUB chapter and block.');
+    } else {
+      if (block !== 1 || sectionKey !== null) throw validation('Choose one paragraph in the saved webpage.');
+      const { rows } = await sql.query(`SELECT data FROM research_reference_pdf_chunks
+        WHERE user_id=$1 AND pdf_id=$2 AND byte_offset=0`, [userId, attachmentId]);
+      if (!rows[0]?.data) throw notFound();
+      const content = new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(rows[0].data));
+      const paragraph = content.split(/\n{2,}/u)[section - 1];
+      if (paragraph === undefined || paragraph.slice(start, end) !== quote)
+        throw validation('The selected text does not match this saved webpage.');
+    }
+    const count = (await sql.query(`SELECT count(*)::int AS count FROM research_text_annotations
+      WHERE user_id=$1 AND attachment_id=$2 AND deleted_at IS NULL`, [userId, attachmentId])).rows[0].count;
+    if (count >= 5000) throw validation('This attachment already has 5,000 text annotations.');
+    const comment = body.comment ?? '';
+    const saved = await this.insert(sql, textAnnotations, {
+      id: body.id, attachment_id: attachmentId, format: file.format, anchor, section, color: body.color ?? 'yellow',
+      comment, tags: this.normalizeTextAnnotationTags(body.tags), search_text: normalizeLiteratureSearch(`${quote} ${comment}`),
+    }, userId);
+    await this.change(ctx, textAnnotations, saved);
+    return { status: 201, body: await this.serialize(sql, userId, textAnnotations, saved) };
+  }
+  private async mutateTextAnnotation(ctx: Context, id: string, method: string, body: Row): Promise<Result> {
+    const { sql, userId } = ctx;
+    const old = await this.row(sql, userId, textAnnotations, id);
+    await this.textAnnotationAttachment(sql, userId, old.attachment_id);
+    this.version(old, ctx.expected);
+    if (method === 'DELETE') {
+      await this.removeEntity(ctx, textAnnotations, id, false);
+      return { status: 204, body: null };
+    }
+    const patch: Row = {};
+    if (body.color !== undefined && body.color !== old.color) patch.color = body.color;
+    if (body.comment !== undefined && body.comment !== old.comment) {
+      patch.comment = body.comment;
+      patch.search_text = normalizeLiteratureSearch(`${old.anchor.quote} ${body.comment}`);
+    }
+    if (body.tags !== undefined) {
+      const tags = this.normalizeTextAnnotationTags(body.tags);
+      if (canonical(tags) !== canonical(old.tags)) patch.tags = tags;
+    }
+    const saved = Object.keys(patch).length ? await this.update(sql, userId, textAnnotations, id, patch) : old;
+    if (saved !== old) await this.change(ctx, textAnnotations, saved);
+    return { status: 200, body: await this.serialize(sql, userId, textAnnotations, saved) };
+  }
+  private async normalizeResearchObject(ctx: Context, body: Row, previous?: Row) {
+    const type = body.object_type ?? previous?.object_type;
+    if (body.question_status !== undefined && (type !== 'question' || !questionStatuses.has(body.question_status)))
+      throw validation('Choose a valid status for a Research Question.');
+    if (type === 'question' && !previous?.question_status) body.question_status ??= 'open';
+    if (!previous || type === previous.object_type) return;
+
+    const { rows } = await ctx.sql.query(
+      `SELECT question_id,relation_type FROM research_question_links
+       WHERE user_id=$1 AND deleted_at IS NULL AND (question_id=$2 OR research_object_id=$2)`,
+      [ctx.userId, previous.id],
+    );
+    if (rows.some((link) => link.question_id === previous.id
+      ? type !== 'question'
+      : !questionRecordRelations[link.relation_type]?.includes(type)))
+      throw validation('Remove incompatible Research Question links before changing the record type.');
+    if (type !== 'question') body.question_status = null;
+  }
+  private async validateQuestionLink(ctx: Context, body: Row) {
+    const { sql, userId } = ctx;
+    const question = await this.row(sql, userId, 'research_objects', body.question_id);
+    if (question.object_type !== 'question') throw validation('Choose a Research Question.');
+    await this.row(sql, userId, 'research_projects', question.project_id);
+    body.project_id = question.project_id;
+    body.notes = body.notes?.trim() ?? '';
+    if (body.reference_id) {
+      if (!questionSourceRelations.has(body.relation_type) || body.research_object_id)
+        throw validation('Choose a source relationship for the Library reference.');
+      const reference = await this.mergedReference(sql, userId, body.reference_id);
+      if (reference.project_id && reference.project_id !== question.project_id)
+        throw validation('Choose a standalone reference or a reference from this project.');
+      body.reference_id = reference.id;
+      if (Boolean(body.attachment_id) !== (body.page != null))
+        throw validation('Choose a PDF attachment and its page together.');
+      if (body.attachment_id) {
+        if (!Number.isInteger(body.page) || body.page < 1 || body.page > 100000)
+          throw validation('Enter a positive PDF page number.');
+        const attachment = await this.readyReferencePdf(sql, userId, body.attachment_id);
+        if (attachment.reference_id !== reference.id)
+          throw validation('Choose a PDF attached to this reference.');
+        const { rows } = await sql.query(
+          `SELECT page_count FROM research_pdf_text_indexes
+           WHERE user_id=$1 AND pdf_id=$2 AND status IN ('ready','indexing')
+           ORDER BY (status='ready') DESC,updated_at DESC LIMIT 1`,
+          [userId, attachment.id],
+        );
+        if (rows[0] && body.page > rows[0].page_count)
+          throw validation('The page is beyond the end of this PDF.');
+      }
+      return;
+    }
+    const record = await this.row(sql, userId, 'research_objects', body.research_object_id);
+    if (record.project_id !== question.project_id || !questionRecordRelations[body.relation_type]?.includes(record.object_type) ||
+        body.attachment_id || body.page != null)
+      throw validation('Choose a matching research record from this project.');
+  }
   private async createEntity(ctx: Context, table: string, input: Row): Promise<Row> {
     const body = { ...input };
     delete body.base_snapshot;
     if (table === 'research_knowledge_links' && Boolean(body.project_id) === Boolean(body.research_object_id))
       throw validation('Choose one research project or research object.');
     await this.validateRefs(ctx, body);
+    if (table === 'research_objects') await this.normalizeResearchObject(ctx, body);
+    if (table === questionLinks) await this.validateQuestionLink(ctx, body);
     if (table === 'research_references') {
-      body.title = String(body.title ?? '').trim();
-      if (!body.title) throw validation('Enter a reference title.');
-      body.authors = (body.authors ?? []).map((author: string) => author.trim()).filter(Boolean);
-      if (body.doi) body.doi = body.doi.toLowerCase();
-      if (body.arxiv_id) body.arxiv_id = body.arxiv_id.toLowerCase();
-      if (body.url) {
-        let url: URL;
-        try {
-          url = new URL(body.url);
-        } catch {
-          throw validation('Enter a valid reference URL.');
-        }
-        if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password)
-          throw validation('Use an HTTP or HTTPS URL without credentials.');
-        if (url.href.length > 2000) throw validation('Reference URLs must be at most 2,000 characters.');
-        body.url = url.href;
+      this.normalizeReference(body);
+      if (body.citation_key) {
+        const { rows } = await ctx.sql.query(
+          'SELECT id FROM research_references WHERE user_id=$1 AND deleted_at IS NULL AND $2=ANY(citation_aliases) LIMIT 1',
+          [ctx.userId, body.citation_key],
+        );
+        if (rows.length) throw new ApiError(409, 'VALIDATION_ERROR', 'This citation key is already an alias for a reference.');
       }
+    }
+    if (table === 'research_reference_links') {
+      const reference = await this.row(ctx.sql, ctx.userId, 'research_references', body.reference_id);
+      if (reference.project_id) throw validation('Choose a standalone reference from the literature library.');
+    }
+    if (table === 'literature_saved_searches') {
+      await this.validateSavedSearch(ctx, body);
+      const { rows } = await ctx.sql.query(
+        'SELECT count(*)::int AS total FROM literature_saved_searches WHERE user_id=$1 AND deleted_at IS NULL',
+        [ctx.userId],
+      );
+      if (rows[0].total >= 200) throw validation('This library already has 200 saved searches.');
+    }
+    if (table === 'literature_collections') {
+      await this.validateCollection(ctx, body, body.id);
+      const { rows } = await ctx.sql.query(
+        'SELECT count(*)::int AS total FROM literature_collections WHERE user_id=$1 AND deleted_at IS NULL',
+        [ctx.userId],
+      );
+      if (rows[0].total >= 500) throw validation('This library already has 500 collections.');
+    }
+    if (table === 'literature_collection_memberships') {
+      await this.row(ctx.sql, ctx.userId, 'literature_collections', body.collection_id);
+      await this.row(ctx.sql, ctx.userId, 'research_references', body.reference_id);
+    }
+    if (table === 'research_pdf_annotations') {
+      await this.readyReferencePdf(ctx.sql, ctx.userId, body.pdf_id);
+      validatePdfAnnotation(body);
+      body.search_text = normalizeLiteratureSearch([body.text, body.comment].filter(Boolean).join(' '));
     }
     if (table === 'arxiv_subscriptions' && body.subscription_type === 'category') {
       const category = normalizeArxivCategory(body.subscription_value);
@@ -805,15 +1566,7 @@ export class PrismService {
       body.exercise_id = ex.exercise_id;
     }
     const row = await this.insert(ctx.sql, table, body, ctx.userId).catch((error) => {
-      if (
-        table === 'research_references' &&
-        error?.code === '23505' &&
-        ['research_references_doi', 'research_references_arxiv', 'research_references_zotero'].includes(
-          error.constraint,
-        )
-      )
-        throw new ApiError(409, 'VALIDATION_ERROR', 'This reference is already in the project.');
-      throw error;
+      this.rethrowEntityWriteError(table, error);
     });
     if (table === 'workout_templates' && Array.isArray(exercises)) {
       for (const ex of exercises) {
@@ -844,12 +1597,16 @@ export class PrismService {
       }
     }
     await this.change(ctx, table, row);
+    if (table === 'research_projects')
+      await this.audit(ctx, row.id, null, 'project_created', { title: row.title });
     if (table === 'research_objects')
       await this.audit(ctx, row.project_id, row.id, 'object_created', {
         object_type: row.object_type,
         claim_status: row.claim_status,
+        ...(row.question_status && { question_status: row.question_status }),
         title: row.title,
       });
+    if (table === questionLinks) await this.auditQuestionLink(ctx, row, 'question_link_added');
     if (['workout_sets', 'cardio_entries', 'workout_session_exercises'].includes(table))
       await this.touchSession(ctx, row.session_id);
     return this.serialize(ctx.sql, ctx.userId, table, row);
@@ -889,6 +1646,16 @@ export class PrismService {
         throw validation('Choose one research project or research object.');
     }
     await this.validateRefs(ctx, body);
+    if (table === 'research_objects') await this.normalizeResearchObject(ctx, body, old);
+    if (table === 'research_references') this.normalizeReference(body, old);
+    if (table === 'literature_saved_searches') await this.validateSavedSearch(ctx, body);
+    if (table === 'literature_collections') await this.validateCollection(ctx, body, id);
+    if (table === 'research_pdf_annotations') {
+      validatePdfAnnotation(body, old);
+      if (body.text !== undefined || body.comment !== undefined) {
+        body.search_text = normalizeLiteratureSearch([body.text ?? old.text, body.comment ?? old.comment].join(' '));
+      }
+    }
     if (table === 'review_cards') {
       if (body.proof_steps !== undefined)
         body.proof_steps = normalizeProofSteps(body.card_type ?? old.card_type, body.proof_steps);
@@ -940,18 +1707,32 @@ export class PrismService {
         await this.change(ctx, 'workout_template_exercises', child);
       }
     }
-    const row = await this.update(ctx.sql, ctx.userId, table, id, body);
+    const row = await this.update(ctx.sql, ctx.userId, table, id, body).catch((error) =>
+      this.rethrowEntityWriteError(table, error),
+    );
     await this.change(ctx, table, row);
+    if (table === 'research_projects') {
+      const changed = Object.keys(body).filter((key) => canonical(old[key]) !== canonical(row[key]));
+      if (changed.length)
+        await this.audit(ctx, row.id, null, 'project_updated', { title: row.title, changed_fields: changed });
+    }
     if (table === 'research_objects')
       await this.audit(
         ctx,
         row.project_id,
         row.id,
-        old.claim_status !== row.claim_status ? 'claim_status_changed' : 'object_updated',
+        old.claim_status !== row.claim_status ? 'claim_status_changed'
+          : (old.question_status ?? 'open') !== row.question_status && row.object_type === 'question'
+            ? 'question_status_changed' : 'object_updated',
         {
           previous_status: old.claim_status,
           claim_status: row.claim_status,
+          ...(row.object_type === 'question' && {
+            previous_question_status: old.object_type === 'question' ? old.question_status ?? 'open' : null,
+            question_status: row.question_status ?? 'open',
+          }),
           evidence_reference: row.evidence_reference,
+          changed_fields: Object.keys(body).filter((key) => canonical(old[key]) !== canonical(row[key])),
           title: row.title,
         },
       );
@@ -962,20 +1743,54 @@ export class PrismService {
   private async removeEntity(ctx: Context, table: string, id: string, checkVersion = true): Promise<void> {
     const old = await this.row(ctx.sql, ctx.userId, table, id);
     if (checkVersion) this.version(old, ctx.expected);
+    if (table === 'literature_collections') {
+      const { rows } = await ctx.sql.query(
+        `SELECT EXISTS(
+           SELECT 1 FROM literature_collections WHERE user_id=$1 AND parent_id=$2 AND deleted_at IS NULL
+           UNION ALL
+           SELECT 1 FROM literature_collection_memberships
+             WHERE user_id=$1 AND collection_id=$2 AND deleted_at IS NULL
+         ) AS nonempty`,
+        [ctx.userId, id],
+      );
+      if (rows[0]?.nonempty) throw new ApiError(409, 'VALIDATION_ERROR', 'Empty this collection before deleting it.');
+    }
+    if (table === 'research_references') {
+      const { rows } = await ctx.sql.query(
+        'SELECT id FROM research_reference_pdfs WHERE user_id=$1 AND reference_id=$2 AND deleted_at IS NULL',
+        [ctx.userId, id],
+      );
+      for (const pdf of rows)
+        await this.markReferencePdfDeleted(ctx, pdf.id);
+    }
     const children: Record<string, [string, string][]> = {
       knowledge_items: [
         ['review_cards', 'knowledge_item_id'],
         ['knowledge_relations', 'source_item_id'],
         ['knowledge_relations', 'target_item_id'],
         ['research_knowledge_links', 'knowledge_item_id'],
+        ['research_reference_knowledge_links', 'knowledge_item_id'],
       ],
       research_projects: [
         ['research_objects', 'project_id'],
         ['research_paper_links', 'project_id'],
         ['research_references', 'project_id'],
+        ['research_reference_links', 'project_id'],
         ['research_knowledge_links', 'project_id'],
       ],
-      research_objects: [['research_knowledge_links', 'research_object_id']],
+      research_objects: [
+        ['research_knowledge_links', 'research_object_id'],
+        [questionLinks, 'question_id'],
+        [questionLinks, 'research_object_id'],
+      ],
+      research_references: [
+        ['research_reference_links', 'reference_id'],
+        ['research_reference_knowledge_links', 'reference_id'],
+        ['literature_collection_memberships', 'reference_id'],
+        ['research_reference_relations', 'first_reference_id'],
+        ['research_reference_relations', 'second_reference_id'],
+        [questionLinks, 'reference_id'],
+      ],
       workout_templates: [['workout_template_exercises', 'template_id']],
       workout_sessions: [
         ['workout_session_exercises', 'session_id'],
@@ -1005,12 +1820,590 @@ export class PrismService {
     await this.change(ctx, table, deleted);
     if (table === 'research_objects')
       await this.audit(ctx, old.project_id, id, 'object_archived', { title: old.title });
+    if (table === questionLinks) await this.auditQuestionLink(ctx, old, 'question_link_removed');
     if (['workout_sets', 'cardio_entries'].includes(table)) await this.touchSession(ctx, old.session_id);
+  }
+  private async mergedReference(sql: Sql, userId: string, id: string): Promise<Row> {
+    const { rows } = await sql.query(
+      `WITH RECURSIVE targets AS (
+         SELECT * FROM research_references WHERE user_id=$1 AND id=$2
+         UNION
+         SELECT r.* FROM research_references r JOIN targets t ON t.merged_into_id=r.id
+           WHERE r.user_id=$1
+       )
+       SELECT * FROM targets WHERE deleted_at IS NULL LIMIT 1`,
+      [userId, id],
+    );
+    if (!rows[0]) throw notFound();
+    return rows[0];
+  }
+  private async moveReferenceLinks(
+    ctx: Context,
+    targetId: string,
+    sourceId: string,
+    table: 'research_reference_links' | 'literature_collection_memberships' | 'research_reference_knowledge_links',
+    scope: 'project_id' | 'collection_id' | 'knowledge_item_id',
+  ) {
+    const { rows } = await ctx.sql.query(
+      `SELECT id,EXISTS(SELECT 1 FROM ${table} t
+         WHERE t.user_id=s.user_id AND t.reference_id=$3 AND t.${scope}=s.${scope} AND t.deleted_at IS NULL) AS exists_on_target
+       FROM ${table} s WHERE s.user_id=$1 AND s.reference_id=$2 AND s.deleted_at IS NULL ORDER BY id`,
+      [ctx.userId, sourceId, targetId],
+    );
+    for (const link of rows) {
+      const updated = await this.update(ctx.sql, ctx.userId, table, link.id,
+        link.exists_on_target ? { deleted_at: new Date() } : { reference_id: targetId });
+      await this.change(ctx, table, updated);
+    }
+  }
+  private async moveQuestionSources(ctx: Context, sourceId: string, targetId: string) {
+    const { rows } = await ctx.sql.query(
+      `SELECT s.id,EXISTS(
+         SELECT 1 FROM research_question_links t
+         WHERE t.user_id=s.user_id AND t.reference_id=$3 AND t.question_id=s.question_id
+           AND t.relation_type=s.relation_type AND t.attachment_id IS NOT DISTINCT FROM s.attachment_id
+           AND t.page IS NOT DISTINCT FROM s.page AND t.deleted_at IS NULL
+       ) AS exists_on_target
+       FROM research_question_links s WHERE s.user_id=$1 AND s.reference_id=$2 AND s.deleted_at IS NULL`,
+      [ctx.userId, sourceId, targetId],
+    );
+    for (const link of rows) {
+      if (link.exists_on_target) await this.removeEntity(ctx, questionLinks, link.id, false);
+      else await this.change(ctx, questionLinks,
+        await this.update(ctx.sql, ctx.userId, questionLinks, link.id, { reference_id: targetId }));
+    }
+  }
+  private async moveReferenceRelations(ctx: Context, sourceId: string, targetId: string) {
+    const table = 'research_reference_relations';
+    const { rows } = await ctx.sql.query(
+      `SELECT id,CASE WHEN first_reference_id=$2 THEN second_reference_id ELSE first_reference_id END AS other_id
+       FROM research_reference_relations
+       WHERE user_id=$1 AND (first_reference_id=$2 OR second_reference_id=$2) AND deleted_at IS NULL ORDER BY id`,
+      [ctx.userId, sourceId],
+    );
+    for (const relation of rows) {
+      const [first, second] = [targetId, relation.other_id as string].sort();
+      const active = first !== second && (await ctx.sql.query(
+        `SELECT id FROM research_reference_relations
+         WHERE user_id=$1 AND first_reference_id=$2 AND second_reference_id=$3 AND deleted_at IS NULL`,
+        [ctx.userId, first, second],
+      )).rows.length;
+      const fields = first === second || active
+        ? { deleted_at: new Date() }
+        : { first_reference_id: first, second_reference_id: second };
+      const updated = await this.update(ctx.sql, ctx.userId, table, relation.id, fields);
+      await this.change(ctx, table, updated);
+    }
+  }
+  private relatedReference(relation: Row, reference: Row) {
+    return {
+      id: relation.id,
+      version: String(relation.version),
+      reference_id: reference.id,
+      title: reference.title,
+      authors: reference.authors,
+      year: reference.year,
+    };
+  }
+  private async createReferenceRelation(ctx: Context, referenceId: string, body: Row): Promise<Result> {
+    const reference = await this.mergedReference(ctx.sql, ctx.userId, referenceId);
+    const other = await this.mergedReference(ctx.sql, ctx.userId, body.reference_id);
+    const [first, second] = [reference.id, other.id].sort();
+    if (first === second) throw validation('Choose a different reference.');
+    const table = 'research_reference_relations';
+    const relation = await this.insert(ctx.sql, table, {
+      id: body.id, first_reference_id: first, second_reference_id: second,
+    }, ctx.userId).catch((error) => this.rethrowEntityWriteError(table, error));
+    await this.change(ctx, table, relation);
+    return { status: 201, body: this.relatedReference(relation, other) };
+  }
+  private async listReferenceRelations(sql: Sql, userId: string, referenceId: string, query: Row) {
+    const reference = await this.mergedReference(sql, userId, referenceId);
+    const params: unknown[] = [userId, reference.id];
+    const limit = Math.max(1, Math.min(100, Number(query.limit) || 50));
+    let paging = '';
+    if (query.cursor) {
+      const cursor = this.decode(query.cursor, userId, 'related-references');
+      if (cursor.reference_id !== reference.id) throw validation('Cursor filters changed');
+      params.push(cursor.title, cursor.id);
+      paging = 'AND (lower(r.title),l.id)>($3,$4::uuid)';
+    }
+    params.push(limit + 1);
+    const { rows } = await sql.query(
+      `SELECT l.id,l.version,r.id AS reference_id,r.title,r.authors,r.year,lower(r.title) AS sort_title
+       FROM research_reference_relations l JOIN research_references r
+         ON r.user_id=l.user_id AND r.id=CASE WHEN l.first_reference_id=$2 THEN l.second_reference_id ELSE l.first_reference_id END
+       WHERE l.user_id=$1 AND (l.first_reference_id=$2 OR l.second_reference_id=$2)
+         AND l.deleted_at IS NULL AND r.deleted_at IS NULL ${paging}
+       ORDER BY lower(r.title),l.id LIMIT $${params.length}`,
+      params,
+    );
+    const last = rows[Math.min(limit, rows.length) - 1];
+    return {
+      items: rows.slice(0, limit).map((row) => this.relatedReference(row, { ...row, id: row.reference_id })),
+      next_cursor: rows.length > limit && last
+        ? this.cursor(userId, 'related-references', {
+            reference_id: reference.id, title: last.sort_title, id: last.id,
+          })
+        : null,
+    };
+  }
+  private referenceKnowledgeItem(link: Row, item: Row) {
+    return {
+      id: link.id,
+      reference_id: link.reference_id,
+      knowledge_item_id: link.knowledge_item_id,
+      version: String(link.version),
+      created_at: new Date(link.created_at).toISOString(),
+      updated_at: new Date(link.updated_at).toISOString(),
+      title: item.title,
+      type: item.type,
+      subject: item.subject,
+    };
+  }
+  private async insertReferenceKnowledgeLink(ctx: Context, referenceId: string, linkId: string, item: Row) {
+    const table = 'research_reference_knowledge_links';
+    const link = await this.insert(ctx.sql, table, {
+      id: linkId, reference_id: referenceId, knowledge_item_id: item.id,
+    }, ctx.userId).catch((error) => this.rethrowEntityWriteError(table, error));
+    await this.change(ctx, table, link);
+    return this.referenceKnowledgeItem(link, item);
+  }
+  private async createReferenceKnowledgeLink(ctx: Context, referenceId: string, body: Row): Promise<Result> {
+    const reference = await this.mergedReference(ctx.sql, ctx.userId, referenceId);
+    const knowledge = await this.row(ctx.sql, ctx.userId, 'knowledge_items', body.knowledge_item_id);
+    return { status: 201, body: await this.insertReferenceKnowledgeLink(ctx, reference.id, body.id, knowledge) };
+  }
+  private async createReferenceNote(ctx: Context, referenceId: string, body: Row): Promise<Result> {
+    const reference = await this.mergedReference(ctx.sql, ctx.userId, referenceId);
+    const { link_id, ...fields } = body;
+    const knowledge = await this.createEntity(ctx, 'knowledge_items', { ...fields, type: 'note' });
+    const link = await this.insertReferenceKnowledgeLink(ctx, reference.id, link_id, knowledge);
+    return { status: 201, body: { knowledge, link } };
+  }
+  private async listReferenceKnowledgeLinks(
+    sql: Sql, userId: string, id: string, query: Row, by: 'reference' | 'knowledge',
+  ) {
+    const owner = by === 'reference'
+      ? await this.mergedReference(sql, userId, id)
+      : await this.row(sql, userId, 'knowledge_items', id);
+    const params: unknown[] = [userId, owner.id];
+    const cursorType = by === 'reference' ? 'reference-knowledge-links' : 'knowledge-reference-links';
+    const counterpart = by === 'reference' ? 'knowledge_items' : 'research_references';
+    const matchingColumn = by === 'reference' ? 'reference_id' : 'knowledge_item_id';
+    const joinColumn = by === 'reference' ? 'knowledge_item_id' : 'reference_id';
+    const columns = by === 'reference' ? ',k.type,k.subject' : '';
+    const limit = Math.max(1, Math.min(100, Number(query.limit) || 50));
+    let paging = '';
+    if (query.cursor) {
+      const cursor = this.decode(query.cursor, userId, cursorType);
+      if (cursor.owner_id !== owner.id) throw validation('Cursor filters changed');
+      params.push(cursor.title, cursor.id);
+      paging = 'AND (lower(k.title),l.id)>($3,$4::uuid)';
+    }
+    params.push(limit + 1);
+    const { rows } = await sql.query(
+      `SELECT l.*,k.title${columns},lower(k.title) AS sort_title
+       FROM research_reference_knowledge_links l JOIN ${counterpart} k
+         ON k.user_id=l.user_id AND k.id=l.${joinColumn} AND k.deleted_at IS NULL
+       WHERE l.user_id=$1 AND l.${matchingColumn}=$2 AND l.deleted_at IS NULL ${paging}
+       ORDER BY lower(k.title),l.id LIMIT $${params.length}`,
+      params,
+    );
+    const last = rows[Math.min(limit, rows.length) - 1];
+    return {
+      items: rows.slice(0, limit).map((row) => this.referenceKnowledgeItem(row, row)),
+      next_cursor: rows.length > limit && last
+        ? this.cursor(userId, cursorType, {
+            owner_id: owner.id, title: last.sort_title, id: last.id,
+          })
+        : null,
+    };
+  }
+  private async mergeReferences(ctx: Context, body: Row): Promise<Result> {
+    const targetId = body.target_id.toLowerCase();
+    const sources = body.sources as { id: string; version: string }[];
+    const sourceIds = sources.map((source) => source.id.toLowerCase());
+    if (sourceIds.includes(targetId) || new Set(sourceIds).size !== sourceIds.length)
+      throw validation('Choose distinct references to merge.');
+    const target = await this.row(ctx.sql, ctx.userId, 'research_references', targetId);
+    this.version(target, body.target_version);
+    const sourceRows: Row[] = [];
+    for (const [index, id] of sourceIds.entries()) {
+      const source = await this.row(ctx.sql, ctx.userId, 'research_references', id);
+      this.version(source, sources[index].version);
+      sourceRows.push(source);
+    }
+    const selected = [target, ...sourceRows];
+    if (selected.some((item) => item.project_id))
+      throw validation('Only standalone library references can be merged.');
+    const identities = selected.map(referenceIdentity);
+    for (const key of ['doi', 'arxiv'] as const) {
+      if (new Set(identities.map((identity) => identity[key]).filter(Boolean)).size > 1)
+        throw validation('These references have conflicting DOI or arXiv identifiers.');
+    }
+    const fields: Row = { publication: {}, tags: [] };
+    for (const key of ['year', 'doi', 'arxiv_id', 'url', 'zotero_key']) {
+      fields[key] = selected.find((item) => item[key] != null)?.[key] ?? null;
+    }
+    fields.authors = selected.find((item) => item.authors?.length)?.authors ?? [];
+    for (const source of selected.slice().reverse()) Object.assign(fields.publication, source.publication);
+    if (selected.some((item) => item.creators)) {
+      const candidates: ReferenceCreator[][] = selected.map((item) => item.creators ?? legacyReferenceCreators(item));
+      const preferred = new Map(creatorRoles.map((role) => [role, candidates.find((list) => list.some((item) => item.role === role))]));
+      fields.creators = candidates.flatMap((list) => list.filter((item) => preferred.get(item.role) === list));
+    }
+    fields.tags = selected.flatMap((item) => item.tags);
+    this.normalizeReference(fields);
+    if (fields.tags.length > 40) throw validation('The merged reference would exceed the 40-tag limit.');
+    const aliases = new Set<string>(target.citation_aliases);
+    for (const source of sourceRows) {
+      aliases.add(`ref-${source.id}`);
+      if (source.citation_key) aliases.add(source.citation_key);
+      for (const alias of source.citation_aliases) aliases.add(alias);
+    }
+    aliases.delete(target.citation_key);
+    if (!target.citation_key) aliases.delete(`ref-${target.id}`);
+    fields.citation_aliases = [...aliases];
+
+    for (const source of sourceRows) {
+      await moveReferencePdfs(this, ctx, source.id, targetId, (row) => this.change(ctx, 'research_reference_pdfs', row));
+      await this.moveQuestionSources(ctx, source.id, targetId);
+      await this.moveReferenceRelations(ctx, source.id, targetId);
+      await this.moveReferenceLinks(ctx, targetId, source.id, 'research_reference_links', 'project_id');
+      await this.moveReferenceLinks(ctx, targetId, source.id, 'research_reference_knowledge_links', 'knowledge_item_id');
+      await this.moveReferenceLinks(ctx, targetId, source.id, 'literature_collection_memberships', 'collection_id');
+      const removed = await this.update(ctx.sql, ctx.userId, 'research_references', source.id, {
+        deleted_at: new Date(), merged_into_id: targetId,
+      });
+      await this.change(ctx, 'research_references', removed);
+    }
+    const updated = await this.update(ctx.sql, ctx.userId, 'research_references', targetId, fields)
+      .catch((error) => this.rethrowEntityWriteError('research_references', error));
+    await this.change(ctx, 'research_references', updated);
+    return {
+      status: 200,
+      body: {
+        reference: await this.serialize(ctx.sql, ctx.userId, 'research_references', updated),
+        merged_ids: sourceIds,
+      },
+    };
+  }
+  private async importReferences(ctx: Context, input: Row[]): Promise<Result> {
+    const normalized = input.map((item) => {
+      const fields: Row = { ...item, project_id: null };
+      this.normalizeReference(fields);
+      return fields;
+    });
+    const items: Row[] = [];
+    for (const fields of normalized) {
+      const { rows } = await ctx.sql.query(
+        `SELECT id,deleted_at,citation_key,
+           CASE WHEN id=$2 THEN 'id' WHEN project_id IS NULL AND doi=$3 THEN 'doi'
+                WHEN project_id IS NULL AND arxiv_id=$4 THEN 'arxiv_id' ELSE 'citation_key' END AS matched_by
+         FROM research_references
+         WHERE user_id=$1 AND (id=$2 OR ((deleted_at IS NULL OR merged_into_id IS NOT NULL) AND (
+           (project_id IS NULL AND (doi=$3 OR arxiv_id=$4)) OR citation_key=$5 OR $5=ANY(citation_aliases)
+         )))
+         ORDER BY CASE WHEN id=$2 THEN 0 WHEN project_id IS NULL AND doi=$3 THEN 1
+                       WHEN project_id IS NULL AND arxiv_id=$4 THEN 2 ELSE 3 END, deleted_at NULLS FIRST,id
+         LIMIT 1`,
+        [ctx.userId, fields.id, fields.doi ?? null, fields.arxiv_id ?? null, fields.citation_key ?? null],
+      );
+      const existing = rows[0];
+      const match = existing?.deleted_at
+        ? await this.mergedReference(ctx.sql, ctx.userId, existing.id).catch((error) => {
+            if (!(error instanceof ApiError) || error.status !== 404) throw error;
+            if (existing.id === fields.id)
+              throw new ApiError(409, 'VALIDATION_ERROR', 'A deleted reference already has this ID.');
+            return null;
+          })
+        : existing;
+      if (match) {
+        items.push({
+          id: fields.id,
+          status: 'skipped',
+          reference_id: match.id,
+          citation_key: match.citation_key,
+          reason: 'duplicate',
+          matched_by: existing.matched_by,
+        });
+        continue;
+      }
+      const created = await this.createEntity(ctx, 'research_references', fields);
+      items.push({
+        id: fields.id, status: 'imported', reference_id: created.id, citation_key: created.citation_key,
+      });
+    }
+    return { status: 200, body: { items } };
+  }
+  private async importZoteroRdf(ctx: Context, body: Row): Promise<Result> {
+    const { file_sha256: fileHash, items, collections, notes, standalone_notes: standaloneNotes = [], link_existing: linkExisting } = body;
+    const importId = (domain: string, resource: string) => zoteroRdfId(ctx.userId, fileHash, resource, domain);
+    const sources = new Map<string, Row>();
+    for (const item of items as Row[]) {
+      const source = item.import_source;
+      if (source?.file_sha256 !== fileHash || item.id !== zoteroRdfId(ctx.userId, fileHash, source.resource_sha256) || sources.has(item.id))
+        throw validation('The Zotero bibliography contains an invalid or duplicate source reference.');
+      sources.set(item.id, source);
+    }
+    if (!collections.length && !notes.length && !standaloneNotes.length) throw validation('Choose collections or notes to include in the import.');
+    if (!items.length && !standaloneNotes.length) throw validation('Choose at least one reference or stand-alone note.');
+    if (notes.length + standaloneNotes.length > 200) throw validation('Import at most 200 Zotero notes at a time.');
+    if ((collections as Row[]).reduce((total, row) => total + row.reference_ids.length, 0) > 1000)
+      throw validation('Import at most 1,000 collection memberships at once.');
+    const byHash = new Map<string, Row>();
+    for (const row of collections as Row[]) {
+      if (byHash.has(row.resource_sha256) || !row.name.trim() || row.reference_ids.some((id: string) => !sources.has(id)))
+        throw validation('The Zotero export contains an invalid collection.');
+      byHash.set(row.resource_sha256, row);
+    }
+    const orderedCollections = new Set<Row>();
+    for (const row of byHash.values()) {
+      const branch = [row];
+      const seen = new Set([row.resource_sha256]);
+      let hash = row.parent_resource_sha256;
+      while (hash) {
+        const parent = byHash.get(hash);
+        if (!parent || seen.has(hash) || branch.length >= 16)
+          throw validation('The Zotero collection tree is incomplete, circular, or more than 16 levels deep.');
+        branch.push(parent);
+        seen.add(hash);
+        hash = parent.parent_resource_sha256;
+      }
+      for (const ancestor of branch.reverse()) orderedCollections.add(ancestor);
+    }
+    const noteHashes = new Set<string>();
+    for (const note of [...notes, ...standaloneNotes] as Row[]) {
+      if (noteHashes.has(note.resource_sha256) || !note.title.trim() || !note.content.trim() ||
+          (note.reference_id !== undefined && !sources.has(note.reference_id)))
+        throw validation('The Zotero export contains an invalid or duplicate note.');
+      noteHashes.add(note.resource_sha256);
+    }
+    const standaloneTags = new Map<string, string[]>();
+    for (const note of standaloneNotes as Row[]) {
+      const tags = new Set<string>();
+      for (const path of (note.collection_paths ?? []) as string[][]) {
+        const names = path.map((name) => name.trim());
+        const tag = `Zotero collection: ${names.join(' › ')}`;
+        if (names.some((name) => !name) || [...tag].length > 300) throw validation('The Zotero note contains an invalid collection path.');
+        tags.add(tag);
+      }
+      standaloneTags.set(note.resource_sha256, [...tags]);
+    }
+    const result = await this.importReferences(ctx, items);
+    const destinations = new Map<string, string>();
+    for (const row of result.body.items as Row[]) {
+      if (row.status === 'imported' || linkExisting) {
+        destinations.set(row.id, row.reference_id);
+      } else if (row.id === row.reference_id) {
+        const saved = await this.row(ctx.sql, ctx.userId, 'research_references', row.reference_id);
+        if (canonical(saved.import_source) === canonical(sources.get(row.id))) destinations.set(row.id, row.reference_id);
+      }
+    }
+    const counts = { collections_created: 0, collections_kept: 0, memberships_created: 0, memberships_kept: 0,
+      memberships_skipped: 0, notes_created: 0, notes_kept: 0, notes_skipped: 0 };
+    const standaloneCounts = { standalone_notes_created: 0, standalone_notes_kept: 0, standalone_notes_skipped: 0 };
+    const existingEntity = async (table: string, id: string) => this.row(ctx.sql, ctx.userId, table, id, true).catch((error) => {
+      if (error instanceof ApiError && error.status === 404) return undefined;
+      throw error;
+    });
+    const collectionTable = 'literature_collections';
+    const ensureCollection = async (id: string, parentId: string | null, name: string) => {
+      const existing = await existingEntity(collectionTable, id);
+      if (existing) {
+        if (existing.deleted_at || existing.parent_id !== parentId)
+          throw new ApiError(409, 'VALIDATION_ERROR', 'A collection from this export was moved or deleted. Import references or notes separately to keep that change.');
+        counts.collections_kept++;
+      } else {
+        await this.createEntity(ctx, collectionTable, { id, parent_id: parentId, name });
+        counts.collections_created++;
+      }
+    };
+    if (orderedCollections.size) {
+      const rootId = importId('collection-root', fileHash);
+      await ensureCollection(rootId, null, `Zotero import ${fileHash.slice(0, 8)}`);
+      for (const collection of orderedCollections) {
+        const collectionId = importId('collection', collection.resource_sha256);
+        const parentId = collection.parent_resource_sha256 ? importId('collection', collection.parent_resource_sha256) : rootId;
+        await ensureCollection(collectionId, parentId, collection.name);
+        for (const sourceId of collection.reference_ids as string[]) {
+          const referenceId = destinations.get(sourceId);
+          if (!referenceId) { counts.memberships_skipped++; continue; }
+          const membershipTable = 'literature_collection_memberships';
+          const membershipId = importId('membership', `${collectionId}:${referenceId}`);
+          const { rows } = await ctx.sql.query(
+            `SELECT deleted_at FROM literature_collection_memberships
+             WHERE user_id=$1 AND (id=$2 OR (collection_id=$3 AND reference_id=$4 AND deleted_at IS NULL))
+             ORDER BY deleted_at NULLS FIRST LIMIT 1`,
+            [ctx.userId, membershipId, collectionId, referenceId],
+          );
+          if (rows[0]) {
+            if (rows[0].deleted_at) counts.memberships_skipped++;
+            else counts.memberships_kept++;
+          } else {
+            await this.createEntity(ctx, membershipTable, { id: membershipId, collection_id: collectionId, reference_id: referenceId });
+            counts.memberships_created++;
+          }
+        }
+      }
+    }
+    for (const note of notes as Row[]) {
+      const referenceId = destinations.get(note.reference_id);
+      if (!referenceId) { counts.notes_skipped++; continue; }
+      const id = importId('knowledge-note', note.resource_sha256);
+      const existing = await existingEntity('knowledge_items', id);
+      if (existing) {
+        if (existing.deleted_at) counts.notes_skipped++;
+        else counts.notes_kept++;
+        continue;
+      }
+      await this.createReferenceNote(ctx, referenceId, {
+        id, link_id: importId('knowledge-link', note.resource_sha256), title: note.title, content: note.content,
+      });
+      counts.notes_created++;
+    }
+    for (const note of standaloneNotes as Row[]) {
+      const id = importId('knowledge-note', note.resource_sha256);
+      const existing = await existingEntity('knowledge_items', id);
+      if (existing) {
+        if (existing.deleted_at) standaloneCounts.standalone_notes_skipped++;
+        else standaloneCounts.standalone_notes_kept++;
+        continue;
+      }
+      await this.createEntity(ctx, 'knowledge_items', {
+        id, type: 'note', subject: 'Zotero notes', title: note.title, content: note.content,
+        tags: standaloneTags.get(note.resource_sha256),
+      });
+      standaloneCounts.standalone_notes_created++;
+    }
+    return { status: 200, body: { items: result.body.items, ...counts, ...(standaloneNotes.length && standaloneCounts) } };
+  }
+  private async batchEditReferences(ctx: Context, body: Row): Promise<Result> {
+    const table = 'research_references';
+    const requested: Row[] = body.items;
+    const identifiers = requested.map((item) => String(item.id).toLowerCase());
+    if (new Set(identifiers).size !== identifiers.length) throw validation('Select each reference only once.');
+    const { rows } = await ctx.sql.query(
+      'SELECT * FROM research_references WHERE user_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL',
+      [ctx.userId, identifiers],
+    );
+    if (rows.length !== requested.length) throw notFound();
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const changes: Row = body.changes;
+    const tagChange = changes.tags_add !== undefined || changes.tags_remove !== undefined;
+    const tagsAdd: string[] = changes.tags_add ?? [];
+    const tagsRemove = new Set<string>((changes.tags_remove ?? []).map((tag: string) => tag.trim().toLowerCase()));
+    if (tagsAdd.some((tag) => !tag.trim()) || tagsRemove.has('')) throw validation('Enter nonempty tags.');
+    const edits = requested.map((item, index) => {
+      const row = byId.get(identifiers[index])!;
+      this.version(row, item.version);
+      const patch: Row = {};
+      const inverse: Row = {};
+      if (tagChange) {
+        const tags = row.tags.filter((tag: string) => !tagsRemove.has(tag.toLowerCase()));
+        const existing = new Set<string>(tags.map((tag: string) => tag.toLowerCase()));
+        for (const raw of tagsAdd) {
+          const tag = raw.trim();
+          if (existing.has(tag.toLowerCase())) continue;
+          existing.add(tag.toLowerCase());
+          tags.push(tag);
+        }
+        if (tags.length > 40) throw validation('This edit would give a reference more than 40 tags.', { id: row.id });
+        if (canonical(tags) !== canonical(row.tags)) {
+          patch.tags = tags;
+          inverse.tags = row.tags;
+        }
+      }
+      if (changes.year !== undefined && changes.year !== row.year) {
+        patch.year = changes.year;
+        inverse.year = row.year;
+      }
+      if (changes.publication) {
+        const publication = { ...row.publication };
+        const previous: Row = {};
+        for (const field of ['type', 'journal', 'publisher']) {
+          if (!(field in changes.publication)) continue;
+          const value = changes.publication[field]?.trim() || undefined;
+          if (publication[field] === value) continue;
+          previous[field] = publication[field] ?? null;
+          if (value === undefined) delete publication[field];
+          else publication[field] = value;
+        }
+        if (Object.keys(previous).length) {
+          patch.publication = publication;
+          inverse.publication = previous;
+        }
+      }
+      return { row, patch, inverse };
+    });
+    const items: Row[] = [];
+    const undoItems: Row[] = [];
+    for (const edit of edits) {
+      let row = edit.row;
+      if (Object.keys(edit.patch).length) {
+        row = await this.update(ctx.sql, ctx.userId, table, row.id, edit.patch);
+        await this.change(ctx, table, row);
+        undoItems.push({ id: row.id, version: String(row.version), inverse: edit.inverse });
+      }
+      items.push({ id: row.id, version: String(row.version) });
+    }
+    const changed_count = undoItems.length;
+    return {
+      status: 200,
+      body: { items, changed_count, undo_token: changed_count ? ctx.operationId : null },
+      ...(changed_count && { receiptData: { batch_undo: undoItems } }),
+    };
+  }
+  private async undoBatchReferenceEdit(ctx: Context, token: string): Promise<Result> {
+    const table = 'research_references';
+    const receipt = (await ctx.sql.query(
+      `SELECT created_at,response_body FROM api_idempotency WHERE user_id=$1 AND idempotency_key=$2
+       AND method='POST' AND path=$3 AND response_status=200`,
+      [ctx.userId, token, referenceBatchEditPath],
+    )).rows[0];
+    const undoItems: Row[] | undefined = receipt?.response_body?.batch_undo;
+    if (!undoItems?.length) throw notFound();
+    if (Date.now() - new Date(receipt.created_at).getTime() >= referenceBatchUndoLifetime)
+      throw new ApiError(410, 'BATCH_UNDO_EXPIRED', 'This batch edit can only be undone within 24 hours.');
+    const { rows } = await ctx.sql.query(
+      'SELECT * FROM research_references WHERE user_id=$1 AND id=ANY($2::uuid[]) AND deleted_at IS NULL',
+      [ctx.userId, undoItems.map((item) => item.id)],
+    );
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    const edits = undoItems.map((item) => {
+      const row = byId.get(item.id);
+      if (!row || String(row.version) !== item.version)
+        throw new ApiError(412, 'VERSION_CONFLICT', 'A reference changed after the batch edit. No changes were undone.', {
+          id: item.id, current_version: row ? String(row.version) : null,
+        });
+      const patch = { ...item.inverse };
+      if (patch.publication) {
+        const publication = { ...row.publication };
+        for (const [field, previous] of Object.entries(patch.publication)) {
+          if (previous === null) delete publication[field];
+          else publication[field] = previous;
+        }
+        patch.publication = publication;
+      }
+      return { id: row.id, patch };
+    });
+    const items: Row[] = [];
+    for (const edit of edits) {
+      const row = await this.update(ctx.sql, ctx.userId, table, edit.id, edit.patch);
+      await this.change(ctx, table, row);
+      items.push({ id: row.id, version: String(row.version) });
+    }
+    return { status: 200, body: { items, changed_count: items.length } };
   }
   async dispatchMutation(ctx: Context, c: Command): Promise<Result> {
     const path = c.path.replace(/^\/api\/v1/, '').replace(/^\//, ''),
       parts = path.split('/'),
       body = c.body ?? {};
+    if (parts[0] === 'team-libraries') {
+      if (!this.config.hostedAccounts || this.config.authMode !== 'oidc') throw notFound();
+      return mutateTeamLibraries(ctx, parts, c.method, body, this.config.hostedAccounts);
+    }
     if (path === 'me' || path === 'me/preferences') {
       const table = path === 'me' ? 'users' : 'user_preferences';
       const old = (
@@ -1022,6 +2415,8 @@ export class PrismService {
       await this.validateRefs(ctx, body);
       const row = await this.update(ctx.sql, ctx.userId, table, old.id, body);
       await this.change(ctx, table, row);
+      if (path === 'me' && this.config.hostedAccounts && body.display_name !== undefined)
+        await saveTeamAccountName(ctx.sql, ctx.userId, row.display_name);
       return { status: 200, body: await this.serialize(ctx.sql, ctx.userId, table, row) };
     }
     if (path === 'review/events') return this.rate(ctx, body);
@@ -1223,6 +2618,98 @@ export class PrismService {
           body: await this.createEntity(ctx, table, { ...body, session_id: session.id }),
         };
     }
+    if (parts[0] === 'research' && parts[1] === 'references' && c.method === 'POST') {
+      if (parts[3] === 'knowledge-links') return this.createReferenceKnowledgeLink(ctx, parts[2], body);
+      if (parts[3] === 'notes') return this.createReferenceNote(ctx, parts[2], body);
+    }
+    if (parts[0] === 'research' && parts[1] === 'references' && parts[3] === 'citation-key' && c.method === 'PATCH')
+      return this.changeReferenceCitationKey(ctx, parts[2], body.citation_key);
+    if (parts[0] === 'research' && parts[1] === 'references' && parts[3] === 'related' && c.method === 'POST')
+      return this.createReferenceRelation(ctx, parts[2], body);
+    if (parts[0] === 'research' && parts[1] === 'references' && ['pdf', 'attachments'].includes(parts[3]) && c.method === 'POST') {
+      const legacy = parts[3] === 'pdf';
+      const row = await beginReferenceAttachment(this, ctx, parts[2], body, legacy ? 'pdf' : body.format);
+      return { status: 200, body: await this.serializeReferenceAttachment(ctx.sql, ctx.userId, row, legacy) };
+    }
+    if (parts[0] === 'research' && ['reference-pdfs', 'attachments'].includes(parts[1])) {
+      const legacy = parts[1] === 'reference-pdfs';
+      const onlyFormat = legacy ? 'pdf' : undefined;
+      if (parts[3] === 'reading-position' && c.method === 'PUT')
+        return this.saveAttachmentReadingPosition(ctx, parts[2], body, onlyFormat);
+      if (!legacy && parts[3] === 'text-annotations' && c.method === 'POST')
+        return this.createTextAnnotation(ctx, parts[2], body);
+      if (parts[3] === 'text-index') {
+        const attachment = await this.readyReferenceAttachment(ctx.sql, ctx.userId, parts[2], onlyFormat);
+        if (parts.length === 4 && c.method === 'POST') {
+          return { status: 200, body: await beginPdfTextIndex(ctx.sql, ctx.userId, parts[2], body, attachment.format) };
+        }
+        if (parts[4] === 'pages' && c.method === 'PUT') {
+          return { status: 200, body: await appendPdfTextPages(ctx.sql, ctx.userId, parts[2], body) };
+        }
+        if (parts[4] === 'complete' && c.method === 'POST') {
+          return { status: 200, body: await completePdfTextIndex(ctx.sql, ctx.userId, parts[2], body) };
+        }
+      }
+      if (parts.length === 5 && parts[3] === 'annotations' && parts[4] === 'import' && c.method === 'POST') {
+        await this.readyReferencePdf(ctx.sql, ctx.userId, parts[2]);
+        const table = 'research_pdf_annotations';
+        const annotations = (body.annotations as Row[]).map((annotation) => ({ ...annotation, id: annotation.id.toLowerCase() }));
+        const ids = annotations.map((annotation) => annotation.id);
+        if (new Set(ids).size !== ids.length) throw validation('Each imported annotation must be unique.');
+        const { rows } = await ctx.sql.query(
+          `SELECT id FROM research_pdf_annotations WHERE user_id=$1 AND pdf_id=$2 AND id=ANY($3::uuid[])`,
+          [ctx.userId, parts[2], ids],
+        );
+        const existing = new Set(rows.map((row) => row.id));
+        const imported = [];
+        for (const annotation of annotations) {
+          if (existing.has(annotation.id)) continue;
+          await this.createEntity(ctx, table, { ...annotation, pdf_id: parts[2] });
+          imported.push(annotation.id);
+        }
+        return { status: 200, body: { imported, skipped: ids.filter((id) => existing.has(id)) } };
+      }
+      if (parts.length === 4 && parts[3] === 'annotations' && c.method === 'POST') {
+        const row = await this.createEntity(ctx, 'research_pdf_annotations', { ...body, pdf_id: parts[2] });
+        return { status: 201, body: row };
+      }
+      if (parts[3] === 'complete' && c.method === 'POST') {
+        const row = await completeReferenceAttachment(
+          this, ctx, parts[2], (updated) => this.change(ctx, 'research_reference_pdfs', updated), onlyFormat,
+        );
+        return { status: 200, body: await this.serializeReferenceAttachment(ctx.sql, ctx.userId, row, legacy) };
+      }
+      if (parts.length === 3 && c.method === 'PATCH') {
+        const table = 'research_reference_pdfs';
+        const attachment = await this.referenceAttachment(ctx.sql, ctx.userId, parts[2], onlyFormat);
+        if (attachment.status !== 'ready') throw notFound();
+        this.version(attachment, ctx.expected);
+        const fileName = safeAttachmentFileName(body.file_name, attachment.format);
+        if (attachment.file_name === fileName)
+          return { status: 200, body: await this.serializeReferenceAttachment(ctx.sql, ctx.userId, attachment, legacy) };
+        const updated = await this.update(ctx.sql, ctx.userId, table, attachment.id, { file_name: fileName });
+        await this.change(ctx, table, updated);
+        return { status: 200, body: await this.serializeReferenceAttachment(ctx.sql, ctx.userId, updated, legacy) };
+      }
+      if (parts.length === 3 && c.method === 'DELETE') {
+        const row = await this.referenceAttachment(ctx.sql, ctx.userId, parts[2], onlyFormat);
+        this.version(row, ctx.expected);
+        await this.markReferencePdfDeleted(ctx, row.id);
+        return { status: 204, body: null };
+      }
+    }
+    if (parts[0] === 'research' && parts[1] === 'text-annotations' && parts.length === 3 && ['PATCH', 'DELETE'].includes(c.method))
+      return this.mutateTextAnnotation(ctx, parts[2], c.method, body);
+    if (path === 'research/library/merge') return this.mergeReferences(ctx, body);
+    if (path === 'research/library/import') return this.importReferences(ctx, body.items);
+    if (path === 'research/library/zotero-rdf/import') return this.importZoteroRdf(ctx, body);
+    if (path === referenceBatchEditPath) return this.batchEditReferences(ctx, body);
+    if (path === `${referenceBatchEditPath}/undo`) return this.undoBatchReferenceEdit(ctx, body.undo_token);
+    if (parts[0] === 'research' && parts[1] === 'library') {
+      if (parts[2] === 'feeds' && parts.length <= 4) return this.mutateLiteratureFeed(ctx, c.method, body, parts[3]);
+      if (parts[2] === 'feed-entries' && parts.length === 4 && c.method === 'PATCH')
+        return this.markLiteratureFeedEntry(ctx, parts[3], body.read);
+    }
     if (path === 'arxiv/refresh') {
       const job = await enqueueArxivIngestion(ctx.sql, ctx.userId, true);
       if (!job) throw validation('Enable a valid arXiv subscription before refreshing the feed');
@@ -1263,6 +2750,7 @@ export class PrismService {
         if (c.method === 'POST' && !rest)
           return { status: 201, body: await this.createEntity(ctx, model.table, body) };
         if (c.method === 'PATCH' && rest) {
+          if (model.table === questionLinks) throw notFound();
           if (model.table === 'daily_plans') {
             const old = await this.row(ctx.sql, ctx.userId, 'daily_plans', rest);
             this.version(old, ctx.expected);
@@ -1333,7 +2821,7 @@ export class PrismService {
             : 'rejected',
       entity_id: api.response_body?.card?.id ?? api.response_body?.id ?? identifiers.at(-1),
       result: {
-        body: api.response_body,
+        body: publicCommandReceipt(api),
         records: batch?.changes ?? [],
         sync_revision: batch ? String(batch.revision) : null,
       },
@@ -1757,7 +3245,15 @@ export class PrismService {
       clauses.push('classified_task_id IS NULL AND classified_knowledge_id IS NULL');
     const filters = { ...fixed };
     if (table === 'knowledge_items' && query.type !== undefined) filters.type = query.type;
+    if (table === 'research_objects' && query.object_type !== undefined) filters.object_type = query.object_type;
+    if (table === 'research_events' && query.object_id !== undefined) filters.object_id = query.object_id;
     if (table === 'research_paper_links' && query.paper_id !== undefined) filters.paper_id = query.paper_id;
+    if (table === 'research_reference_links' && query.reference_id !== undefined)
+      filters.reference_id = query.reference_id;
+    if (table === 'literature_collection_memberships') {
+      if (query.collection_id !== undefined) filters.collection_id = query.collection_id;
+      if (query.reference_id !== undefined) filters.reference_id = query.reference_id;
+    }
     for (const key of [
       'project_id',
       'knowledge_item_id',
@@ -1825,21 +3321,349 @@ export class PrismService {
           : null,
     };
   }
+  private async listQuestionLinks(sql: Sql, userId: string, query: Row): Promise<Row> {
+    const { question_id, research_object_id } = query;
+    if (Boolean(question_id) === Boolean(research_object_id))
+      throw validation('Choose one Research Question or research record.');
+    const object = await this.row(sql, userId, 'research_objects', question_id ?? research_object_id);
+    if (question_id && object.object_type !== 'question') throw validation('Choose a Research Question.');
+    const filter = question_id ? 'question_id' : 'research_object_id';
+    const limit = Math.max(1, Math.min(500, Number(query.limit) || 50));
+    const cursorType = 'research-question-links';
+    const binding = hash({ filter, id: object.id });
+    const cursor = query.cursor ? this.decode(query.cursor, userId, cursorType) : undefined;
+    if (cursor && cursor.binding !== binding) throw validation('Cursor filters changed');
+    const { rows } = await sql.query(
+      `SELECT l.*, l.created_at::text AS __cursor_time, q.title AS question_title,
+         COALESCE(r.title, o.title) AS target_title,
+         COALESCE(o.object_type, 'reference') AS target_type,
+         o.claim_status AS target_claim_status
+       FROM research_question_links l
+       JOIN research_objects q ON (q.user_id,q.id)=(l.user_id,l.question_id)
+       LEFT JOIN research_objects o ON (o.user_id,o.id)=(l.user_id,l.research_object_id)
+       LEFT JOIN research_references r ON (r.user_id,r.id)=(l.user_id,l.reference_id)
+       WHERE l.user_id=$1 AND l.${filter}=$2 AND l.deleted_at IS NULL
+         AND ($3::timestamptz IS NULL OR (l.created_at,l.id)<($3::timestamptz,$4::uuid))
+       ORDER BY l.created_at DESC,l.id DESC LIMIT $5`,
+      [userId, object.id, cursor?.time ?? null, cursor?.id ?? null, limit + 1],
+    );
+    const page = rows.slice(0, limit);
+    const last = page.at(-1);
+    return {
+      items: await Promise.all(page.map((row) => this.serialize(sql, userId, questionLinks, row))),
+      next_cursor: rows.length > limit && last
+        ? this.cursor(userId, cursorType, { time: last.__cursor_time, id: last.id, binding })
+        : null,
+    };
+  }
+  private async literatureLibrary(sql: Sql, userId: string, query: Row, ids?: string[]): Promise<Row> {
+    const search = String(query.q ?? '').trim().toLowerCase();
+    const standalone = query.standalone === true;
+    const native = query.native === true || standalone;
+    const tag = String(query.tag ?? '').trim().toLowerCase();
+    const collectionId = query.collection_id ?? null;
+    if (collectionId) await this.row(sql, userId, 'literature_collections', collectionId);
+    const params: any[] = [userId, search, standalone, tag, collectionId, native];
+    const limit = ids?.length ?? Math.max(1, Math.min(100, Number(query.limit) || 50));
+    const advanced = query.conditions != null ? parseLiteratureConditions(query.conditions) : undefined;
+    if (advanced) {
+      for (const id of advanced.collections) await this.row(sql, userId, 'literature_collections', id);
+    }
+    const timezone = advanced?.usesCalendarDates ? (await this.row(sql, userId, 'users', userId)).timezone : undefined;
+    const sort = query.sort === 'author' ? 'author' : query.sort === 'year' ? 'year' : 'title';
+    const descending = query.direction === 'desc';
+    const defaultOrder = sort === 'title' && !descending;
+    const sortExpression = { title: 'lower(title)', author: "lower(nullif(btrim(authors[1]),''))", year: 'year' }[sort];
+    const binding = hash({ search, standalone, tag, collectionId, native, conditions: advanced?.condition, timezone,
+      ...(!defaultOrder && { sort, descending }) });
+    let after = '';
+    if (query.cursor) {
+      const cursor = this.decode(query.cursor, userId, 'literature-library');
+      if (cursor.binding !== binding) throw validation('Cursor filters changed');
+      params.push(cursor.title, cursor.kind, cursor.id);
+      const afterTie = '(lower(title),kind,id)>($7,$8,$9::uuid)';
+      if (defaultOrder) after = `AND ${afterTie}`;
+      else {
+        const value = `$${params.push(cursor.value)}::${sort === 'year' ? 'int' : 'text'}`;
+        const operator = descending ? '<' : '>';
+        after = `AND ((sort_value IS NOT DISTINCT FROM ${value} AND ${afterTie})
+          OR (${value} IS NOT NULL AND (sort_value IS NULL OR sort_value ${operator} ${value})))`;
+      }
+    }
+    if (ids) {
+      params.push(ids);
+      after += ` AND id=ANY($${params.length}::uuid[])`;
+    }
+    const timezoneParameter = timezone ? params.push(timezone) : 0;
+    const dateColumn = (timestamp: string) => timezoneParameter ? `(${timestamp} AT TIME ZONE $${timezoneParameter})::date` : 'NULL::date';
+    if (advanced) after += ` AND (${compileLiteratureCondition(advanced.condition, params)})`;
+    params.push(limit + 1);
+    const { rows } = await sql.query(
+      `WITH paper_projects AS (
+        SELECT l.paper_id,
+          json_agg(json_build_object('id',p.id,'title',p.title) ORDER BY p.title,p.id) AS projects
+        FROM research_paper_links l
+        JOIN research_projects p ON p.id=l.project_id AND p.user_id=l.user_id AND p.deleted_at IS NULL
+        WHERE l.user_id=$1 AND l.deleted_at IS NULL
+        GROUP BY l.paper_id
+      ), reference_projects AS (
+        SELECT l.reference_id,
+          json_agg(json_build_object('id',p.id,'title',p.title) ORDER BY p.title,p.id) AS projects
+        FROM research_reference_links l
+        JOIN research_projects p ON p.id=l.project_id AND p.user_id=l.user_id AND p.deleted_at IS NULL
+        WHERE l.user_id=$1 AND l.deleted_at IS NULL
+        GROUP BY l.reference_id
+      ), library_papers AS (
+        SELECT paper_id FROM paper_projects
+        UNION
+        SELECT paper_id FROM user_papers WHERE user_id=$1 AND deleted_at IS NULL AND is_saved
+      ), library AS (
+        SELECT r.id,r.version::text,r.title,r.authors,r.year,r.doi,r.url,r.arxiv_id,r.zotero_key,
+          r.citation_key,r.publication,r.creators,r.project_id,r.tags,r.citation_aliases,'reference' AS kind,
+          ${dateColumn('r.created_at')} AS added_on,${dateColumn('r.updated_at')} AS modified_on,
+          CASE WHEN p.id IS NULL THEN COALESCE(projects.projects,'[]'::json)
+               ELSE json_build_array(json_build_object('id',p.id,'title',p.title)) END AS projects
+        FROM research_references r
+        LEFT JOIN research_projects p ON p.id=r.project_id AND p.user_id=r.user_id AND p.deleted_at IS NULL
+        LEFT JOIN reference_projects projects ON projects.reference_id=r.id
+        WHERE r.user_id=$1 AND r.deleted_at IS NULL AND (r.project_id IS NULL OR p.id IS NOT NULL)
+        UNION ALL
+        SELECT p.id,'1' AS version,p.title,p.authors,EXTRACT(YEAR FROM p.published_at AT TIME ZONE 'UTC')::int AS year,
+          NULL AS doi,p.source_url AS url,p.arxiv_id,NULL AS zotero_key,
+          NULL AS citation_key,NULL::jsonb AS publication,NULL::jsonb AS creators,NULL::uuid AS project_id,ARRAY[]::text[] AS tags,ARRAY[]::text[] AS citation_aliases,'arxiv' AS kind,
+          ${dateColumn('activity.added_at')} AS added_on,${dateColumn('activity.modified_at')} AS modified_on,
+          COALESCE(projects.projects,'[]'::json) AS projects
+        FROM library_papers saved
+        JOIN arxiv_papers p ON p.id=saved.paper_id
+        LEFT JOIN paper_projects projects ON projects.paper_id=p.id
+        ${timezoneParameter ? `LEFT JOIN LATERAL (
+          SELECT min(event.added_at) AS added_at,max(event.modified_at) AS modified_at FROM (
+            SELECT coalesce(u.saved_at,u.created_at) AS added_at,u.updated_at AS modified_at
+            FROM user_papers u WHERE u.user_id=$1 AND u.paper_id=p.id AND u.deleted_at IS NULL AND u.is_saved
+            UNION ALL
+            SELECT l.created_at AS added_at,l.updated_at AS modified_at FROM research_paper_links l
+            JOIN research_projects rp ON rp.id=l.project_id AND rp.user_id=l.user_id AND rp.deleted_at IS NULL
+            WHERE l.user_id=$1 AND l.paper_id=p.id AND l.deleted_at IS NULL
+          ) AS event
+        ) AS activity ON true` : ''}
+      )
+      SELECT library.*,sort_value,lower(title) AS sort_title FROM library
+      CROSS JOIN LATERAL (SELECT ${sortExpression} AS sort_value) AS ordering
+      WHERE (NOT $3 OR (kind='reference' AND project_id IS NULL))
+        AND (NOT $6 OR kind='reference')
+        AND ($4='' OR EXISTS(SELECT 1 FROM unnest(tags) AS t WHERE lower(t)=$4))
+        AND ($5::uuid IS NULL OR (kind='reference' AND EXISTS(
+          SELECT 1 FROM literature_collection_memberships m
+          WHERE m.user_id=$1 AND m.collection_id=$5 AND m.reference_id=library.id AND m.deleted_at IS NULL
+        )))
+        AND ($2='' OR strpos(lower(concat_ws(' ',title,array_to_string(authors,' '),year,doi,arxiv_id,citation_key,
+        publication->>'journal',publication->>'booktitle',publication->>'publisher',publication->>'pmid',publication->>'pmcid',
+        publication->>'isbn',publication->>'issn',array_to_string(tags,' '),array_to_string(citation_aliases,' '))),$2)>0)
+        ${after}
+      ORDER BY sort_value ${descending ? 'DESC' : 'ASC'} NULLS LAST,lower(title),kind,id LIMIT $${params.length}`,
+      params,
+    );
+    const items = rows.slice(0, limit);
+    const last = items.at(-1);
+    return {
+      items: items.map(({ sort_title, sort_value, added_on, modified_on, creators, ...item }) => ({ ...item, ...(creators !== null && { creators }) })),
+      next_cursor: rows.length > limit && last
+        ? this.cursor(userId, 'literature-library', {
+            title: last.sort_title, kind: last.kind, id: last.id, binding, ...(!defaultOrder && { value: last.sort_value }),
+          })
+        : null,
+    };
+  }
+  async searchLiterature(userId: string, body: Row) {
+    return this.read(userId, (sql) => this.literatureLibrary(sql, userId, body));
+  }
   async query(userId: string, path: string, query: Row = {}): Promise<any> {
     if (path === '/today/review-drafts') return this.reviewDrafts.get(userId, query.date);
+    if (path.split('/')[1] === 'team-library-discovery') {
+      if (!this.config.hostedAccounts || this.config.authMode !== 'oidc') throw notFound();
+      return this.db.transaction(undefined, (sql) => queryPublicTeamLibraries(sql, path.slice(1).split('/'), query, {
+        decode: (token) => this.decode(token, 'anonymous', 'public-team-references'),
+        encode: (payload) => this.cursor('anonymous', 'public-team-references', payload),
+      }), 'repeatable read');
+    }
     return this.read(userId, async (sql) => {
       const p = path.replace(/^\/api\/v1/, '').replace(/^\//, ''),
         parts = p.split('/');
+      if (parts[0] === 'team-libraries') {
+        if (!this.config.hostedAccounts || this.config.authMode !== 'oidc') throw notFound();
+        return queryTeamLibraries({ sql, userId }, parts, query, {
+          decode: (token) => this.decode(token, userId, 'team-references'),
+          encode: (payload) => this.cursor(userId, 'team-references', payload),
+        });
+      }
       if (p === 'me' || p === 'me/preferences') {
         const table = p === 'me' ? 'users' : 'user_preferences';
         const row = (
           await sql.query(`SELECT * FROM ${table} WHERE ${table === 'users' ? 'id' : 'user_id'}=$1`, [userId])
         ).rows[0];
         if (!row) throw notFound();
-        return this.serialize(sql, userId, table, row);
+        const profile = await this.serialize(sql, userId, table, row);
+        return p === 'me' && this.config.hostedAccounts ? { ...profile, team_libraries_enabled: true } : profile;
       }
       if (p === 'today') return this.today(sql, userId, query.date);
-      if (p === 'graph') return workspaceGraph(sql, userId, query);
+      if (p === 'research/activity' || p === 'research/activity/day')
+        return this.researchActivity(sql, userId, query, p.endsWith('/day'));
+      if (p === 'research/question-links') return this.listQuestionLinks(sql, userId, query);
+      if (p === 'research/library/feeds') {
+        const { rows } = await sql.query(
+          `SELECT f.*,(SELECT count(*)::int FROM literature_feed_entries e
+            WHERE e.user_id=f.user_id AND e.feed_id=f.id AND e.read_at IS NULL) AS unread_count
+           FROM literature_feeds f WHERE f.user_id=$1 AND f.deleted_at IS NULL ORDER BY lower(f.title),f.id`, [userId],
+        );
+        return { items: await Promise.all(rows.map((row) => this.serialize(sql, userId, literatureFeeds, row))) };
+      }
+      if (parts[0] === 'research' && parts[1] === 'library' && parts[2] === 'feeds') {
+        if (parts.length === 5 && parts[4] === 'entries') return this.listLiteratureFeedEntries(sql, userId, parts[3], query);
+        if (parts.length === 4) return this.literatureFeed(sql, userId, await this.row(sql, userId, literatureFeeds, parts[3]));
+      }
+      if (p === 'research/library/full-text') {
+        const search = normalizeLiteratureSearch(query.q);
+        const binding = hash({ search });
+        const limit = Math.max(1, Math.min(100, Number(query.limit) || 25));
+        const cursor = query.cursor ? this.decode(query.cursor, userId, 'literature-full-text') : undefined;
+        if (cursor && cursor.binding !== binding) throw validation('Cursor filters changed');
+        const rows = await searchLiteratureText(sql, userId, search, limit, cursor as {
+          pdf: string; page: number; kind: string; item: string;
+        } | undefined);
+        const selected = rows.slice(0, limit);
+        const last = selected.at(-1);
+        return {
+          items: selected.map(({ item_id, ...row }) => row),
+          next_cursor: rows.length > limit && last
+            ? this.cursor(userId, 'literature-full-text', {
+                binding, pdf: last.pdf_id, page: last.page, kind: last.kind, item: last.item_id,
+              })
+            : null,
+        };
+      }
+      if (p === 'research/library/annotations') {
+        const filters = { q: normalizeLiteratureSearch(query.q), color: query.color ?? '', tag: String(query.tag ?? '').trim().toLowerCase() };
+        const binding = hash(filters);
+        const cursor = query.cursor ? this.decode(query.cursor, userId, 'literature-annotations') : undefined;
+        if (cursor && cursor.binding !== binding) throw validation('Cursor filters changed');
+        const limit = Math.max(1, Math.min(100, Number(query.limit) || 25));
+        const rows = await listLiteratureAnnotations(sql, userId, filters, limit, cursor as {
+          created_at: string; format: string; id: string;
+        } | undefined);
+        const selected = rows.slice(0, limit);
+        const last = selected.at(-1);
+        return {
+          items: selected.map(({ cursor_time, ...row }) => ({
+            ...row,
+            created_at: new Date(cursor_time).toISOString(),
+            href: `/research/library?${new URLSearchParams({ reference: row.reference_id, pdf: row.attachment_id,
+              page: String(row.page), annotation: row.id })}`,
+          })),
+          next_cursor: rows.length > limit && last ? this.cursor(userId, 'literature-annotations', {
+            binding, created_at: last.cursor_time, format: last.format, id: last.id,
+          }) : null,
+        };
+      }
+      if (parts[0] === 'research' && parts[1] === 'attachments' && parts[3] === 'text-annotations') {
+        const file = await this.textAnnotationAttachment(sql, userId, parts[2]);
+        return this.list(sql, userId, textAnnotations, { limit: 50, ...query }, {
+          attachment_id: file.id, ...(query.section !== undefined ? { section: query.section } : {}),
+        });
+      }
+      if (parts[0] === 'research' && parts[1] === 'text-annotations' && parts.length === 3) {
+        const row = await this.row(sql, userId, textAnnotations, parts[2]);
+        await this.textAnnotationAttachment(sql, userId, row.attachment_id);
+        return this.serialize(sql, userId, textAnnotations, row);
+      }
+      if (parts[0] === 'research' && ['reference-pdfs', 'attachments'].includes(parts[1]) && parts[3] === 'reading-position') {
+        const attachment = await this.readyReferenceAttachment(sql, userId, parts[2], parts[1] === 'reference-pdfs' ? 'pdf' : undefined);
+        const position = await this.pdfReadingPosition(sql, userId, attachment.id);
+        return {
+          position: position ? await this.serialize(sql, userId, 'research_pdf_reading_positions', position) : null,
+        };
+      }
+      if (parts[0] === 'research' && ['reference-pdfs', 'attachments'].includes(parts[1]) && parts[3] === 'text-index') {
+        await this.readyReferenceAttachment(sql, userId, parts[2], parts[1] === 'reference-pdfs' ? 'pdf' : undefined);
+        return pdfTextIndexStatus(sql, userId, parts[2]);
+      }
+      if (p === 'research/library/duplicates') {
+        const { groups, truncated } = await referenceDuplicateGroups(sql, userId);
+        const ids = [...new Set(groups.flatMap((group) => group.ids))];
+        const { items } = ids.length
+          ? await this.literatureLibrary(sql, userId, {}, ids)
+          : { items: [] };
+        const byId = new Map<string, Row>(items.map((item: Row) => [item.id, item]));
+        return {
+          items: groups.map(({ ids, matched_by, value }) => ({
+            matched_by, value, references: ids.flatMap((id) => byId.has(id) ? [byId.get(id)] : []),
+          })).filter((item) => item.references.length > 1),
+          truncated,
+        };
+      }
+      if (parts[0] === 'research' && parts[1] === 'reference-pdfs' && parts[3] === 'annotations') {
+        await this.readyReferencePdf(sql, userId, parts[2]);
+        const filter = query.page === undefined ? {} : { page: query.page };
+        return this.list(sql, userId, 'research_pdf_annotations', { limit: 100, ...query }, { pdf_id: parts[2], ...filter });
+      }
+      if (parts[0] === 'research' && parts[1] === 'references' && parts[3] === 'knowledge-links')
+        return this.listReferenceKnowledgeLinks(sql, userId, parts[2], query, 'reference');
+      if (parts[0] === 'research' && parts[1] === 'references' && parts[3] === 'related')
+        return this.listReferenceRelations(sql, userId, parts[2], query);
+      if (parts[0] === 'research' && parts[1] === 'references' && ['pdfs', 'attachments'].includes(parts[3])) {
+        const reference = await this.mergedReference(sql, userId, parts[2]);
+        const legacy = parts[3] === 'pdfs';
+        const { rows } = await sql.query(
+          `SELECT * FROM research_reference_pdfs WHERE user_id=$1 AND reference_id=$2
+            AND status='ready' AND deleted_at IS NULL ${legacy ? "AND format='pdf'" : ''} ORDER BY created_at,id`,
+          [userId, reference.id],
+        );
+        return { items: await Promise.all(rows.map((row) => this.serializeReferenceAttachment(sql, userId, row, legacy))) };
+      }
+      if (parts[0] === 'research' && parts[1] === 'references' && parts.length === 3) {
+        const reference = await this.mergedReference(sql, userId, parts[2]);
+        return this.serialize(sql, userId, 'research_references', reference);
+      }
+      if (p === 'research/library') return this.literatureLibrary(sql, userId, query);
+      if (p === 'research/library/attachments') {
+        const cursor = query.cursor ? this.decode(query.cursor, userId, 'literature-attachments') : undefined;
+        const limit = Math.max(1, Math.min(100, Number(query.limit) || 25));
+        const { rows } = await sql.query(
+          `SELECT a.id,a.reference_id,a.format,a.size_bytes,a.sha256
+           FROM research_reference_pdfs a JOIN research_references r ON (r.user_id,r.id)=(a.user_id,a.reference_id)
+           WHERE a.user_id=$1 AND a.status='ready' AND a.deleted_at IS NULL AND r.deleted_at IS NULL
+             AND ($2::uuid IS NULL OR a.id>$2::uuid) ORDER BY a.id LIMIT $3`,
+          [userId, cursor?.id ?? null, limit + 1],
+        );
+        return {
+          items: rows.slice(0, limit),
+          next_cursor: rows.length > limit ? this.cursor(userId, 'literature-attachments', { id: rows[limit - 1].id }) : null,
+        };
+      }
+      if (p === 'research/library/saved-searches') {
+        const { rows } = await sql.query(
+          `SELECT * FROM literature_saved_searches WHERE user_id=$1 AND deleted_at IS NULL
+           ORDER BY lower(name),id`,
+          [userId],
+        );
+        return { items: await Promise.all(rows.map((row) => this.serialize(sql, userId, 'literature_saved_searches', row))) };
+      }
+      if (p === 'research/library/collections') {
+        const { rows } = await sql.query(
+          `SELECT * FROM literature_collections WHERE user_id=$1 AND deleted_at IS NULL
+           ORDER BY parent_id NULLS FIRST,lower(name),id`,
+          [userId],
+        );
+        return { items: await Promise.all(rows.map((row) => this.serialize(sql, userId, 'literature_collections', row))) };
+      }
+      if (p === 'graph') {
+        const reference = typeof query.focus === 'string' && query.focus.startsWith('reference:')
+          ? /^reference:([0-9a-f-]{36})$/i.exec(query.focus)?.[1]
+          : undefined;
+        const focus = reference && uuid.test(reference)
+          ? `reference:${(await this.mergedReference(sql, userId, reference)).id}`
+          : query.focus;
+        return workspaceGraph(sql, userId, { ...query, focus });
+      }
       if (p === 'today/shutdown') return this.shutdown(sql, userId, query.date);
       if (p === 'knowledge-subjects') {
         const { rows } = await sql.query(
@@ -1915,6 +3739,8 @@ export class PrismService {
           query,
           query.card_id ? { card_id: query.card_id } : {},
         );
+      if (parts[0] === 'knowledge-items' && parts[2] === 'reference-links')
+        return this.listReferenceKnowledgeLinks(sql, userId, parts[1], query, 'knowledge');
       if (parts[0] === 'knowledge-items' && parts[2] === 'cards') {
         await this.row(sql, userId, 'knowledge_items', parts[1]);
         return this.list(sql, userId, 'review_cards', query, { knowledge_item_id: parts[1] });
@@ -1929,9 +3755,11 @@ export class PrismService {
           const args = [userId, parts[2]];
           const saved = await sql.query(
             `SELECT r.id,r.version::text,r.title,r.authors,r.year,r.doi,r.url,r.arxiv_id,r.zotero_key,
-                    'reference' AS kind
+                    r.citation_key,r.publication,r.creators,r.citation_aliases,'reference' AS kind,l.id AS link_id,l.version::text AS link_version
              FROM research_references r
-             WHERE r.user_id=$1 AND r.project_id=$2 AND r.deleted_at IS NULL`,
+             LEFT JOIN research_reference_links l
+               ON l.reference_id=r.id AND l.user_id=r.user_id AND l.project_id=$2 AND l.deleted_at IS NULL
+             WHERE r.user_id=$1 AND r.deleted_at IS NULL AND (r.project_id=$2 OR l.id IS NOT NULL)`,
             args,
           );
           const linked = await sql.query(
@@ -1942,7 +3770,7 @@ export class PrismService {
             args,
           );
           return {
-            items: [...saved.rows, ...linked.rows].sort(
+            items: [...saved.rows, ...linked.rows].map(({ creators, ...row }): Row => ({ ...row, ...(creators != null && { creators }) })).sort(
               (a, b) => a.title.localeCompare(b.title) || a.id.localeCompare(b.id),
             ),
           };
@@ -2343,6 +4171,43 @@ export class PrismService {
       plan: serialized,
     };
   }
+  private async researchActivity(sql: Sql, userId: string, query: Row, day: boolean): Promise<Row> {
+    const user = await this.row(sql, userId, 'users', userId);
+    const fixed = query.project_id ? { project_id: query.project_id } : {};
+    if (query.project_id) await this.row(sql, userId, 'research_projects', query.project_id);
+    if (day) {
+      const { start, end } = localDayRange(query.date, user.timezone);
+      const page = await this.list(sql, userId, 'research_events', {
+        from: start, to: end, cursor: query.cursor, limit: query.limit,
+      }, fixed);
+      const { rows } = await sql.query(
+        `SELECT e.id, p.title AS project_title, p.deleted_at IS NULL AS project_open,
+           CASE WHEN p.deleted_at IS NULL AND o.deleted_at IS NULL THEN o.object_type END AS object_type,
+           o.title AS object_title
+         FROM research_events e JOIN research_projects p ON (p.user_id,p.id)=(e.user_id,e.project_id)
+         LEFT JOIN research_objects o ON (o.user_id,o.project_id,o.id)=(e.user_id,e.project_id,e.object_id)
+         WHERE e.user_id=$1 AND e.id=ANY($2::uuid[])`,
+        [userId, page.items.map((event: Row) => event.id)],
+      );
+      const details = new Map(rows.map(({ id, ...row }) => [id, row]));
+      return { ...page, timezone: user.timezone, items: page.items.map((event: Row) => ({
+        ...event, ...details.get(event.id),
+      })) };
+    }
+    const endDate = localDate(new Date(), user.timezone);
+    const first = new Date(endDate + 'T00:00:00Z');
+    first.setUTCDate(first.getUTCDate() - 364);
+    const startDate = first.toISOString().slice(0, 10);
+    const { rows } = await sql.query(
+      `SELECT to_char(timezone($4::text,created_at),'YYYY-MM-DD') AS date,count(*)::int AS count
+       FROM research_events WHERE user_id=$1 AND created_at>=$2 AND created_at<$3
+         AND ($5::uuid IS NULL OR project_id=$5) GROUP BY 1 ORDER BY 1`,
+      [userId, localDayRange(startDate, user.timezone).start, localDayRange(endDate, user.timezone).end,
+        user.timezone, query.project_id ?? null],
+    );
+    return { start_date: startDate, end_date: endDate, days: rows };
+  }
+
   private async shutdown(sql: Sql, userId: string, date: string, note?: string): Promise<Row> {
     const user = await this.row(sql, userId, 'users', userId),
       range = localDayRange(date, user.timezone);
@@ -2436,9 +4301,10 @@ export class PrismService {
     for (const [table, kind] of Object.entries(tableKinds)) {
       if (protectedTables.has(table)) continue;
       const owner = table === 'users' ? 'id' : 'user_id';
+      const ready = table === 'research_reference_pdfs' ? " AND status='ready'" : '';
       const rows = (
         await sql.query(
-          `SELECT * FROM ${table} WHERE ${owner}=$1${!includeHistory && this.columns.get(table)?.has('deleted_at') ? ' AND deleted_at IS NULL' : ''} ORDER BY id`,
+          `SELECT * FROM ${table} WHERE ${owner}=$1${!includeHistory && this.columns.get(table)?.has('deleted_at') ? ' AND deleted_at IS NULL' : ''} ${ready} ORDER BY id`,
           [userId],
         )
       ).rows;
@@ -3048,20 +4914,20 @@ export class PrismService {
     }
   }
   private async buildExport(ctx: Context, record: Row): Promise<void> {
+    const { rows: [clock] } = await ctx.sql.query('SELECT now() AS scheduled_at');
     await this.insert(
       ctx.sql,
       'automation_jobs',
       {
         job_type: 'export',
-        scheduled_at: new Date(),
+        scheduled_at: clock.scheduled_at,
         idempotency_key: 'export:' + record.id,
         payload: { export_id: record.id },
       },
       ctx.userId,
     );
   }
-  async processExports(): Promise<void> {
-    const userId = this.config.userId;
+  async processExports(userId: string = this.config.userId): Promise<void> {
     const pending = await this.read(
       userId,
       async (sql) =>
@@ -3144,14 +5010,15 @@ export class PrismService {
                 delete x.user_id;
                 return x;
               });
-            return { revision: String(state.revision), timezone: user.timezone, records, history };
+            const attachments = item.formats.includes('attachments') ? await workspaceAttachmentArchive(sql, userId) : [];
+            return { revision: String(state.revision), timezone: user.timezone, records, history, attachments };
           },
           'repeatable read',
         );
         const files: Record<string, Uint8Array> = {};
         const manifestFiles: Row[] = [];
-        const add = (path: string, content: string, count: number) => {
-          const bytes = strToU8(content);
+        const add = (path: string, content: string | Uint8Array, count: number) => {
+          const bytes = typeof content === 'string' ? strToU8(content) : content;
           files[path] = bytes;
           manifestFiles.push({
             path,
@@ -3187,6 +5054,13 @@ export class PrismService {
                 1,
               );
             }
+        if (item.formats.includes('attachments')) {
+          const attachments = snapshot.attachments.map(({ bytes, ...entry }) => {
+            add(entry.path, bytes, 1);
+            return entry;
+          });
+          add('attachments.json', JSON.stringify(attachments, null, 2), attachments.length);
+        }
         const counts: Row = {};
         for (const record of snapshot.records)
           counts[record.entity_type] = (counts[record.entity_type] ?? 0) + 1;
@@ -3230,6 +5104,7 @@ export class PrismService {
           },
         );
       } catch (error) {
+        const permanentError = error instanceof ApiError && error.code.startsWith('ATTACHMENT_EXPORT_') ? error.message : null;
         await this.execute(
           { userId, key: randomUUID(), method: 'SYSTEM', path: 'exports/failed', body: { id: item.id } },
           async (ctx) => {
@@ -3240,12 +5115,12 @@ export class PrismService {
               ])
             ).rows[0];
             if (job?.payload?.run_id !== runId) return { status: 200, body: { stale: true } };
-            const exhausted = job.attempts >= 5;
+            const exhausted = !!permanentError || job.attempts >= 5;
             await this.update(ctx.sql, userId, 'exports', item.id, {
               status: exhausted ? 'failed' : 'pending',
-              error_message: exhausted
+              error_message: permanentError ?? (exhausted
                 ? 'Export exhausted five attempts'
-                : 'Export will retry after a temporary failure',
+                : 'Export will retry after a temporary failure'),
             });
             await ctx.sql.query(
               'UPDATE automation_jobs SET status=$3,error_message=$4,finished_at=now(),lease_expires_at=NULL,scheduled_at=$5,version=version+1 WHERE user_id=$1 AND idempotency_key=$2',
@@ -3421,7 +5296,8 @@ export class PrismService {
             dedupe,
           ])
         ).rows[0];
-        if (!exists)
+        if (!exists) {
+          const { rows: [clock] } = await ctx.sql.query('SELECT now() AS scheduled_at');
           await this.insert(
             ctx.sql,
             'notification_events',
@@ -3436,11 +5312,12 @@ export class PrismService {
                     ? `${paperIds.length} relevant papers. Open PRISM to read your digest.`
                     : "Review completed and deferred work, then choose tomorrow's priorities.",
               },
-              scheduled_at: new Date(),
+              scheduled_at: clock.scheduled_at,
               dedupe_key: dedupe,
             },
             userId,
           );
+        }
         return { status: 200, body: { created: !exists } };
       },
     );

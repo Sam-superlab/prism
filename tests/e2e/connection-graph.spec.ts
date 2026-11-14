@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 
 test.use({ reducedMotion: 'reduce' });
 
-test('updates the local graph, zooms and drags, then opens a linked research object', async ({
+test('updates the local graph, zooms and drags, then opens a linked research question', async ({
   page,
   request,
   baseURL,
@@ -103,9 +103,10 @@ test('updates the local graph, zooms and drags, then opens a linked research obj
   await page.mouse.up();
   await expect(question).not.toHaveAttribute('transform', beforeDrag!);
   await question.locator('circle').first().click();
-  await expect(page).toHaveURL(new RegExp(`/research/${project}\\?object=${object}$`));
-  const objectDialog = page.getByRole('dialog', { name: 'Graph fixture question' });
-  await expect(objectDialog.getByRole('region', { name: 'Local graph' })).toBeVisible();
-  await objectDialog.getByRole('button', { name: 'Close' }).click();
+  await expect(page).toHaveURL(new RegExp(`/research/${project}/questions/${object}$`));
+  await expect(page.getByRole('heading', { name: 'Graph fixture question', exact: true })).toBeVisible();
+  await page.getByText('Local graph', { exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Local graph' })).toBeVisible();
+  await page.getByRole('link', { name: '← Graph fixture project', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/research/${project}$`));
 });

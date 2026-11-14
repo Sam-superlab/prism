@@ -1,4 +1,5 @@
 'use client';
+import { MarkdownEditor } from '../MarkdownEditor';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState, type ReactNode } from 'react';
@@ -11,24 +12,35 @@ import {
   useResource,
   uuid,
 } from '../../lib/api';
-import type { Entity, Knowledge, Page, Project, ResearchEvent, ResearchObject, Task } from '../../lib/types';
+import type { Entity, Knowledge, Page, Project, ResearchObject, Task } from '../../lib/types';
 import type { GuideLanguage } from '../../lib/getting-started-copy';
+import { researchQuestionHref, researchQuestionStatusLabels, type ResearchQuestionSource } from '../../lib/research-question-links';
 import { ConnectionGraph } from '../ConnectionGraph';
 import { ModuleGuide, ModuleGuideHint, useModuleGuide, type ModuleGuideState } from '../ModuleGuide';
 import { ProjectMaterials } from '../ResearchLinks';
+import { ResearchActivity } from '../ResearchActivity';
 import { CitationField, ResearchMarkdown, ResearchReferences, useProjectBibliography } from '../ResearchReferences';
-import type { BibliographyItem } from '../../lib/zotero-reference';
+import type { BibliographyItem } from '../../lib/bibliography';
 import { Badge, Empty, ErrorState, Field, Icon, Loading, MathContent, Modal, Notice, label } from '../ui';
 import { TaskModal } from './Today';
+import { ResearchQuestionPage, ResearchRecordOrigins } from './ResearchQuestion';
+import { ResearchObjectEditor } from './ResearchObjectEditor';
+import questionStyles from './ResearchQuestion.module.css';
 
 export function ResearchPage({
   id,
   selectedObjectId,
+  questionId,
+  source,
+  startQuestion,
   guideUserId,
   guideLanguage,
 }: {
   id?: string;
   selectedObjectId?: string;
+  questionId?: string;
+  source?: ResearchQuestionSource;
+  startQuestion?: boolean;
   guideUserId?: string;
   guideLanguage?: GuideLanguage;
 }) {
@@ -37,7 +49,9 @@ export function ResearchPage({
   const [create, setCreate] = useState<'regular' | 'guided'>();
   const [filter, setFilter] = useState('active');
   const guide = useModuleGuide('research', guideUserId, guideLanguage);
-  if (id) return <ProjectDetail id={id} selectedObjectId={selectedObjectId} userId={guideUserId} guide={guide} />;
+  if (id && questionId) return <ResearchQuestionPage projectId={id} questionId={questionId} source={source} />;
+  if (id) return <ProjectDetail id={id} selectedObjectId={selectedObjectId} draftSource={startQuestion ? source : undefined}
+    userId={guideUserId} guide={guide} />;
   const items = projects.data?.items.filter((x) => filter === 'all' || x.status === filter) || [];
   return (
     <>
@@ -46,10 +60,12 @@ export function ResearchPage({
           <span className="eyebrow">RESEARCH WORKSPACE</span>
           <h1>Research</h1>
         </div>
-        <button className="button primary" onClick={() => setCreate('regular')}>
-          <Icon name="plus" size={17} />
-          New research project
-        </button>
+        <div className="inline-actions">
+          <button className="button primary" onClick={() => setCreate('regular')}>
+            <Icon name="plus" size={17} />
+            New research project
+          </button>
+        </div>
       </div>
       <ModuleGuide
         guide={guide}
@@ -100,7 +116,7 @@ export function ResearchPage({
             </div>
             <span className="eyebrow">{p.research_area || 'RESEARCH PROJECT'}</span>
             <h2>{p.title}</h2>
-            <p>{p.description || 'No description yet. Add some context for your research question.'}</p>
+            <ResearchMarkdown content={p.description || 'No description yet. Add some context for your research question.'} references={[]} />
             <div className="project-card-bottom">
               <span>
                 {p.deadline ? `Due ${datetime(p.deadline, true)}` : `Updated ${datetime(p.updated_at, true)}`}
@@ -131,11 +147,13 @@ export function ResearchPage({
 function ProjectDetail({
   id,
   selectedObjectId,
+  draftSource,
   userId,
   guide,
 }: {
   id: string;
   selectedObjectId?: string;
+  draftSource?: ResearchQuestionSource;
   userId?: string;
   guide: ModuleGuideState;
 }) {
@@ -144,29 +162,44 @@ function ProjectDetail({
   const references = bibliography.data?.items ?? [];
   const project = useResource<Project>(`/research/projects/${id}`);
   const objects = useResource<Page<ResearchObject>>(`/research/projects/${id}/objects?limit=100`);
+  const questions = useResource<Page<ResearchObject>>(`/research/projects/${id}/objects?object_type=question&limit=100`);
   const tasks = useResource<Page<Task>>(`/tasks?project_id=${id}&limit=100`);
-  const timeline = useResource<Page<ResearchEvent>>(`/research/projects/${id}/timeline?limit=50`);
   const links = useResource<Page<Entity & { research_object_id: string; knowledge_item_id: string }>>(
     '/research/knowledge-links?limit=500',
   );
   const [editingTask, setEditingTask] = useState<Task | undefined>();
   const [edit, setEdit] = useState(false);
-  const [objectEditor, setObjectEditor] = useState<ResearchObject | 'new' | null>(null);
+  const [objectEditor, setObjectEditor] = useState<ResearchObject | 'new' | 'question' | null>(null);
+  const [closedDraft, setClosedDraft] = useState<string>();
   const [selected, setSelected] = useState<ResearchObject | null>(null);
   const selectedObject = useResource<ResearchObject>(
     selectedObjectId ? `/research/objects/${selectedObjectId}` : null,
   ).data;
   useEffect(() => {
     if (!selectedObjectId) setSelected(null);
-    else if (selectedObject?.id === selectedObjectId && selectedObject.project_id === id)
-      setSelected(selectedObject);
-  }, [id, selectedObjectId, selectedObject]);
+    else if (selectedObject?.id === selectedObjectId && selectedObject.project_id === id) {
+      if (selectedObject.object_type === 'question') {
+        setSelected(null);
+        router.replace(researchQuestionHref(id, selectedObject.id), { scroll: false });
+      } else setSelected(selectedObject);
+    }
+  }, [id, selectedObjectId, selectedObject, router]);
   const [task, setTask] = useState(false);
   const [taskObject, setTaskObject] = useState<string | undefined>();
   const [tab, setTab] = useState('objects');
   const [knowledgeLink, setKnowledgeLink] = useState<ResearchObject | null>(null);
   const [statusFilter, setStatusFilter] = useState('all');
   const [materialPicker, setMaterialPicker] = useState<'knowledge' | 'paper' | null>(null);
+  const draftKey = draftSource ? `${draftSource.referenceId}/${draftSource.pdfId}/${draftSource.page}` : undefined;
+  const activeDraft = draftSource && draftKey !== closedDraft ? draftSource : undefined;
+  const activeObjectEditor = objectEditor ?? (activeDraft ? 'question' : null);
+  function dismissObjectEditor() {
+    setObjectEditor(null);
+    if (activeDraft) {
+      setClosedDraft(draftKey);
+      router.replace(`/research/${id}`, { scroll: false });
+    }
+  }
   function closeSelected() {
     setSelected(null);
     const url = new URL(window.location.href);
@@ -177,8 +210,8 @@ function ProjectDetail({
   const refresh = () => {
     project.reload();
     objects.reload();
+    questions.reload();
     tasks.reload();
-    timeline.reload();
     links.reload();
   };
   const action = useAction(refresh);
@@ -200,7 +233,7 @@ function ProjectDetail({
         <div>
           <span className="eyebrow">{p.research_area || 'RESEARCH PROJECT'}</span>
           <h1>{p.title}</h1>
-          <p>{p.description}</p>
+          <ResearchMarkdown content={p.description} references={references} />
         </div>
         <div className="heading-actions">
           <Badge tone="blue">{label(p.status)}</Badge>
@@ -244,6 +277,30 @@ function ProjectDetail({
         </span>
       </div>
       {action.error && <Notice tone="error">{action.error}</Notice>}
+      <section className={`panel ${questionStyles.projectQuestions}`} aria-label="Research questions">
+        <div className="panel-heading">
+          <h2>Research questions</h2>
+          <button className="button small primary" type="button" onClick={() => setObjectEditor('question')}>
+            <Icon name="plus" size={15} /> New question
+          </button>
+        </div>
+        <div className={questionStyles.panelBody}>
+          <ErrorState error={questions.error} retry={questions.reload} />
+          {questions.loading && !questions.data && <Loading />}
+          {questions.data?.items.length === 0 && <p className={questionStyles.empty}>Start with the question you want to investigate.</p>}
+          {!!questions.data?.items.length && <ul className={questionStyles.links}>
+            {questions.data.items.map((question) => <li key={question.id}>
+              <Link href={researchQuestionHref(id, question.id)} className={`text-link ${questionStyles.linkTitle}`}>
+                <span>{question.title}</span><Icon name="arrow" size={15} />
+              </Link>
+              <Badge tone={question.question_status === 'resolved' ? 'green' : 'blue'}>
+                {researchQuestionStatusLabels[question.question_status ?? 'open']}
+              </Badge>
+            </li>)}
+          </ul>}
+        </div>
+      </section>
+      <ResearchActivity projectId={id} />
       <div className="detail-columns">
         <div>
           <section className="panel">
@@ -297,14 +354,14 @@ function ProjectDetail({
                   </select>
                 </div>
                 <ErrorState error={objects.error} retry={objects.reload} />
-                {objects.data?.items.length === 0 && (
+                {objects.data && !objects.data.items.some((object) => object.object_type !== 'question') && (
                   <Empty icon="research" title="Start with your first question">
                     Add a conjecture, proof attempt, experiment, or literature note.
                   </Empty>
                 )}
                 <div className="object-list">
                   {objects.data?.items
-                    .filter((o) => statusFilter === 'all' || o.claim_status === statusFilter)
+                    .filter((o) => o.object_type !== 'question' && (statusFilter === 'all' || o.claim_status === statusFilter))
                     .map((o) => (
                       <article className="object-card" key={o.id}>
                         <div className="object-card-top">
@@ -394,7 +451,7 @@ function ProjectDetail({
                               {t.title}
                             </button>
                           </h3>
-                          <p>{t.description}</p>
+                          <ResearchMarkdown content={t.description} references={references} />
                           <div className="task-meta">
                             <Badge>{label(t.status)}</Badge>
                             <span>{t.estimated_minutes} min</span>
@@ -446,7 +503,7 @@ function ProjectDetail({
             )}
           </section>
         </div>
-        <aside>
+        <aside className={questionStyles.projectSidebar}>
           <ProjectMaterials
             projectId={id}
             userId={userId}
@@ -471,34 +528,6 @@ function ProjectDetail({
             onAddPaper={() => setMaterialPicker('paper')}
           />
           <ConnectionGraph focus={`project:${id}`} />
-          <section className="panel timeline-panel">
-            <div className="panel-heading">
-              <h2>Research timeline</h2>
-              <Badge>{timeline.data?.items.length || 0}</Badge>
-            </div>
-            <ErrorState error={timeline.error} retry={timeline.reload} />
-            {timeline.data?.items.length === 0 && (
-              <p className="panel-description muted">Meaningful changes are recorded here automatically.</p>
-            )}
-            <div className="timeline">
-              {timeline.data?.items.map((e) => (
-                <article key={e.id}>
-                  <span className="timeline-dot" />
-                  <small>{datetime(e.created_at)}</small>
-                  <h4>{eventLabel(e.event_type)}</h4>
-                  <p>
-                    {String(
-                      e.event_payload.title ||
-                        e.event_payload.new_status ||
-                        e.event_payload.claim_status ||
-                        e.event_payload.to ||
-                        '',
-                    )}
-                  </p>
-                </article>
-              ))}
-            </div>
-          </section>
           <div className="quiet-card small">
             <span className="eyebrow">MATHEMATICAL RIGOR</span>
             <p>
@@ -521,16 +550,27 @@ function ProjectDetail({
           }}
         />
       )}{' '}
-      {objectEditor && (
-        <ObjectEditor
+      {activeObjectEditor && (
+        <ResearchObjectEditor
+          key={activeDraft ? draftKey : typeof activeObjectEditor === 'string' ? activeObjectEditor : activeObjectEditor.id}
           projectId={id}
           references={references}
-          object={objectEditor === 'new' ? undefined : objectEditor}
-          onClose={() => setObjectEditor(null)}
-          onSaved={() => {
+          object={typeof activeObjectEditor === 'string' ? undefined : activeObjectEditor}
+          types={activeObjectEditor === 'question' ? ['question'] : undefined}
+          title={activeObjectEditor === 'question' ? 'New research question' : undefined}
+          onCommit={activeDraft ? async (question, linkId) => {
+            await api('/research/question-links', { method: 'POST', body: {
+              id: linkId, question_id: question.id, relation_type: 'motivates',
+              reference_id: activeDraft.referenceId, attachment_id: activeDraft.pdfId, page: activeDraft.page,
+            } });
+          } : undefined}
+          onClose={dismissObjectEditor}
+          onSaved={(object) => {
             setObjectEditor(null);
             setSelected(null);
             refresh();
+            if (object.object_type === 'question')
+              router.push(researchQuestionHref(id, object.id));
           }}
         />
       )}{' '}
@@ -546,7 +586,7 @@ function ProjectDetail({
           }}
         />
       )}
-      {selected && (
+      {selected && selected.object_type !== 'question' && (
         <Modal title={selected.title} onClose={closeSelected} wide>
           <div className="inline-actions">
             <Badge tone="blue">{label(selected.object_type)}</Badge>
@@ -565,18 +605,17 @@ function ProjectDetail({
             {Object.keys(selected.evidence_metadata).length > 0 && (
               <div className="evidence-box">
                 <h3>Computational evidence and scope</h3>
-                <p>
-                  <strong>Scope</strong> {String(selected.evidence_metadata.scope || '')}
-                </p>
-                <p>
-                  <strong>Result</strong> {String(selected.evidence_metadata.result || '')}
-                </p>
+                <strong>Scope</strong>
+                <ResearchMarkdown content={String(selected.evidence_metadata.scope || '')} references={references} />
+                <strong>Result</strong>
+                <ResearchMarkdown content={String(selected.evidence_metadata.result || '')} references={references} />
               </div>
             )}
             {selected.evidence_reference && (
               <p className="source-reference">Evidence reference: {selected.evidence_reference}</p>
             )}
           </div>
+          <ResearchRecordOrigins record={selected} />
           <h3 className="section-small-title">Related knowledge</h3>
           {links.data?.items
             .filter((l) => l.research_object_id === selected.id)
@@ -707,12 +746,10 @@ function ProjectEditor({
             autoFocus
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="For example: A study of graded rings"
+            placeholder="For example: Strong Persistence Property"
           />
         </Field>
-        <Field label="Background and objectives">
-          <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-        </Field>
+        <MarkdownEditor label="Background and objectives" rows={3} value={description} onChange={setDescription} />
         <div className="form-grid">
           <Field label="Research area">
             <input value={area} onChange={(e) => setArea(e.target.value)} placeholder="Commutative Algebra" />
@@ -749,7 +786,7 @@ function ProjectEditor({
             />
           </Field>
         </div>
-        <CitationField label="Project notes" rows={5} value={notes} onChange={setNotes} references={references} preview />
+        <CitationField label="Project notes" rows={5} value={notes} onChange={setNotes} references={references} />
         <Field label="Code locations (one per line)">
           <textarea
             rows={2}
@@ -765,143 +802,6 @@ function ProjectEditor({
           </button>
           <button className="button primary" disabled={action.busy}>
             Save project
-          </button>
-        </div>
-      </form>
-    </Modal>
-  );
-}
-function ObjectEditor({
-  projectId,
-  object,
-  references,
-  onClose,
-  onSaved,
-}: {
-  projectId: string;
-  object?: ResearchObject;
-  references: BibliographyItem[];
-  onClose: () => void;
-  onSaved: () => void;
-}) {
-  const [creationId] = useState(uuid);
-  const [title, setTitle] = useState(object?.title || '');
-  const [type, setType] = useState(object?.object_type || 'question');
-  const [content, setContent] = useState(object?.content || '');
-  const [claim, setClaim] = useState(object?.claim_status || 'needs_verification');
-  const [proof, setProof] = useState(object?.proof_content || '');
-  const [reference, setReference] = useState(object?.evidence_reference || '');
-  const [scope, setScope] = useState(String(object?.evidence_metadata.scope || ''));
-  const [result, setResult] = useState(String(object?.evidence_metadata.result || ''));
-  const action = useAction(onSaved);
-  return (
-    <Modal title={object ? 'Edit research object' : 'Add research object'} onClose={onClose} wide>
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (claim === 'proved' && !proof.trim() && !reference.trim()) {
-            action.setError('A proved claim requires proof text or a reference.');
-            return;
-          }
-          void action.run(() =>
-            api(object ? `/research/objects/${object.id}` : `/research/projects/${projectId}/objects`, {
-              method: object ? 'PATCH' : 'POST',
-              version: object?.version,
-              body: {
-                ...(object ? { base_snapshot: object } : { id: creationId }),
-                title,
-                object_type: type,
-                content,
-                claim_status: claim,
-                proof_content: proof || null,
-                evidence_reference: reference || null,
-                evidence_metadata: {
-                  ...(object?.evidence_metadata || {}),
-                  ...(scope ? { scope } : {}),
-                  ...(result ? { result } : {}),
-                },
-              },
-            }),
-          );
-        }}
-      >
-        <div className="form-grid">
-          <Field label="Title">
-            <input autoFocus required value={title} onChange={(e) => setTitle(e.target.value)} />
-          </Field>
-          <Field label="Object type">
-            <select value={type} onChange={(e) => setType(e.target.value)}>
-              {[
-                'question',
-                'conjecture',
-                'theorem',
-                'lemma',
-                'proof_attempt',
-                'counterexample',
-                'experiment',
-                'observation',
-                'literature_note',
-              ].map((x) => (
-                <option key={x} value={x}>
-                  {label(x)}
-                </option>
-              ))}
-            </select>
-          </Field>
-        </div>
-        <CitationField label="Content" rows={6} value={content} onChange={setContent} references={references} required preview />
-        <Field label="Mathematical claim status">
-          <select value={claim} onChange={(e) => setClaim(e.target.value)}>
-            {['needs_verification', 'conjecture', 'computationally_verified', 'proved', 'disproved'].map(
-              (x) => (
-                <option key={x} value={x}>
-                  {label(x)}
-                </option>
-              ),
-            )}
-          </select>
-        </Field>
-        {claim === 'computationally_verified' && (
-          <div className="form-grid">
-            <Field label="Verification scope">
-              <textarea
-                required
-                rows={3}
-                value={scope}
-                onChange={(e) => setScope(e.target.value)}
-                placeholder="Parameter range, samples, algorithm, and code version"
-              />
-            </Field>
-            <Field label="Results / evidence">
-              <textarea
-                required
-                rows={3}
-                value={result}
-                onChange={(e) => setResult(e.target.value)}
-                placeholder="Record the results and their limitations"
-              />
-            </Field>
-          </div>
-        )}
-        <CitationField label="Proof text / proof attempt" rows={5} value={proof} onChange={setProof} references={references} preview />
-        <Field label="Proof or evidence reference">
-          <input
-            value={reference}
-            onChange={(e) => setReference(e.target.value)}
-            placeholder="Literature, code, logs, or proof location"
-          />
-        </Field>
-        <Notice>
-          Claim status changes enter the project timeline. Computational evidence does not establish a general
-          proof.
-        </Notice>
-        {action.error && <Notice tone="error">{action.error}</Notice>}
-        <div className="modal-footer">
-          <button type="button" className="button" onClick={onClose}>
-            Cancel
-          </button>
-          <button className="button primary" disabled={action.busy}>
-            Save research object
           </button>
         </div>
       </form>
@@ -953,16 +853,4 @@ function KnowledgeLinkModal({
       </form>
     </Modal>
   );
-}
-function eventLabel(value: string) {
-  const m: Record<string, string> = {
-    project_created: 'Project created',
-    object_created: 'Research object added',
-    object_updated: 'Research object updated',
-    claim_status_changed: 'Claim status changed',
-    task_completed: 'Research task completed',
-    project_updated: 'Project updated',
-    object_deleted: 'Research object archived',
-  };
-  return m[value] || value.replaceAll('_', ' ');
 }

@@ -4,8 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { buildApp } from '../apps/api/src/app';
 import { loadConfig } from '../apps/api/src/config';
+import { createOpenAccessPdf } from '../apps/api/src/open-access-pdf';
 import { createDatabase } from '../packages/database/src/index';
 import { startWorker } from '../apps/worker/src/index';
+import { pdfWithImageAndRepeatedMargins } from '../tests/e2e/pdf-fixture';
 
 const db = await createDatabase({ memory: true });
 const dataDir = await mkdtemp(join(tmpdir(), 'prism-browser-test-'));
@@ -16,7 +18,12 @@ const config = loadConfig({
   PRISM_WEB_ORIGIN: 'http://127.0.0.1:3100',
 });
 // The entire suite shares one loopback client and server for all workflows.
-const app = await buildApp({ db, config, rateLimitMax: 1000 });
+const openAccessPdf = createOpenAccessPdf({ fetch: async (input) => {
+  if (String(input) === 'https://arxiv.org/pdf/2611.99998v1')
+    return new Response(Uint8Array.from(pdfWithImageAndRepeatedMargins()), { headers: { 'Content-Type': 'application/pdf' } });
+  return new Response(null, { status: 404 });
+} });
+const app = await buildApp({ db, config, rateLimitMax: 1000, openAccessPdf });
 const fixtureFetch: typeof fetch = async (input) => {
   const now = new Date().toISOString();
   const url = new URL(input instanceof Request ? input.url : input);

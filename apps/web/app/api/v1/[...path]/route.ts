@@ -11,6 +11,7 @@ import {
 import { BodyLimitError, readLimitedBody } from '../../../../lib/request-body';
 
 export const runtime = 'nodejs';
+const publicLibraryRoute = /^team-library-discovery(?:\/[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}(?:\/references)?)?$/i;
 async function proxy(request: NextRequest, context: { params: Promise<{ path: string[] }> }) {
   if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method) && !sameOrigin(request))
     return NextResponse.json(
@@ -34,9 +35,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
   }
   try {
     const desktop = desktopMode();
+    const publicLibrary = !desktop && request.method === 'GET' && publicLibraryRoute.test(path.join('/'));
     const token = desktop ? desktopTokenFor(request) : undefined;
-    const auth = desktop ? { session: null, changed: false } : await sessionFor(request);
-    const publicEndpoint = request.method === 'GET' && path.join('/') === 'auth/config';
+    const auth = desktop || publicLibrary ? { session: null, changed: false } : await sessionFor(request);
+    const publicEndpoint = publicLibrary || (request.method === 'GET' && path.join('/') === 'auth/config');
     if (desktop ? !token : process.env.NODE_ENV === 'production' && !auth.session && !publicEndpoint) {
       const forbidden = token === null;
       const response = NextResponse.json(
@@ -66,7 +68,10 @@ async function proxy(request: NextRequest, context: { params: Promise<{ path: st
     });
     const responseHeaders = new Headers({ 'Cache-Control': 'no-store' });
     if (desktop) responseHeaders.set('Cross-Origin-Resource-Policy', 'same-origin');
-    for (const name of ['content-type', 'content-disposition', 'etag', 'retry-after']) {
+    for (const name of [
+      'content-type', 'content-disposition', 'content-security-policy', 'cross-origin-resource-policy',
+      'x-content-type-options', 'etag', 'retry-after',
+    ]) {
       const value = upstream.headers.get(name);
       if (value) responseHeaders.set(name, value);
     }

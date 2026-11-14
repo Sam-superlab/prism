@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { expect, test, type Page } from '@playwright/test';
+import { pdfDocument } from './pdf-fixture';
+import { expectMarkdownSource, markdownSource } from './markdown-source';
 
 const book = 'Synthetic Algebra Textbook';
 const chapter = 'Groups';
@@ -23,19 +25,6 @@ async function openTextImport(page: Page, source = exerciseText) {
   await dialog.getByLabel('Exercise text', { exact: true }).fill(source);
   await dialog.getByRole('button', { name: 'Preview exercises', exact: true }).click();
   return dialog;
-}
-
-function pdfDocument(objects: string[]): Buffer {
-  let document = '%PDF-1.4\n';
-  const offsets = ['0000000000 65535 f '];
-  objects.forEach((object, index) => {
-    offsets.push(`${String(Buffer.byteLength(document)).padStart(10, '0')} 00000 n `);
-    document += `${index + 1} 0 obj\n${object}\nendobj\n`;
-  });
-  const tableOffset = Buffer.byteLength(document);
-  return Buffer.from(
-    `${document}xref\n0 ${offsets.length}\n${offsets.join('\n')}\ntrailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${tableOffset}\n%%EOF\n`,
-  );
 }
 
 function syntheticPdf(): Buffer {
@@ -283,6 +272,11 @@ function pdfWithMathGrids(): Buffer {
   ]);
 }
 
+async function statementSource(container: import('@playwright/test').Locator, label: string) {
+  await container.getByRole('button', { name: `Markdown source for ${label}`, exact: true }).click();
+  return container.getByLabel(label, { exact: true });
+}
+
 test('reviews, edits, and saves selected exercises, then resumes the stuck exercise after reload', async ({
   page,
 }) => {
@@ -293,8 +287,8 @@ test('reviews, edits, and saves selected exercises, then resumes the stuck exerc
   });
   await page.goto('/practice');
   const dialog = await openTextImport(page);
-  const statement = dialog.getByLabel('Exercise 2 statement', { exact: true });
-  await expect(statement).toHaveValue(original);
+  const statement = await statementSource(dialog, 'Exercise 2 statement');
+  await expectMarkdownSource(statement, original);
   await statement.fill(edited);
   const candidate = dialog.getByRole('region', { name: 'Extracted exercise 2' });
   await expect(candidate.getByText(`2. ${original}`, { exact: true })).toBeVisible();
@@ -348,14 +342,23 @@ test('converts imported notation to LaTeX, previews edits, and retains the sourc
   const source = '1. Let A ⊆ Λ.';
   const dialog = await openTextImport(page, `Exercises\n${source}`);
   const candidate = dialog.getByRole('region', { name: 'Extracted exercise 1' });
-  const statement = candidate.getByLabel('Exercise 1 statement', { exact: true });
+  const statement = await statementSource(candidate, 'Exercise 1 statement');
   const preview = candidate.getByRole('region', { name: 'Rendered preview' });
   const annotation = 'annotation[encoding="application/x-tex"]';
 
-  await expect(statement).toHaveValue(String.raw`Let $A \subseteq \Lambda$.`);
+  await expectMarkdownSource(statement, String.raw`Let $A \subseteq \Lambda$.`);
+  await candidate
+    .getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true })
+    .click();
   await expect(preview.locator('.katex')).toBeVisible();
   await expect(preview.locator(annotation)).toHaveText(String.raw`A \subseteq \Lambda`);
+  await candidate
+    .getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true })
+    .click();
   await statement.fill(String.raw`Let $A \subsetneq \Lambda$.`);
+  await candidate
+    .getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true })
+    .click();
   await expect(preview.locator(annotation)).toHaveText(String.raw`A \subsetneq \Lambda`);
   await expect(candidate.getByText(source, { exact: true })).toBeVisible();
 
@@ -369,10 +372,11 @@ test('converts imported notation to LaTeX, previews edits, and retains the sourc
 
   await details.getByRole('button', { name: 'Edit exercise', exact: true }).click();
   const edit = page.getByRole('dialog', { name: 'Edit exercise 1' });
-  const savedStatement = edit.getByLabel('Exercise statement', { exact: true });
+  const savedStatement = await statementSource(edit, 'Exercise statement');
   await savedStatement.fill('Let A ⊆ Λ.');
   await edit.getByRole('button', { name: 'Convert symbols to LaTeX', exact: true }).click();
-  await expect(savedStatement).toHaveValue(String.raw`Let $A \subseteq \Lambda$.`);
+  await expectMarkdownSource(savedStatement, String.raw`Let $A \subseteq \Lambda$.`);
+  await edit.getByRole('button', { name: 'Markdown source for Exercise statement', exact: true }).click();
   await expect(edit.getByRole('region', { name: 'Rendered preview' }).locator(annotation)).toHaveText(
     String.raw`A \subseteq \Lambda`,
   );
@@ -400,11 +404,12 @@ test('extracts only the selected page from a local text PDF and removes its foot
   await dialog.getByLabel('First PDF page', { exact: true }).fill('2');
   await dialog.getByLabel('Last PDF page', { exact: true }).fill('2');
   await dialog.getByRole('button', { name: 'Preview exercises', exact: true }).click();
-  await expect(dialog.getByLabel('Exercise 9 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(dialog, 'Exercise 9 statement'),
     'Find the neutral element on the selected page.',
   );
   await expect(dialog.getByRole('checkbox', { name: 'Include exercise 9' })).toBeChecked();
-  await expect(dialog.getByLabel('Exercise 1 statement', { exact: true })).toHaveCount(0);
+  await expect(dialog.getByRole('region', { name: 'Extracted exercise 1', exact: true })).toHaveCount(0);
   await dialog.getByRole('button', { name: 'Save selected exercises', exact: true }).click();
   await expect(dialog).toBeHidden();
   await page.reload();
@@ -436,16 +441,20 @@ test('restores PDF scripts and radical scope, and flags a root with no reliable 
   await dialog.getByRole('button', { name: 'Preview exercises', exact: true }).click();
 
   const scripts = dialog.getByRole('region', { name: 'Extracted exercise 1' });
-  const scriptSource = scripts.getByLabel('Exercise 1 statement', { exact: true });
-  await expect(scriptSource).toHaveValue(/x_(?:\{1\}|1).*x\^\{\s*n\s*-\s*1\s*\}/);
+  const scriptSource = await statementSource(scripts, 'Exercise 1 statement');
+  await expectMarkdownSource(scriptSource, /x_(?:\{1\}|1).*x\^\{\s*n\s*-\s*1\s*\}/);
   await expect(scripts.locator('pre')).toContainText('Compare x1 with xn-1');
+  await scripts
+    .getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true })
+    .click();
   const scriptPreview = scripts.getByRole('region', { name: 'Rendered preview' });
   await expect(scriptPreview.locator('.katex-html .msupsub')).toHaveCount(2);
   await expect(scripts.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
 
   const root = dialog.getByRole('region', { name: 'Extracted exercise 2' });
-  const rootSource = root.getByLabel('Exercise 2 statement', { exact: true });
-  await expect(rootSource).toHaveValue(/\\sqrt\{\s*-5\s*\}\$?\s*\+\s*2/);
+  const rootSource = await statementSource(root, 'Exercise 2 statement');
+  await expectMarkdownSource(rootSource, /\\sqrt\{\s*-5\s*\}\$?\s*\+\s*2/);
+  await root.getByRole('button', { name: 'Markdown source for Exercise 2 statement', exact: true }).click();
   const rootPreview = root.getByRole('region', { name: 'Rendered preview' });
   await expect(rootPreview.locator('.katex-html .sqrt')).toBeVisible();
   await expect(root.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
@@ -454,7 +463,7 @@ test('restores PDF scripts and radical scope, and flags a root with no reliable 
   const review = ambiguous.getByRole('region', { name: 'Check PDF formulas' });
   await expect(review.locator('mark')).toHaveText('√-5');
   await expect(review.getByRole('listitem')).toContainText(/root|radical/i);
-  await expect(ambiguous.getByLabel('Exercise 3 statement', { exact: true })).toHaveValue(/√-5/);
+  await expectMarkdownSource(await statementSource(ambiguous, 'Exercise 3 statement'), /√-5/);
 });
 
 test('restores PDF math alphabets from font metadata and flags an ambiguous alphabet', async ({ page }) => {
@@ -471,9 +480,10 @@ test('restores PDF math alphabets from font metadata and flags an ambiguous alph
   await dialog.getByRole('button', { name: 'Preview exercises', exact: true }).click();
 
   const styled = dialog.getByRole('region', { name: 'Extracted exercise 1' });
-  const statement = styled.getByLabel('Exercise 1 statement', { exact: true });
-  await expect(statement).toHaveValue(/\\mathbb\{Z\}.*\\mathcal\{A\}.*\\mathscr\{B\}.*with Z\./);
+  const statement = await statementSource(styled, 'Exercise 1 statement');
+  await expectMarkdownSource(statement, /\\mathbb\{Z\}.*\\mathcal\{A\}.*\\mathscr\{B\}.*with Z\./);
   await expect(styled.locator('pre')).toContainText('Compare Z, A, and B with Z.');
+  await styled.getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true }).click();
   const preview = styled.getByRole('region', { name: 'Rendered preview' });
   await expect(preview.locator('.katex-html .mathbb')).toHaveText('Z');
   await expect(preview.locator('.katex-html .mathcal')).toHaveText('A');
@@ -481,7 +491,7 @@ test('restores PDF math alphabets from font metadata and flags an ambiguous alph
   await expect(styled.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
 
   const ambiguous = dialog.getByRole('region', { name: 'Extracted exercise 2' });
-  await expect(ambiguous.getByLabel('Exercise 2 statement', { exact: true })).toHaveValue('Inspect Q.');
+  await expectMarkdownSource(await statementSource(ambiguous, 'Exercise 2 statement'), 'Inspect Q.');
   const review = ambiguous.getByRole('region', { name: 'Check PDF formulas' });
   await expect(review.locator('mark')).toHaveText('Q');
   await expect(review.getByRole('listitem')).toContainText(/font|script|calligraph/i);
@@ -502,18 +512,24 @@ test('reconstructs PDF fractions and summation bounds and flags ambiguous formul
   await dialog.getByRole('button', { name: 'Preview exercises', exact: true }).click();
 
   const fraction = dialog.getByRole('region', { name: 'Extracted exercise 1' });
-  await expect(fraction.getByLabel('Exercise 1 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(fraction, 'Exercise 1 statement'),
     /\\frac\{\s*x\s*\+\s*1\s*\}\{\s*2\s*\}[^\n]*\+\s*3/,
   );
   await expect(fraction.locator('pre')).toContainText(/x\+1\s+2/);
+  await fraction
+    .getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true })
+    .click();
   await expect(fraction.getByRole('region', { name: 'Rendered preview' }).locator('mfrac')).toHaveCount(1);
   await expect(fraction.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
 
   const sum = dialog.getByRole('region', { name: 'Extracted exercise 2' });
-  await expect(sum.getByLabel('Exercise 2 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(sum, 'Exercise 2 statement'),
     /\\sum(?:\\limits)?_\{\s*i\s*=\s*1\s*\}\^\{\s*n\s*\}\$?\s*x/,
   );
   await expect(sum.locator('pre')).toContainText('∑');
+  await sum.getByRole('button', { name: 'Markdown source for Exercise 2 statement', exact: true }).click();
   const sumPreview = sum.getByRole('region', { name: 'Rendered preview' });
   await expect(sumPreview.locator('munderover, msubsup')).toHaveCount(1);
   await expect(sumPreview.locator('.katex-html .op-limits')).toHaveCount(1);
@@ -523,7 +539,9 @@ test('reconstructs PDF fractions and summation bounds and flags ambiguous formul
   const review = ambiguous.getByRole('region', { name: 'Check PDF formulas' });
   await expect(review.locator('mark')).toContainText('x+1');
   await expect(review.getByRole('listitem')).toContainText(/fraction|denominator/i);
-  await expect(ambiguous.getByLabel('Exercise 3 statement', { exact: true })).not.toHaveValue(/\\frac/);
+  expect(await markdownSource(await statementSource(ambiguous, 'Exercise 3 statement'))).not.toMatch(
+    /\\frac/,
+  );
   await expect(dialog.getByRole('checkbox', { name: 'Include exercise 3' })).toBeChecked();
 
   const ambiguousSum = dialog.getByRole('region', { name: 'Extracted exercise 4' });
@@ -546,18 +564,26 @@ test('reconstructs PDF integral and product bounds and flags competing limits', 
   await dialog.getByRole('button', { name: 'Preview exercises', exact: true }).click();
 
   const integral = dialog.getByRole('region', { name: 'Extracted exercise 1' });
-  await expect(integral.getByLabel('Exercise 1 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(integral, 'Exercise 1 statement'),
     /\\int(?:\\nolimits)?_\{\s*0\s*\}\^\{\s*1\s*\}\$?\s*x dx/,
   );
   await expect(integral.locator('pre')).toContainText('∫');
+  await integral
+    .getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true })
+    .click();
   await expect(integral.getByRole('region', { name: 'Rendered preview' }).locator('msubsup')).toHaveCount(1);
   await expect(integral.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
 
   const product = dialog.getByRole('region', { name: 'Extracted exercise 2' });
-  await expect(product.getByLabel('Exercise 2 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(product, 'Exercise 2 statement'),
     /\\prod\\limits_\{\s*i\s*=\s*1\s*\}\^\{\s*n\s*\}\$?\s*i\./,
   );
   await expect(product.locator('pre')).toContainText('∏');
+  await product
+    .getByRole('button', { name: 'Markdown source for Exercise 2 statement', exact: true })
+    .click();
   await expect(
     product.getByRole('region', { name: 'Rendered preview' }).locator('.katex-html .op-limits'),
   ).toHaveCount(1);
@@ -572,9 +598,9 @@ test('reconstructs PDF integral and product bounds and flags competing limits', 
     const review = candidate.getByRole('region', { name: 'Check PDF formulas' });
     await expect(review.locator('mark')).toContainText(glyph);
     await expect(review.getByRole('listitem')).toContainText(/limit|bound/i);
-    await expect(candidate.getByLabel('Exercise ' + number + ' statement', { exact: true })).not.toHaveValue(
-      new RegExp('\\\\' + command + '(?:\\\\(?:no)?limits)?[_^]\\{'),
-    );
+    expect(
+      await markdownSource(await statementSource(candidate, 'Exercise ' + number + ' statement')),
+    ).not.toMatch(new RegExp('\\\\' + command + '(?:\\\\(?:no)?limits)?[_^]\\{'));
   }
 });
 
@@ -597,10 +623,13 @@ test('reconstructs PDF limit approach conditions and flags competing rows', asyn
     [3, /\\liminf\\limits_\{\s*n\s*\\to\s*\\infty\s*\}/, 'b.', '.op-limits'],
   ] as const) {
     const candidate = dialog.getByRole('region', { name: 'Extracted exercise ' + number });
-    const statement = candidate.getByLabel('Exercise ' + number + ' statement', { exact: true });
-    await expect(statement).toHaveValue(latex);
-    expect((await statement.inputValue()).trimEnd().endsWith(body)).toBe(true);
+    const statement = await statementSource(candidate, 'Exercise ' + number + ' statement');
+    await expectMarkdownSource(statement, latex);
+    expect((await markdownSource(statement)).trimEnd().endsWith(body)).toBe(true);
     await expect(candidate.locator('pre')).toContainText('→');
+    await candidate
+      .getByRole('button', { name: `Markdown source for Exercise ${number} statement`, exact: true })
+      .click();
     await expect(candidate.getByRole('region', { name: 'Rendered preview' }).locator(rendered)).toHaveCount(
       1,
     );
@@ -611,12 +640,13 @@ test('reconstructs PDF limit approach conditions and flags competing rows', asyn
   const review = ambiguous.getByRole('region', { name: 'Check PDF formulas' });
   await expect(review.locator('mark')).toContainText(/lim\s+x\s*→\s*0\s+x\s*→\s*1/);
   await expect(review.getByRole('listitem')).toContainText(/approach condition/i);
-  await expect(ambiguous.getByLabel('Exercise 4 statement', { exact: true })).not.toHaveValue(
+  expect(await markdownSource(await statementSource(ambiguous, 'Exercise 4 statement'))).not.toMatch(
     /\\lim(?:\\(?:no)?limits)?_\{/,
   );
 
   const prose = dialog.getByRole('region', { name: 'Extracted exercise 5' });
-  await expect(prose.getByLabel('Exercise 5 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(prose, 'Exercise 5 statement'),
     'Read the word lim in this sentence.',
   );
   await expect(prose.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
@@ -636,9 +666,11 @@ test('reconstructs PDF matrices and piecewise functions and flags uncertain rows
   await dialog.getByRole('button', { name: 'Preview exercises', exact: true }).click();
 
   const matrix = dialog.getByRole('region', { name: 'Extracted exercise 1' });
-  await expect(matrix.getByLabel('Exercise 1 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(matrix, 'Exercise 1 statement'),
     /^Inspect\s*\$\\begin\{pmatrix\}\s*1\s*&\s*2\s*\\\\\s*3\s*&\s*4\s*\\end\{pmatrix\}\$\s*\.$/,
   );
+  await matrix.getByRole('button', { name: 'Markdown source for Exercise 1 statement', exact: true }).click();
   const matrixRows = matrix.getByRole('region', { name: 'Rendered preview' }).locator('mtable mtr');
   await expect(matrixRows).toHaveCount(2);
   await expect(matrixRows.nth(0).locator('mtd')).toHaveText(['1', '2']);
@@ -647,9 +679,11 @@ test('reconstructs PDF matrices and piecewise functions and flags uncertain rows
   await expect(matrix.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
 
   const cases = dialog.getByRole('region', { name: 'Extracted exercise 2' });
-  await expect(cases.getByLabel('Exercise 2 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(cases, 'Exercise 2 statement'),
     /^Inspect\s*\$\\begin\{cases\}\s*x\s*&.*?if.*?x\s*>\s*0\s*\\\\\s*0\s*&.*?otherwise.*?\\end\{cases\}\$\s*\.$/s,
   );
+  await cases.getByRole('button', { name: 'Markdown source for Exercise 2 statement', exact: true }).click();
   const casesRows = cases.getByRole('region', { name: 'Rendered preview' }).locator('mtable mtr');
   await expect(casesRows).toHaveCount(2);
   await expect(casesRows.nth(0).locator('mtd').nth(1)).toContainText('if');
@@ -666,13 +700,14 @@ test('reconstructs PDF matrices and piecewise functions and flags uncertain rows
     await expect(review.getByRole('list')).toContainText(reason);
     await expect(review.locator('mark').filter({ hasText: original }).first()).toBeVisible();
     await expect(candidate.locator('pre')).toContainText(original);
-    await expect(candidate.getByLabel('Exercise ' + number + ' statement', { exact: true })).not.toHaveValue(
-      /\\begin\{(?:[pbBvV]?matrix|cases)\}/,
-    );
+    expect(
+      await markdownSource(await statementSource(candidate, 'Exercise ' + number + ' statement')),
+    ).not.toMatch(/\\begin\{(?:[pbBvV]?matrix|cases)\}/);
   }
 
   const ordinary = dialog.getByRole('region', { name: 'Extracted exercise 5' });
-  await expect(ordinary.getByLabel('Exercise 5 statement', { exact: true })).toHaveValue(
+  await expectMarkdownSource(
+    await statementSource(ordinary, 'Exercise 5 statement'),
     'Compare (1, 2) and {3, 4}.',
   );
   await expect(ordinary.getByRole('region', { name: 'Check PDF formulas' })).toHaveCount(0);
@@ -703,7 +738,7 @@ test('suggests an exercise linked to a difficult review', async ({ page, request
     await page.goto(`/review/session?card=${cardId}`);
     await page.getByRole('button', { name: 'Reveal answer' }).click();
     await page.getByRole('button', { name: /Hard.*Recalled with difficulty/ }).click();
-    await expect(page.getByRole('heading', { name: 'Review complete' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Next review' })).toBeVisible();
 
     await page.goto('/practice');
     const importDialog = await openTextImport(page);

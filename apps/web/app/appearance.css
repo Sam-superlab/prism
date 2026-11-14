@@ -272,15 +272,22 @@ summary:focus-visible {
   display: contents;
 }
 @media (min-width: 801px) {
+  .app-shell {
+    --sidebar-width: 232px;
+    --sidebar-rail-width: 48px;
+    --sidebar-rail-inset: max(6px, var(--sidebar-inset, 0px));
+    --sidebar-rail: calc(var(--sidebar-rail-width) + 2 * var(--sidebar-rail-inset));
+  }
   .sidebar {
-    /* Keep the same painted material when sliding in either direction. */
+    /* Reveal the full sidebar without resizing its contents. */
     --material-filter: none;
     inset: var(--sidebar-inset, 0) auto var(--sidebar-inset, 0) var(--sidebar-inset, 0);
-    width: calc(232px - 2 * var(--sidebar-inset, 0px));
+    width: calc(var(--sidebar-width) - 2 * var(--sidebar-inset, 0px));
     border-radius: var(--sidebar-radius, 0);
-    overflow-y: auto;
-    transform: translateX(0);
-    transition: transform var(--motion-surface);
+    overflow: hidden auto;
+    scrollbar-width: none;
+    transition: clip-path var(--motion-surface), border-color var(--motion-feedback), box-shadow var(--motion-feedback);
+    clip-path: inset(0 round var(--sidebar-radius, 0px));
   }
   .sidebar .profile {
     padding-inline: calc(13px - var(--sidebar-inset, 0px));
@@ -292,33 +299,86 @@ summary:focus-visible {
     transition: margin-left var(--motion-surface);
   }
   .sidebar-collapsed > .workspace {
-    margin-left: 0;
+    margin-left: var(--sidebar-rail);
   }
   .sidebar-region {
     display: block;
     position: fixed;
     inset: 0 auto 0 0;
-    width: 232px;
+    width: var(--sidebar-width);
     z-index: 50;
   }
   .sidebar-collapsed > .sidebar-region:not(.is-peeking) {
-    width: 8px;
-  }
-  .sidebar-collapsed .sidebar {
-    transform: translateX(calc(-100% - var(--sidebar-inset, 0px)));
-    visibility: hidden;
-    pointer-events: none;
-    transition:
-      transform var(--motion-surface),
-      visibility 0s linear 220ms;
+    width: var(--sidebar-rail);
   }
   .sidebar-collapsed .is-peeking > .sidebar {
-    transform: translateX(0);
-    visibility: visible;
-    pointer-events: auto;
-    transition-delay: 0s;
-    background-color: var(--glass-over-content, var(--surface-secondary));
     box-shadow: var(--sidebar-rim, 0 0 transparent), var(--shadow);
+  }
+  .sidebar-collapsed .sidebar {
+    --rail-control-width: 40px;
+    --rail-navigation-icon: 20px;
+    --rail-brand-icon: 28px;
+    --rail-avatar: 31px;
+    inset-block: var(--sidebar-rail-inset);
+    inset-inline-start: var(--sidebar-rail-inset);
+    width: calc(var(--sidebar-width) - 2 * var(--sidebar-rail-inset));
+    padding-inline: calc((var(--sidebar-rail-width) - var(--rail-control-width)) / 2);
+    background-color: color-mix(in srgb, var(--glass-tint) 70%, var(--surface-secondary));
+    background-image: linear-gradient(180deg, var(--hover-tint), transparent 36%);
+  }
+  .sidebar-collapsed .sidebar-region:not(.is-peeking) > .sidebar {
+    clip-path: inset(0 calc(100% - var(--sidebar-rail-width)) 0 0 round 16px);
+    border-inline-end-color: transparent;
+    box-shadow: none;
+  }
+  .sidebar-collapsed .sidebar-region:not(.is-peeking) .profile {
+    border-block-start-color: transparent;
+  }
+  .sidebar-collapsed .sidebar :is(.brand, .nav-link) {
+    white-space: nowrap;
+  }
+  .sidebar-collapsed .sidebar .brand {
+    padding-inline: calc((var(--rail-control-width) - var(--rail-brand-icon)) / 2);
+    padding-block-end: 12px;
+  }
+  .sidebar-collapsed .sidebar .prism-symbol,
+  .sidebar-collapsed .sidebar .prism-symbol img {
+    width: var(--rail-brand-icon);
+    height: var(--rail-brand-icon);
+    flex: none;
+  }
+  .sidebar-collapsed .sidebar .nav-link {
+    padding-inline: calc((var(--rail-control-width) - var(--rail-navigation-icon)) / 2);
+  }
+  .sidebar-collapsed .sidebar .nav-link svg {
+    flex: none;
+    width: var(--rail-navigation-icon);
+    height: var(--rail-navigation-icon);
+  }
+  .sidebar-collapsed .sidebar-region:not(.is-peeking) .nav-link {
+    inline-size: var(--rail-control-width);
+  }
+  .sidebar-collapsed .sidebar :is(.brand > span:nth-child(2), .nav-link > span, .sidebar-caption,
+      .project-shortcuts, .profile > :not(.avatar), .sidebar-divider) {
+    opacity: 1;
+    transition: opacity var(--motion-feedback), visibility 0s;
+  }
+  .sidebar-collapsed .sidebar-region:not(.is-peeking) :is(.brand > span:nth-child(2), .nav-link > span,
+      .sidebar-caption, .project-shortcuts, .profile > :not(.avatar), .sidebar-divider) {
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity var(--motion-feedback), visibility 0s linear 160ms;
+  }
+  .sidebar-collapsed .sidebar-region:not(.is-peeking) .sidebar-caption a,
+  .sidebar-collapsed .sidebar-region:not(.is-peeking) .project-shortcuts a {
+    visibility: hidden;
+  }
+  .sidebar-collapsed .sidebar .profile {
+    padding-inline: calc((var(--rail-control-width) - var(--rail-avatar)) / 2);
+    transition: border-color var(--motion-feedback);
+  }
+  .sidebar-collapsed .sidebar .avatar {
+    flex: 0 0 var(--rail-avatar);
   }
 }
 .brand {
@@ -327,7 +387,7 @@ summary:focus-visible {
   letter-spacing: 3.5px;
   font-size: calc(23px * var(--text-scale));
   gap: 12px;
-  padding: 4px 12px 32px;
+  padding: 4px 12px 24px;
 }
 .brand small {
   font-size: calc(9px * var(--text-scale));

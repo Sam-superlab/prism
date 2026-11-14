@@ -159,6 +159,12 @@
   display: block;
 }
 
+@media (min-width: 801px) {
+  .workspace-with-tabs.sidebar-collapsed .sidebar > .workspace-tab-strip {
+    display: none;
+  }
+}
+
 @media (max-width: 520px) {
   .workspace-with-tabs .topbar-actions a[title='Open focus timer'] span {
     display: none;
@@ -170,7 +176,7 @@
 }
 
 
-.workspace-with-tabs .workspace-graph-content {
+.workspace-with-tabs :is(.workspace-graph-content, .workspace-library-content) {
   padding: 8px clamp(8px, 1vw, 16px) 10px;
   margin-block: 0;
 }

@@ -8,3 +8,6 @@ export {
   type SubscriptionMatchRule,
 } from './relevance';
 export { activeArxivSubscriptions, arxivSubscriptionKey, enqueueArxivIngestion } from './arxiv-jobs';
+export { pdfDisposition } from './reference-pdfs';
+export { parseLiteratureConditions } from './literature-search';
+export { normalizeLiteratureFeedUrl, invalidLiteratureFeedUrl, type LiteratureFeedPreview } from './literature-feeds';

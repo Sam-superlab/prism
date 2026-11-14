@@ -7,10 +7,11 @@ const { join, isAbsolute } = require('node:path');
 const { setTimeout: delay } = require('node:timers/promises');
 const { createUpdater, acknowledgeUpdate, startAutomaticChecks } = require('./updater.cjs');
 const { installFocusDesktop } = require('./focus-desktop.cjs');
+const localPreview = require('./package.json').prismLocalPreview === true;
 
-app.setName('PRISM');
+app.setName(localPreview ? 'PRISM Literature Preview' : 'PRISM');
 app.setAppUserModelId(process.execPath);
-app.setPath('userData', join(app.getPath('appData'), 'PRISM Desktop'));
+app.setPath('userData', join(app.getPath('appData'), localPreview ? 'PRISM Literature Preview' : 'PRISM Desktop'));
 const smokeDir = process.env.PRISM_WINDOWS_SMOKE_DIR;
 if (smokeDir) {
   if (!isAbsolute(smokeDir)) throw new Error('The test workspace must be an absolute directory.');
@@ -26,7 +27,7 @@ let updater;
 let dailyChecks;
 let focusDesktop;
 const token = randomBytes(32).toString('hex');
-const origin = 'http://127.0.0.1:38741';
+const origin = `http://127.0.0.1:${localPreview && !smokeDir ? 38873 : 38741}`;
 const local = (url) => {
   try {
     return new URL(url).origin === origin;
@@ -37,10 +38,6 @@ const local = (url) => {
 function openExternal(url) {
   try {
     const parsed = new URL(url);
-    if (/^zotero:\/\/select\/library\/items\/[A-Z0-9]{8}$/.test(parsed.href)) {
-      void shell.openExternal(parsed.href).catch(() => {});
-      return;
-    }
     if (
       ['https:', 'http:'].includes(parsed.protocol) &&
       !['127.0.0.1', 'localhost', '[::1]'].includes(parsed.hostname)
@@ -102,7 +99,7 @@ else {
       browserSession.setPermissionRequestHandler((_web, _permission, callback) => callback(false));
       browserSession.setPermissionCheckHandler(() => false);
       window = new BrowserWindow({
-        title: 'PRISM',
+        title: localPreview ? 'PRISM Literature Preview' : 'PRISM',
         width: 1360,
         height: 900,
         minWidth: 430,
@@ -141,10 +138,10 @@ else {
           {
             label: 'File',
             submenu: [
-              {
+              ...(!localPreview ? [{
                 label: 'Check for Updates…',
                 click: () => void updater?.check(),
-              },
+              }] : []),
               { label: 'Open data folder', click: () => void shell.openPath(workspace) },
               { type: 'separator' },
               { role: 'quit' },
@@ -178,7 +175,7 @@ else {
           },
         ]),
       );
-      updater = createUpdater({ app, dialog, getWindow: () => window, shutdown, smokeDir });
+      if (!localPreview) updater = createUpdater({ app, dialog, getWindow: () => window, shutdown, smokeDir });
       await window.loadFile(join(__dirname, 'loading.html'));
       launcher = spawn(join(root, 'runtime', 'node.exe'), [join(__dirname, 'launch.mjs')], {
         cwd: __dirname,
@@ -195,6 +192,7 @@ else {
           PRISM_DESKTOP_TOKEN: token,
           PRISM_DATA_DIR: workspace,
           PRISM_DESKTOP_RUNTIME: join(root, 'desktop'),
+          PRISM_DESKTOP_WEB_PORT: new URL(origin).port,
           PRISM_WORKER_ENABLED: smokeDir ? 'false' : 'true',
         },
       });
@@ -226,9 +224,9 @@ else {
       await window.loadURL(`${origin}/today?restoreTabs=1`);
       if (!(await window.webContents.executeJavaScript(`Boolean(document.querySelector('main'))`)))
         throw new Error('The PRISM workspace did not become ready.');
-      await acknowledgeUpdate(app);
-      await updater.notifyPreviousFailure();
-      if (!smokeDir || process.env.PRISM_WINDOWS_DAILY_CHECK_TEST === '1') {
+      if (!localPreview) await acknowledgeUpdate(app);
+      await updater?.notifyPreviousFailure();
+      if (updater && (!smokeDir || process.env.PRISM_WINDOWS_DAILY_CHECK_TEST === '1')) {
         dailyChecks = startAutomaticChecks({
           file: join(app.getPath('userData'), 'updates', 'daily-check.json'),
           check: () => updater.check({ automatic: true }),
@@ -269,7 +267,7 @@ else {
           try {
             await access(join(smokeDir, 'update'));
             await unlink(join(smokeDir, 'update'));
-            await updater.check();
+            await updater?.check();
           } catch {
             /* No update test requested. */
           }

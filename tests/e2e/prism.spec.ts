@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
+import { expectMarkdownSource } from './markdown-source';
 
 /** Real UI workflows against scripts/e2e-api.ts's isolated PostgreSQL engine.
  * The only external transport fixture is arXiv Atom metadata; product operations use the real API.
@@ -12,7 +13,8 @@ async function createKnowledge(page: Page, title: string) {
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Title', { exact: true }).fill(title);
   await dialog.getByLabel('Subject / course').fill(title);
-  await dialog.getByLabel('Mathematical content').fill(legacyKnowledgeContent);
+  await dialog.getByLabel('Mathematical content', { exact: true }).fill(legacyKnowledgeContent);
+  await dialog.getByLabel('Mathematical content', { exact: true }).blur();
   await expect(dialog.getByRole('region', { name: 'Content preview' }).locator('.katex')).toBeVisible();
   await dialog.getByRole('button', { name: 'Save knowledge', exact: true }).click();
   await expect(page).toHaveURL(/\/knowledge\/[0-9a-f-]+$/);
@@ -23,7 +25,9 @@ async function addCard(page: Page, prompt: string, type = 'statement') {
   await page.getByRole('button', { name: 'Add card', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Review focus').selectOption(type);
-  await dialog.getByLabel('Prompt').fill(prompt);
+  await dialog.getByRole('button', { name: 'Markdown source for Prompt', exact: true }).click();
+  await dialog.getByLabel('Prompt', { exact: true }).fill(prompt);
+  await dialog.getByRole('button', { name: 'Markdown source for Reference answer', exact: true }).click();
   await dialog.getByLabel('Reference answer', { exact: true }).fill('独立答案，测试公式 $\\dim V=n$。');
   await dialog.getByRole('button', { name: 'Save card', exact: true }).click();
   await expect(dialog).not.toBeVisible();
@@ -47,8 +51,9 @@ test.describe.serial('PRISM complete product workflows', () => {
     const id = await createKnowledge(page, subject);
     await page.getByRole('button', { name: 'Edit', exact: true }).click();
     const editor = page.getByRole('dialog');
-    const contentInput = editor.getByLabel('Mathematical content');
-    await expect(contentInput).toHaveValue(legacyKnowledgeContent);
+    const contentInput = editor.getByLabel('Mathematical content', { exact: true });
+    await editor.getByRole('button', { name: 'Markdown source for Mathematical content' }).click();
+    await expectMarkdownSource(contentInput, legacyKnowledgeContent);
     const markdown = [
       legacyKnowledgeContent,
       '',
@@ -68,16 +73,20 @@ test.describe.serial('PRISM complete product workflows', () => {
     ].join('\n');
     const proof = '*Proof detail* with $x=y$.';
     await contentInput.fill(markdown);
+    await editor.getByRole('button', { name: 'Markdown source for Mathematical content' }).click();
     const contentPreview = editor.getByRole('region', { name: 'Content preview' });
+    await contentInput.blur();
     await expect(contentPreview.getByRole('heading', { name: 'Statement preview' })).toBeVisible();
-    await expect(contentPreview.getByRole('listitem').locator('code')).toHaveText('$literal$');
+    await expect(contentPreview.locator('.prism-md-code')).toHaveText('$literal$');
     await expect(contentPreview.locator('.katex-display')).toHaveCount(2);
-    await expect(contentPreview.getByText('External image', { exact: true })).toBeVisible();
-    await expect(contentPreview.getByText('Raw markup: <img', { exact: false })).toBeVisible();
-    await expect(contentPreview.locator('img')).toHaveCount(0);
-    await editor.getByLabel('Proof / explanation (optional)', { exact: true }).fill(proof);
+    await expect(contentInput.getByText('External image', { exact: true })).toBeVisible();
+    await expect(contentInput.locator('.cm-line').filter({ hasText: 'Raw markup: <img' })).toBeVisible();
+    await expect(contentInput.locator('img[src^="https://example.invalid/"]')).toHaveCount(0);
+    const proofInput = editor.getByLabel('Proof / explanation (optional)', { exact: true });
+    await proofInput.fill(proof);
+    await proofInput.blur();
     const proofPreview = editor.getByRole('region', { name: 'Proof preview' });
-    await expect(proofPreview.locator('em')).toHaveText('Proof detail');
+    await expect(proofPreview.locator('.prism-md-emphasis')).toHaveText('Proof detail');
     await expect(proofPreview.locator('.katex')).toBeVisible();
     await editor.getByRole('button', { name: 'Save knowledge', exact: true }).click();
     await expect(editor).not.toBeVisible();
@@ -90,12 +99,21 @@ test.describe.serial('PRISM complete product workflows', () => {
     await addCard(page, 'Statement — browser workflow');
     await addCard(page, 'Proof — independent schedule', 'proof');
     await page.goto(`/review/session?subject=${encodeURIComponent(subject)}`);
-    await expect(page.locator('.recall-prompt')).toContainText('Statement — browser workflow');
-    await expect(page.locator('.recall-answer')).toHaveCount(0);
+    await expect(page.locator('main:not([hidden]) .recall-prompt')).toContainText('Statement — browser workflow');
+    await expect(page.locator('main:not([hidden]) .recall-answer')).toHaveCount(0);
+    const draft = page.getByRole('textbox', { name: 'Your answer', exact: true });
+    await draft.fill('My attempt: $x^2$');
+    await draft.press(process.platform === 'darwin' ? 'Meta+ArrowRight' : 'End');
+    await draft.press('Enter');
+    await draft.press('Enter');
+    const draftEditor = page.getByRole('region', { name: 'Your answer editor' });
+    await expect(draftEditor.locator('.katex')).toBeVisible();
+    await expect(draft).toBeFocused();
     await page.getByRole('button', { name: 'Reveal answer' }).click();
-    await expect(page.locator('.recall-answer .katex')).toBeVisible();
+    await expect(page.locator('main:not([hidden]) .recall-answer .katex')).toBeVisible();
     await page.getByRole('button', { name: /^Good/ }).click();
-    await expect(page.locator('.recall-prompt')).toContainText('Proof — independent schedule');
+    await expect(page.getByText('Proof — independent schedule', { exact: true })).toBeVisible();
+    await expect(draftEditor.locator('.katex')).toHaveCount(0);
     const response = await page.request.get(`/api/v1/knowledge-items/${id}/cards`);
     expect(response.ok()).toBeTruthy();
     const cards = (await response.json()).items as { prompt: string; review_count: number; due_at: string }[];
@@ -127,7 +145,7 @@ test.describe.serial('PRISM complete product workflows', () => {
       else await route.fulfill({ response });
     });
     await page.goto(`/review/session?subject=${encodeURIComponent(subject)}`);
-    await expect(page.locator('.recall-prompt')).toContainText('Retry-safe review');
+    await expect(page.locator('main:not([hidden]) .recall-prompt')).toContainText('Retry-safe review');
     await page.getByRole('button', { name: 'Reveal answer' }).click();
     await page.getByRole('button', { name: /^Good/ }).click();
     await expect(page.getByText(/Retry GOOD;/)).toBeVisible();
@@ -148,7 +166,7 @@ test.describe.serial('PRISM complete product workflows', () => {
     await page.getByRole('button', { name: 'New research project', exact: true }).click();
     let dialog = page.getByRole('dialog');
     await dialog.getByLabel('Project title').fill(`${prefix} · Strong Persistence`);
-    await dialog.getByLabel('Background and objectives').fill('Isolated browser acceptance project.');
+    await dialog.getByLabel('Background and objectives', { exact: true }).fill('Isolated browser acceptance project.');
     await dialog.getByLabel('Research area').fill('Commutative Algebra');
     await dialog.getByRole('button', { name: 'Save project', exact: true }).click();
     await expect(page).toHaveURL(/\/research\/[0-9a-f-]+$/);
@@ -167,9 +185,9 @@ test.describe.serial('PRISM complete product workflows', () => {
     dialog = page.getByRole('dialog');
     await dialog.getByLabel('Mathematical claim status').selectOption('computationally_verified');
     await dialog
-      .getByLabel('Verification scope')
+      .getByLabel('Verification scope', { exact: true })
       .fill('Test-only parameters n=1..3; symbolic fixture, not a general proof.');
-    await dialog.getByLabel('Results / evidence').fill('All specified test cases recorded.');
+    await dialog.getByLabel('Results / evidence', { exact: true }).fill('All specified test cases recorded.');
     await dialog.getByLabel('Proof or evidence reference').fill('e2e-fixture://experiment-1');
     await dialog.getByRole('button', { name: 'Save research object', exact: true }).click();
     await expect(dialog).not.toBeVisible();
@@ -191,7 +209,19 @@ test.describe.serial('PRISM complete product workflows', () => {
     ).toBeVisible();
     await page.getByRole('button', { name: 'Research objects', exact: true }).first().click();
     await expect(objectCard.getByText('Computationally verified', { exact: true })).toBeVisible();
-    await expect(page.locator('.timeline')).toContainText(/Claim status changed|claim/);
+    const timeline = page.getByRole('region', { name: 'Research timeline' });
+    await timeline.getByRole('button', { name: /[1-9]\d* research changes?/ }).click();
+    const history = page.getByRole('dialog');
+    await expect(history.getByText('Claim status changed', { exact: true })).toBeVisible();
+    await expect(history.getByText('Research task completed', { exact: true })).toBeVisible();
+    await history.getByRole('button', { name: 'Close', exact: true }).click();
+    await page.getByRole('link', { name: 'Dashboard', exact: true }).first().click();
+    const activity = page.getByRole('region', { name: 'Research activity' });
+    await activity.getByRole('button', { name: /[1-9]\d* research changes?/ }).first().click();
+    await expect(page.getByRole('dialog').getByText('Claim status changed', { exact: true })).toBeVisible();
+    await page.getByRole('dialog').getByRole('link', { name: `${prefix} · 猜想`, exact: true }).first().click();
+    await expect(page.getByRole('dialog')).toContainText('Test-only parameters n=1..3');
+    await page.getByRole('dialog').getByRole('button', { name: 'Close', exact: true }).click();
     await objectCard.getByRole('button', { name: `${prefix} · 猜想`, exact: false }).click();
     await expect(page.getByRole('dialog')).toContainText('Test-only parameters n=1..3');
   });
@@ -375,7 +405,7 @@ test.describe.serial('PRISM complete product workflows', () => {
     await page.goto('/today');
     await page.getByRole('button', { name: 'Quick capture', exact: true }).click();
     let dialog = page.getByRole('dialog');
-    await dialog.getByLabel('Content').fill(`${prefix} · Inbox 想法`);
+    await dialog.getByLabel('Content', { exact: true }).fill(`${prefix} · Inbox 想法`);
     await dialog.getByRole('button', { name: 'Save capture', exact: true }).click();
     await expect(dialog).not.toBeVisible();
     const row = page.locator('.inbox-row').filter({ hasText: `${prefix} · Inbox 想法` });

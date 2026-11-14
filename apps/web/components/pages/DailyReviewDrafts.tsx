@@ -1,3 +1,4 @@
+import { MarkdownEditor } from '../MarkdownEditor';
 import Link from 'next/link';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, useAction, useResource } from '../../lib/api';
@@ -223,26 +224,22 @@ function DraftEditor({
             ))}
           </select>
         </Field>
-        <Field label="Prompt">
-          <textarea
+        <MarkdownEditor label="Prompt"
             value={card.prompt}
             rows={3}
             required
             maxLength={inputLimit}
             disabled={action.busy}
-            onChange={(event) => setCard({ ...card, prompt: event.target.value })}
-          />
-        </Field>
-        <Field label="Answer">
-          <textarea
+            onChange={(prompt) => setCard({ ...card, prompt })}
+           />
+        <MarkdownEditor label="Answer"
             value={card.answer}
             rows={5}
             required
             maxLength={inputLimit}
             disabled={action.busy}
-            onChange={(event) => setCard({ ...card, answer: event.target.value })}
-          />
-        </Field>
+            onChange={(answer) => setCard({ ...card, answer })}
+           />
         {action.error && <Notice tone="error">{action.error}</Notice>}
         <div className="modal-footer">
           <button className="button" type="button" disabled={action.busy} onClick={onClose}>

@@ -22,15 +22,18 @@ test('resumes the localized Knowledge guide and makes a card from a real definit
   const editor = page.getByRole('dialog');
   await editor.getByLabel('Title', { exact: true }).fill(definition);
   await expect(editor.getByLabel('Object type')).toHaveValue('definition');
-  await editor.getByLabel('Mathematical content').fill('An operation is commutative if $a+b=b+a$.');
+  await editor.getByLabel('Mathematical content', { exact: true }).fill('An operation is commutative if $a+b=b+a$.');
+  await editor.getByLabel('Mathematical content', { exact: true }).blur();
   await expect(editor.getByRole('region', { name: 'Content preview' }).locator('.katex')).toBeVisible();
   await editor.getByRole('button', { name: 'Save knowledge' }).click();
 
   await expect(page.getByRole('heading', { name: definition })).toBeVisible();
   await guide.getByRole('button', { name: 'Pip とカードを作る' }).click();
-  await editor.getByLabel('Prompt').fill('When is an operation commutative?');
+  await editor.getByRole('button', { name: 'Markdown source for Prompt', exact: true }).click();
+  await editor.getByLabel('Prompt', { exact: true }).fill('When is an operation commutative?');
   await editor.getByRole('button', { name: 'Save card' }).click();
-  await expect(page.getByText('When is an operation commutative?')).toBeVisible();
+  await expect(editor).toBeHidden();
+  await expect(page.getByText('When is an operation commutative?', { exact: true })).toBeVisible();
   await page.reload();
   await expect(guide).toHaveCount(0);
 });
@@ -73,7 +76,7 @@ test('creates a project and adds an existing note through the Research guide', a
   await guide.getByRole('button', { name: 'Set up a project with Pip' }).click();
   const editor = page.getByRole('dialog');
   await editor.getByLabel('Project title').fill(project);
-  await editor.getByLabel('Background and objectives').fill('What should the guide help us study?');
+  await editor.getByLabel('Background and objectives', { exact: true }).fill('What should the guide help us study?');
   await editor.getByRole('button', { name: 'Save project' }).click();
 
   await expect(page.getByRole('heading', { name: project })).toBeVisible();

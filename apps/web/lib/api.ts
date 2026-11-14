@@ -20,12 +20,16 @@ export function profileTimezone() {
   return selectedTimezone || Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 export function todayDate(timezone?: string) {
-  return new Intl.DateTimeFormat('en-CA', {
+  const parts = new Intl.DateTimeFormat('en-CA', {
     timeZone: timezone || selectedTimezone,
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
-  }).format(new Date());
+  }).formatToParts(new Date());
+  const year = parts.find((part) => part.type === 'year')?.value;
+  const month = parts.find((part) => part.type === 'month')?.value;
+  const day = parts.find((part) => part.type === 'day')?.value;
+  return `${year}-${month}-${day}`;
 }
 export function datetime(value: string | null | undefined, short = false) {
   if (!value) return 'Not set';
@@ -97,17 +101,23 @@ export async function api<T>(
   if (
     method !== 'GET' &&
     typeof window !== 'undefined' &&
-    /^\/(?:knowledge-items(?:\/[^/]+)?$|knowledge-relations(?:\/|$)|research\/(?:projects|objects|knowledge-links|paper-links|references)(?:\/|$)|arxiv\/(?:papers\/|for-you\/reaction$))/.test(
+    /^\/(?:knowledge-items(?:\/[^/]+)?$|knowledge-relations(?:\/|$)|research\/(?:library\/(?:merge|import|zotero-rdf\/import|batch-edit(?:\/undo)?)$|projects|objects|knowledge-links|question-links|paper-links|reference-links|reference-relations|reference-knowledge-links|references)(?:\/|$)|arxiv\/(?:papers\/|for-you\/reaction$))/.test(
       path,
     )
   )
     window.dispatchEvent(new Event('prism:graph-changed'));
+  if (
+    method !== 'GET' &&
+    typeof window !== 'undefined' &&
+    /^\/(?:research\/(?:projects|objects|question-links)(?:\/|$)|tasks\/[^/]+\/complete$)/.test(path)
+  )
+    window.dispatchEvent(new Event('prism:research-history-changed'));
   if (response.status === 204) return undefined as T;
   const payload = await response.json();
   if (path === '/me' && payload?.timezone) selectedTimezone = payload.timezone;
   return payload as T;
 }
-export function useResource<T>(path: string | null) {
+export function useResource<T>(path: string | null, read?: (path: string, signal: AbortSignal) => Promise<T>) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(Boolean(path));
   const [error, setError] = useState<Error | null>(null);
@@ -122,8 +132,8 @@ export function useResource<T>(path: string | null) {
     const controller = new AbortController();
     setLoading(true);
     setError(null);
-    api<T>(path, { signal: controller.signal })
-      .then(setData)
+    (read ? read(path, controller.signal) : api<T>(path, { signal: controller.signal }))
+      .then((data) => { if (!controller.signal.aborted) setData(data); })
       .catch((e) => {
         if (e?.name !== 'AbortError') setError(e);
       })
@@ -131,7 +141,7 @@ export function useResource<T>(path: string | null) {
         if (!controller.signal.aborted) setLoading(false);
       });
     return () => controller.abort();
-  }, [path, revision]);
+  }, [path, read, revision]);
   return { data, setData, loading, error, reload };
 }
 export function useAction(onDone?: () => void) {

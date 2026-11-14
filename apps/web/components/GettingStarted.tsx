@@ -1,5 +1,6 @@
 'use client';
 
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { useCallback, useEffect, useState } from 'react';
 import { api, useAction, useResource, uuid } from '../lib/api';
@@ -11,9 +12,11 @@ import {
 } from '../lib/getting-started-copy';
 import type { Knowledge, Page, ReviewEvent } from '../lib/types';
 import { ArxivInterestGuide, readArxivInterestDraft, type ArxivInterestDraft } from './ArxivInterestGuide';
-import { Icon, KnowledgeMarkdown, Modal, Notice } from './ui';
-import { CardEditor, KnowledgeEditor } from './pages/Knowledge';
+import { Icon, KnowledgeMarkdown, Loading, Modal, Notice } from './ui';
 import styles from './GettingStarted.module.css';
+
+const KnowledgeEditor = dynamic(() => import('./pages/Knowledge').then((module) => module.KnowledgeEditor), { loading: Loading });
+const CardEditor = dynamic(() => import('./pages/Knowledge').then((module) => module.CardEditor), { loading: Loading });
 
 type Progress = {
   status: 'welcome' | 'active' | 'hidden';

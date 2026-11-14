@@ -1,0 +1,83 @@
+.sidebarPanel {
+  margin-bottom: 0;
+}
+
+.sidebarHeading {
+  margin: 0;
+  border-radius: inherit;
+  font-size: calc(15px * var(--text-scale, 1));
+}
+
+.sidebarToggle {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 50px;
+  padding: 12px var(--panel-padding);
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  font-weight: 600;
+  text-align: start;
+  cursor: pointer;
+  transition: background-color 160ms ease;
+}
+
+.sidebarToggle:is(:hover, :focus-visible) {
+  background: color-mix(in srgb, var(--accent-soft), transparent 38%);
+}
+
+.sidebarCount {
+  min-width: 1.7em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--ink) 8%, transparent);
+  color: var(--muted);
+  font-size: 0.8em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.sidebarChevron {
+  grid-column: 3;
+  color: var(--muted);
+  transition: rotate 180ms ease;
+}
+
+.sidebarPanel[data-open='true'] .sidebarChevron {
+  rotate: 90deg;
+}
+
+.sidebarReveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  visibility: hidden;
+  transition: grid-template-rows 200ms ease, opacity 160ms ease, visibility 200ms step-end;
+}
+
+.sidebarPanel[data-open='true'] .sidebarReveal {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  visibility: visible;
+  transition: grid-template-rows 200ms ease, opacity 180ms ease;
+}
+
+.sidebarClip {
+  min-height: 0;
+  overflow: clip;
+}
+
+.sidebarBody {
+  padding: 0 var(--panel-padding) var(--panel-padding);
+}
+
+.sidebarActions {
+  display: flex;
+  justify-content: flex-start;
+  margin: 2px 0 12px;
+}

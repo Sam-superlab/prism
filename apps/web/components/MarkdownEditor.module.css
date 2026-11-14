@@ -1,0 +1,151 @@
+.field {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+  margin-block-end: 16px;
+}
+
+.heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.heading label {
+  font-weight: 600;
+}
+
+.heading button[aria-pressed='true'] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+
+.canvas {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  transition: border-color 160ms ease;
+}
+
+.canvas:focus-within {
+  border-color: var(--accent);
+}
+
+.canvas :global(.cm-editor) {
+  min-height: inherit;
+  color: var(--ink);
+  font-size: calc(14px * var(--text-scale, 1));
+}
+
+.canvas :global(.cm-editor.cm-focused) {
+  outline: none;
+}
+
+.canvas :global(.cm-scroller) {
+  font-family: inherit;
+  line-height: 1.65;
+}
+
+.canvas :global(.cm-content) {
+  padding: 0.7em 0.85em;
+  caret-color: var(--accent);
+}
+
+.canvas :global(.cm-line) {
+  padding: 0;
+}
+
+.canvas :global(.cm-placeholder) {
+  color: var(--muted);
+}
+
+.source :global(.cm-scroller),
+.live :global(.prism-md-code),
+.live :global(.prism-md-code-line) {
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.live :global(.prism-md-heading) {
+  font-weight: 650;
+  letter-spacing: -0.018em;
+  line-height: 1.35;
+}
+
+.live :global(.prism-md-h1) { font-size: 1.78em; }
+.live :global(.prism-md-h2) { font-size: 1.48em; }
+.live :global(.prism-md-h3) { font-size: 1.24em; }
+.live :global(.prism-md-h4) { font-size: 1.12em; }
+
+.live :global(.prism-md-code) {
+  border-radius: 4px;
+  background: var(--surface-secondary);
+}
+
+.live :global(.prism-md-code-line) {
+  background: var(--surface-secondary);
+}
+
+.live :global(.prism-md-quote) {
+  box-shadow: inset 2px 0 var(--line);
+  padding-inline-start: 0.85em;
+  color: var(--muted);
+}
+
+.live :global(.prism-md-list) {
+  padding-inline-start: 0.35em;
+}
+
+.live :global(.prism-md-link),
+.live :global(.prism-md-citation) {
+  color: var(--accent);
+}
+
+.live :global(.prism-md-link) {
+  text-decoration: underline;
+  text-underline-offset: 0.17em;
+}
+
+.live :global(.prism-md-display) {
+  overflow-x: auto;
+  padding-block: 0.3em;
+}
+
+.live :global(.prism-md-display .katex-display) {
+  margin: 0;
+}
+
+.live :global(.prism-md-math) {
+  display: inline-block;
+}
+
+.live :global(.prism-md-widget) {
+  cursor: text;
+}
+
+.live :global(.prism-md-image img) {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.live :global(.prism-md-rule hr) {
+  border: 0;
+  border-block-start: 1px solid var(--line);
+}
+
+.constraint {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .canvas { transition: none; }
+}

@@ -44,6 +44,39 @@ try {
       '006_research_project_knowledge',
       '007_research_references',
       '008_reference_arxiv_identifiers',
+      '009_standalone_references',
+      '010_project_reference_links',
+      '011_literature_collections',
+      '012_reference_merge',
+      '013_literature_saved_searches',
+      '014_reference_pdfs',
+      '015_pdf_annotations',
+      '016_pdf_text_index',
+      '017_reference_relations',
+      '018_pdf_reading_positions',
+      '019_pdf_sticky_notes',
+      '020_attachment_formats',
+      '021_webpage_snapshots',
+      '022_reference_knowledge_links',
+      '023_literature_search_conditions',
+      '024_pdf_area_annotations',
+      '025_literature_feeds',
+      '026_literature_feed_schedule',
+      '027_pdf_ink_annotations',
+      '028_private_team_libraries',
+      '029_pdf_annotation_tags',
+      '030_team_library_visibility',
+      '031_team_library_attachments',
+      '032_team_library_notes',
+      '033_team_pdf_annotations',
+      '034_developer_literature_tokens',
+      '035_pdf_text_index_mode',
+      '036_text_attachment_annotations',
+      '037_reference_creators',
+      '038_export_attachment_option',
+      '039_reference_import_source',
+      '040_developer_literature_scopes',
+      '041_research_questions',
     ]) {
       const migrationDdl = await readFile(
         new URL(`../database/migrations/${migrationId}.sql`, import.meta.url),
@@ -116,12 +149,35 @@ try {
     for (const { tablename } of tables.rows) {
       const global = ['arxiv_papers', 'arxiv_paper_versions'].includes(tablename);
       const worker = process.env.PRISM_ROLE_KIND === 'worker';
-      const privileges =
-        global && !worker ? 'SELECT' : immutable.has(tablename) ? 'SELECT,INSERT' : 'SELECT,INSERT,UPDATE';
+      const privileges = tablename === 'literature_feed_entries'
+        ? 'SELECT,INSERT,UPDATE,DELETE'
+        : tablename === 'team_library_events' ? 'INSERT'
+        : global && !worker ? 'SELECT' : immutable.has(tablename) ? 'SELECT,INSERT' : 'SELECT,INSERT,UPDATE';
       await client.query(`GRANT ${privileges} ON prism.${tablename} TO ${role}`);
     }
     await client.query(`GRANT EXECUTE ON FUNCTION prism.principal() TO ${role}`);
-    console.log(`Runtime role ${role} configured without ownership, DDL, DELETE or BYPASSRLS.`);
+    await client.query(`GRANT EXECUTE ON FUNCTION prism.team_library_role(uuid),prism.team_library_account_name(uuid,uuid) TO ${role}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION prism.public_team_libraries(uuid,uuid,integer),
+      prism.public_team_library_references(uuid,timestamptz,uuid,integer),prism.team_library_public(uuid),
+      prism.team_library_open(uuid) TO ${role}`);
+    await client.query(`GRANT EXECUTE ON FUNCTION prism.team_library_attachment_permission(uuid,boolean) TO ${role}`);
+    await client.query(`REVOKE UPDATE ON prism.team_library_attachments,prism.team_library_attachment_chunks FROM ${role}`);
+    await client.query(`GRANT UPDATE (deleted_at,version) ON prism.team_library_attachments TO ${role}`);
+    await client.query(`GRANT UPDATE (data) ON prism.team_library_attachment_chunks TO ${role}`);
+    await client.query(`REVOKE UPDATE ON prism.team_library_notes FROM ${role}`);
+    await client.query(`GRANT UPDATE (title,content,updated_by,updated_by_name,updated_at,version,deleted_at)
+      ON prism.team_library_notes TO ${role}`);
+    await client.query(`REVOKE UPDATE ON prism.team_pdf_annotations FROM ${role}`);
+    await client.query(`GRANT UPDATE (page,kind,color,text,comment,tags,rects,ink_path,updated_by,updated_by_name,updated_at,version,deleted_at)
+      ON prism.team_pdf_annotations TO ${role}`);
+    await client.query(`REVOKE ALL ON prism.developer_literature_tokens FROM ${role}`);
+    await client.query(`REVOKE EXECUTE ON FUNCTION prism.developer_literature_token_account(uuid,text) FROM ${role}`);
+    if (process.env.PRISM_ROLE_KIND !== 'worker') {
+      await client.query(`GRANT INSERT,SELECT (id,user_id,name,created_at,expires_at,revoked_at,scope),UPDATE (revoked_at)
+        ON prism.developer_literature_tokens TO ${role}`);
+      await client.query(`GRANT EXECUTE ON FUNCTION prism.developer_literature_token_account(uuid,text) TO ${role}`);
+    }
+    console.log(`Runtime role ${role} configured without ownership, DDL or BYPASSRLS.`);
   } else if (command === 'after-restore') {
     const id = process.env.PRISM_USER_ID;
     if (!id) throw new Error('PRISM_USER_ID is required to recover the restored account.');

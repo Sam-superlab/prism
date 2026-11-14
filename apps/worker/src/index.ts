@@ -5,7 +5,10 @@ import { activeArxivSubscriptions, arxivSubscriptionKey, enqueueArxivIngestion }
 import type { Database, Row, Sql } from '@prism/database';
 import { inQuietHours, localDate, nextLocalTime } from '@prism/shared-utils';
 import { ArxivFetchError, fetchRecentPapers, type RankedPaper } from './arxiv';
+import { createFeedPreview } from './feed-preview';
+import type { LiteratureFeedPreview } from '@prism/core';
 export * from './arxiv';
+export { createFeedPreview } from './feed-preview';
 
 export interface WorkerBackend {
   ingestPapers(userId: string, papers: RankedPaper[], idempotencyKey: string): Promise<unknown>;
@@ -17,14 +20,19 @@ export interface WorkerBackend {
   ): Promise<unknown>;
   pendingNotifications(): Promise<Row[]>;
   ackNotification(id: string, userId: string, status: string): Promise<unknown>;
+  refreshDueLiteratureFeed(
+    userId: string, fetchFeed: (url: string) => Promise<LiteratureFeedPreview>, abort?: AbortSignal,
+  ): Promise<{ feed_id: string; status: number } | null>;
 }
 export interface WorkerOptions {
   db: Database;
   userId: string;
+  literatureFeedUserIds?: readonly string[];
   service: WorkerBackend;
   redisUrl?: string;
   intervalMs?: number;
   fetch?: typeof fetch;
+  feedPreview?: ReturnType<typeof createFeedPreview>;
   userAgent?: string;
   pushEnabled?: boolean;
   queueName?: string;
@@ -42,6 +50,9 @@ export function startWorker(options: WorkerOptions) {
   const queueName = options.queueName ?? process.env.PRISM_QUEUE_NAME ?? `prism-${userId}-jobs`;
   const queue = redis ? new Queue(queueName, { connection: redis as never }) : undefined;
   const abort = new AbortController();
+  const previewFeed = options.feedPreview ?? createFeedPreview();
+  const feedAccounts = [...new Set([userId, ...(options.literatureFeedUserIds ?? [])])];
+  let nextFeedAccount = 0;
   const remoteFetch: typeof fetch = (input, init) =>
     (options.fetch ?? fetch)(input, {
       ...init,
@@ -49,6 +60,7 @@ export function startWorker(options: WorkerOptions) {
     });
   let stopped = false,
     ticking = false,
+    feedPoll: Promise<void> | undefined,
     lastArxivRequest = 0;
   let rateTail: Promise<unknown> = Promise.resolve();
 
@@ -328,6 +340,17 @@ export function startWorker(options: WorkerOptions) {
     if (stopped || ticking) return;
     ticking = true;
     try {
+      // The database coordinates feed claims across workers. Publisher latency stays off the main job loop.
+      if (!feedPoll) {
+        const account = feedAccounts[nextFeedAccount];
+        nextFeedAccount = (nextFeedAccount + 1) % feedAccounts.length;
+        feedPoll = service.refreshDueLiteratureFeed(account, (url) => previewFeed(url, abort.signal), abort.signal)
+          .then((result) => {
+            if (result) log({ event: 'literature_feed_refresh', ...result });
+          })
+          .catch(() => log({ event: 'literature_feed_scheduler_failed' }))
+          .finally(() => { feedPoll = undefined; });
+      }
       await db.transaction(userId, (sql) =>
         sql.query(
           `UPDATE automation_jobs SET status='dead',finished_at=now(),lease_expires_at=NULL,
@@ -425,6 +448,7 @@ export function startWorker(options: WorkerOptions) {
       clearInterval(timer);
       clearTimeout(first);
       while (ticking) await wait(10);
+      await feedPoll;
       await Promise.race([consumer?.close(), wait(5000)]);
       await queue?.close();
       redis?.disconnect();

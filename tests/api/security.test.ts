@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createDatabase } from '../../packages/database/src/index';
 import { PrismService } from '../../apps/api/src/service';
 import { loadConfig } from '../../apps/api/src/config';
@@ -14,6 +14,44 @@ describe('authentication and durable local persistence', () => {
     expect(() => loadConfig({ NODE_ENV: 'production', PRISM_AUTH_MODE: 'development' })).toThrow();
     expect(() => loadConfig({ PRISM_AUTH_MODE: 'development', PRISM_HOST: '0.0.0.0' })).toThrow();
     expect(() => loadConfig({})).toThrow();
+  });
+  it('requires the desktop launch token and loopback origin before accessing the workspace', async () => {
+    const token = randomBytes(32).toString('hex');
+    const env = {
+      PRISM_AUTH_MODE: 'desktop',
+      PRISM_PORT: '38742',
+      PRISM_WEB_ORIGIN: 'http://127.0.0.1:38741',
+      PRISM_DATA_DIR: tmpdir(),
+      PRISM_DESKTOP_TOKEN: token,
+    };
+    expect(() => loadConfig({ ...env, PRISM_DESKTOP_TOKEN: '' })).toThrow();
+    expect(() => loadConfig({ ...env, PRISM_DATA_DIR: '.data' })).toThrow();
+    expect(() => loadConfig({ ...env, PRISM_HOST: '0.0.0.0' })).toThrow();
+    const db = await createDatabase({ memory: true });
+    const app = await buildApp({ db, config: loadConfig(env) });
+    const local = { host: '127.0.0.1:38742' };
+    const trusted = { ...local, authorization: `Bearer ${token}` };
+    try {
+      expect((await app.inject({ url: '/health', headers: local })).statusCode).toBe(401);
+      expect(
+        (await app.inject({ url: '/api/v1/me', headers: { ...local, authorization: 'Bearer invalid' } }))
+          .statusCode,
+      ).toBe(401);
+      expect(
+        (await app.inject({ url: '/api/v1/me', headers: { ...trusted, host: 'foreign.invalid:38742' } }))
+          .statusCode,
+      ).toBe(403);
+      expect(
+        (await app.inject({ url: '/api/v1/me', headers: { ...trusted, origin: 'http://127.0.0.1:3000' } }))
+          .statusCode,
+      ).toBe(403);
+      const notes = await app.inject({ url: '/api/v1/knowledge-items', headers: trusted });
+      expect(notes.statusCode).toBe(200);
+      expect(notes.json().items).toEqual([]);
+    } finally {
+      await app.close();
+      await db.close();
+    }
   });
   it('validates OIDC signature, issuer, audience, expiry and single-user subject', async () => {
     const db = await createDatabase({ memory: true }),

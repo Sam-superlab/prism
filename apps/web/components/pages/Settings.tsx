@@ -1,9 +1,12 @@
 'use client';
+
+import { MarkdownEditor } from '../MarkdownEditor';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { api, datetime, useAction, useResource } from '../../lib/api';
 import { guideCopy, type GuideLanguage } from '../../lib/getting-started-copy';
 import type { Conflict, ExportJob, Job, Page, Preferences, User } from '../../lib/types';
+import { getLiteratureAutoIndex, setLiteratureAutoIndex, subscribeLiteratureAutoIndex } from '../../lib/literature-auto-index';
 import {
   shortcutKeys,
   shortcutPlatform,
@@ -14,6 +17,7 @@ import { Badge, ErrorState, Field, Icon, Loading, Modal, Notice } from '../ui';
 import { AppearancePanel } from '../Appearance';
 import { GuideLanguageSelect } from '../GettingStarted';
 import { moduleGuideCopy } from '../ModuleGuide';
+import { SharedWorkspaceSettings } from '../SharedWorkspaceSettings';
 import type { FocusTimerController } from './FocusTimer';
 import styles from './Settings.module.css';
 
@@ -35,6 +39,7 @@ export function SettingsPage({
   const jobs = useResource<Page<Job>>('/automation/jobs?limit=30');
   const [selected, setSelected] = useState<Conflict | null>(null);
   const [exportJob, setExportJob] = useState<ExportJob | null>(null);
+  const [includeAttachments, setIncludeAttachments] = useState(false);
   const [saved, setSaved] = useState<'profile' | 'preferences' | 'conflicts'>();
   const [anchor, setAnchor] = useState('');
   const action = useAction();
@@ -42,10 +47,12 @@ export function SettingsPage({
     { id: 'appearance-heading', label: 'Appearance', icon: 'settings' },
     { id: 'focus-settings', label: 'Focus timer', icon: 'clock' },
     { id: 'learning-settings', label: 'Learning and notifications', icon: 'planner' },
+    { id: 'literature-index-settings', label: 'Attachment search', icon: 'search' },
     { id: 'profile-settings', label: 'Profile and timezone', icon: 'clock' },
     { id: 'keyboard-shortcuts', label: 'Keyboard shortcuts', icon: 'menu' },
     { id: 'getting-started-settings', label: guide.settingsTitle, icon: 'knowledge', lang: guideLanguage },
     { id: 'data-export', label: 'Data export', icon: 'external' },
+    { id: 'shared-workspace', label: 'Shared workspace', icon: 'external' },
     { id: 'sync-conflicts', label: 'Sync conflicts', icon: 'check' },
     { id: 'background-activity', label: 'Background activity', icon: 'refresh' },
   ];
@@ -92,6 +99,7 @@ export function SettingsPage({
         <div className={styles.stack}>
           <AppearancePanel />
           <FocusSettings timer={focusTimer} />
+          {me.data && <LiteratureAutoIndexSettings userId={me.data.id} />}
           <section className="panel content-panel" aria-labelledby="learning-settings">
             <div className="panel-heading">
               <h2 id="learning-settings">Learning, planning, and notifications</h2>
@@ -166,6 +174,12 @@ export function SettingsPage({
               Export structured JSON, knowledge and research notes in Markdown, and a manifest with checksums.
               Review and research history are included.
             </p>
+            <label className="check-label">
+              <input type="checkbox" checked={includeAttachments}
+                disabled={action.busy || exportJob?.status === 'pending' || exportJob?.status === 'running'}
+                onChange={(event) => setIncludeAttachments(event.target.checked)} />
+              Include original attachments (up to 1,000 files and 64 MiB total)
+            </label>
             <button
               className="button primary"
               disabled={action.busy || exportJob?.status === 'pending' || exportJob?.status === 'running'}
@@ -173,7 +187,7 @@ export function SettingsPage({
                 void action.run(async () => {
                   const job = await api<ExportJob>('/exports', {
                     method: 'POST',
-                    body: { formats: ['json', 'markdown'] },
+                    body: { formats: ['json', 'markdown', ...(includeAttachments ? ['attachments'] : [])] },
                   });
                   setExportJob(job);
                 })
@@ -199,6 +213,7 @@ export function SettingsPage({
             {exportJob?.status === 'expired' && <Notice>This export has expired. Create a new one.</Notice>}
             {action.error && <Notice tone="error">{action.error}</Notice>}
           </section>
+          <SharedWorkspaceSettings />
           <section className="panel" aria-labelledby="sync-conflicts">
             <div className="panel-heading">
               <h2 id="sync-conflicts">Sync conflicts</h2>
@@ -279,6 +294,30 @@ export function SettingsPage({
       )}
     </>
   );
+}
+
+function LiteratureAutoIndexSettings({ userId }: { userId: string }) {
+  const [state, setState] = useState(() => getLiteratureAutoIndex(userId));
+  const [error, setError] = useState('');
+  useEffect(() => {
+    const update = () => setState(getLiteratureAutoIndex(userId));
+    update();
+    return subscribeLiteratureAutoIndex(userId, update);
+  }, [userId]);
+  return <section className="panel content-panel" aria-labelledby="literature-index-settings">
+    <div className="panel-heading"><h2 id="literature-index-settings">Attachment search</h2></div>
+    <label className="appearance-row switch-row">
+      <span><span className="appearance-label">Index new attachments automatically</span>
+        <small>Index newly saved PDF, EPUB, and webpage text while PRISM is visible on this device. Scanned pages still need manual OCR.</small></span>
+      <input type="checkbox" role="switch" checked={state.enabled} onChange={(event) => {
+        try { setLiteratureAutoIndex(userId, event.target.checked); setError(''); }
+        catch { setError('Could not save this preference in this browser.'); }
+      }} />
+    </label>
+    {state.enabled && state.queue.length > 0 && <p className="muted small-text" role="status">{state.queue.length} waiting or indexing</p>}
+    {state.enabled && state.manual + state.failed > 0 && <p className="muted small-text">{state.manual + state.failed} skipped or unable to index automatically. Use Search attachment text to index them manually.</p>}
+    {error && <Notice tone="error">{error}</Notice>}
+  </section>;
 }
 
 function FocusSettings({ timer }: { timer: FocusTimerController }) {
@@ -633,15 +672,12 @@ function ConflictModal({
           </Field>
         </div>
         {resolution === 'merged' && (
-          <Field label="Merged content">
-            <textarea
-              className="code-editor"
+          <MarkdownEditor label="Merged content"
               rows={8}
               required
               value={merged}
-              onChange={(e) => setMerged(e.target.value)}
-            />
-          </Field>
+              onChange={setMerged}
+             />
         )}
         {resolution === 'review_again' && (
           <Notice>After saving, reopen the review queue for a new recall attempt and rating.</Notice>

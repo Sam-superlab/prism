@@ -1,8 +1,10 @@
 'use client';
+
+import { MarkdownEditor } from '../MarkdownEditor';
 import { knowledgeChapter, knowledgeChapterTitle } from '@prism/shared-utils';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useDeferredValue, useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, useTransition, type ReactNode } from 'react';
 import { ApiError, api, datetime, useAction, useResource, uuid } from '../../lib/api';
 import {
   chapterName,
@@ -35,7 +37,6 @@ import {
   knowledgeTypes,
   label,
 } from '../ui';
-import markdownStyles from '../KnowledgeMarkdown.module.css';
 import scopeStyles from './KnowledgeScope.module.css';
 
 type SubjectList = { items: string[] };
@@ -410,6 +411,9 @@ function KnowledgeDetail({ id, guide }: { id: string; guide: ModuleGuideState })
   const router = useRouter();
   const item = useResource<Knowledge>(`/knowledge-items/${id}`);
   const cards = useResource<Page<Card>>(`/knowledge-items/${id}/cards?limit=100`);
+  const references = useResource<Page<{ id: string; reference_id: string; title: string }>>(
+    `/knowledge-items/${id}/reference-links?limit=20`,
+  );
   const [edit, setEdit] = useState(false);
   const [cardEdit, setCardEdit] = useState<Card | 'new' | null>(null);
   const [importCards, setImportCards] = useState(false);
@@ -616,6 +620,14 @@ function KnowledgeDetail({ id, guide }: { id: string; guide: ModuleGuideState })
         <aside>
           <ConnectionGraph focus={`knowledge:${id}`} />
           <KnowledgeResearchLinks note={k} />
+          {!!references.data?.items.length && <section className="panel" aria-label="Literature references">
+            <div className="panel-heading"><h2>Literature references</h2></div>
+            <ul className="card-list">
+              {references.data.items.map((reference) => <li key={reference.id}>
+                <Link href={`/research/library?reference=${reference.reference_id}`} className="text-link">{reference.title}</Link>
+              </li>)}
+            </ul>
+          </section>}
           <section className="panel">
             <div className="panel-heading">
               <h2>Related knowledge</h2>
@@ -899,7 +911,7 @@ export function KnowledgeEditor({
             </p>
           </>
         )}
-        <KnowledgeTextEditor
+        <MarkdownEditor
           label="Mathematical content"
           previewLabel="Content preview"
           value={content}
@@ -909,7 +921,7 @@ export function KnowledgeEditor({
           hint="Use Markdown for formatting, $…$ for inline math, and $$…$$ for display math."
           placeholder="Write the complete statement, including every required hypothesis."
         />
-        <KnowledgeTextEditor
+        <MarkdownEditor
           label="Proof / explanation (optional)"
           previewLabel="Proof preview"
           value={proof}
@@ -948,49 +960,6 @@ export function KnowledgeEditor({
         </div>
       </form>
     </Modal>
-  );
-}
-function KnowledgeTextEditor({
-  label,
-  previewLabel,
-  value,
-  onChange,
-  rows,
-  required,
-  hint,
-  placeholder,
-}: {
-  label: string;
-  previewLabel: string;
-  value: string;
-  onChange: (value: string) => void;
-  rows: number;
-  required?: boolean;
-  hint?: string;
-  placeholder: string;
-}) {
-  const preview = useDeferredValue(value);
-  return (
-    <div className={markdownStyles.editorPair}>
-      <Field label={label} hint={hint}>
-        <textarea
-          className="code-editor"
-          required={required}
-          rows={rows}
-          value={value}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder={placeholder}
-        />
-      </Field>
-      <section className={markdownStyles.editorPreview} aria-label={previewLabel}>
-        <span className="eyebrow">{previewLabel}</span>
-        {preview.trim() ? (
-          <KnowledgeMarkdown content={preview} />
-        ) : (
-          <p className="small-text muted">Your preview will appear here.</p>
-        )}
-      </section>
-    </div>
   );
 }
 export function CardEditor({
@@ -1058,18 +1027,13 @@ export function CardEditor({
             ))}
           </select>
         </Field>
-        <Field label="Prompt">
-          <textarea required rows={3} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-        </Field>
-        <Field label="Reference answer">
-          <textarea
+        <MarkdownEditor label="Prompt" required rows={3} value={prompt} onChange={setPrompt}  />
+        <MarkdownEditor label="Reference answer"
             required
             rows={6}
-            className="code-editor"
             value={answer}
-            onChange={(e) => setAnswer(e.target.value)}
-          />
-        </Field>
+            onChange={setAnswer}
+           />
         {type === 'proof' && <ProofStepEditor steps={steps} onChange={setSteps} />}
         {action.error && <Notice tone="error">{action.error}</Notice>}
         <div className="modal-footer">
@@ -1196,6 +1160,7 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
   const [device, setDevice] = useState('');
   const [index, setIndex] = useState(0);
   const [revealed, setRevealed] = useState(false);
+  const [answer, setAnswer] = useState<{ cardId: string; text: string }>();
   const [stuckSteps, setStuckSteps] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -1241,6 +1206,8 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
       : []
     : queue.data?.items || [];
   const card = cards[index];
+  const proofSteps =
+    card?.card_type === 'proof' && card.proof_steps?.length ? card.proof_steps : undefined;
   const done = Boolean((cardId ? focused : queue.data) && !card);
   const totalDone = Object.values(ratings).reduce((a, b) => a + b, 0);
   function next() {
@@ -1248,6 +1215,7 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
     setPendingRating(null);
     setIndex((i) => i + 1);
     setRevealed(false);
+    setAnswer(undefined);
     setStuckSteps([]);
     setConflict(false);
     setError('');
@@ -1308,7 +1276,8 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
       setBusy(false);
     }
   }
-  const filtersLocked = switchingScope || busy || Boolean(pendingRating) || conflict || batch.busy;
+  const reviewLocked = switchingScope || busy || Boolean(pendingRating) || conflict;
+  const filtersLocked = reviewLocked || batch.busy;
   return (
     <>
       <Link className="back-link" href={scopedPath('/knowledge', scope)}>
@@ -1453,18 +1422,32 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
                 Source knowledge ↗
               </Link>
             </div>
-            <div className="recall-prompt" key={card.id}>
+            <div className="recall-prompt">
               <span className="eyebrow">PROMPT</span>
               <KnowledgeMarkdown content={card.prompt} />
             </div>
-            {card.card_type === 'proof' && !!card.proof_steps?.length && (
+            <MarkdownEditor
+              key={`draft:${card.id}`}
+              label={proofSteps ? 'Your proof outline' : 'Your answer'}
+              hint="Optional · Markdown and LaTeX supported"
+              rows={5}
+              disabled={reviewLocked}
+              placeholder={
+                proofSteps
+                  ? 'Try recalling the main argument before opening a hint…'
+                  : 'Write what you remember…'
+              }
+              value={answer?.cardId === card.id ? answer.text : ''}
+              onChange={(text) => setAnswer({ cardId: card.id, text })}
+            />
+            {proofSteps && (
               <ProofRecall
-                key={card.id}
+                key={`proof:${card.id}`}
                 cardId={card.id}
-                steps={card.proof_steps}
+                steps={proofSteps}
                 answerRevealed={revealed}
                 stuck={stuckSteps}
-                locked={switchingScope || busy || Boolean(pendingRating) || conflict}
+                locked={reviewLocked}
                 onToggleStuck={(id) =>
                   setStuckSteps((ids) =>
                     ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id],
@@ -1475,11 +1458,14 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
             {revealed ? (
               <div className="recall-answer">
                 <span className="eyebrow">REFERENCE ANSWER</span>
-                <KnowledgeMarkdown content={card.answer} />
+                {card.answer.trim() === card.prompt.trim() ? (
+                  <p className="muted">The reference answer matches the prompt above.</p>
+                ) : (
+                  <KnowledgeMarkdown content={card.answer} />
+                )}
               </div>
             ) : (
               <div className="reveal-area">
-                <span className="muted">Try a complete answer in your head or on paper.</span>
                 <button
                   className="button primary"
                   disabled={switchingScope}

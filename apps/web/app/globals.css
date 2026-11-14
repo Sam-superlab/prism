@@ -2554,6 +2554,13 @@ select:focus {
 .modal.wide {
   width: min(870px, calc(100vw - 32px));
 }
+.modal.wide.inline-reader {
+  position: static;
+  margin: 0;
+  width: 100%;
+  max-width: none;
+  max-height: none;
+}
 .modal::backdrop {
   background: #17142580;
   backdrop-filter: blur(3px);

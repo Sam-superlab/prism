@@ -1,26 +1,37 @@
 'use client';
+
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { Activity, useCallback, useEffect, useState, type MouseEvent } from 'react';
+import { Activity, useCallback, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from 'react';
 import { api, useAction, useResource, uuid } from '../lib/api';
 import { scopedPath, type StudyScope } from '../lib/knowledge-scope';
+import { readResearchQuestionSource } from '../lib/research-question-links';
 import { shortcutPlatform, workspaceShortcutFor } from '../lib/workspace-shortcuts';
 import type { Page, Project, Today, User } from '../lib/types';
 import { ErrorState, Field, Icon, Loading, Modal, Notice } from './ui';
-import { TodayPage } from './pages/Today';
 import { FocusCompletionNotice, FocusTimerStatus, useFocusTimer } from './pages/FocusTimer';
-import { KnowledgePage, ReviewPage } from './pages/Knowledge';
-import { ResearchPage } from './pages/Research';
-import { DiscoverPage } from './pages/Discover';
-import { SettingsPage } from './pages/Settings';
-import { PracticePage } from './pages/Practice';
-import { GettingStarted, useGettingStarted } from './GettingStarted';
-import { WorkspaceGraphPage } from './ConnectionGraph';
+import { useGettingStarted } from './GettingStarted';
 import { destinations, tabDestination, tabPath, useWorkspaceTabs, WorkspaceTabList } from './WorkspaceTabs';
+import { LiteratureAutoIndexer } from './LiteratureAutoIndexer';
+
+const TodayPage = dynamic(() => import('./pages/Today').then((module) => module.TodayPage), { loading: Loading });
+const KnowledgePage = dynamic(() => import('./pages/Knowledge').then((module) => module.KnowledgePage), { loading: Loading });
+const ReviewPage = dynamic(() => import('./pages/Knowledge').then((module) => module.ReviewPage), { loading: Loading });
+const ResearchPage = dynamic(() => import('./pages/Research').then((module) => module.ResearchPage), { loading: Loading });
+const LiteratureLibrary = dynamic(() => import('./ResearchReferences').then((module) => module.LiteratureLibrary), { loading: Loading });
+const DiscoverPage = dynamic(() => import('./pages/Discover').then((module) => module.DiscoverPage), { loading: Loading });
+const SettingsPage = dynamic(() => import('./pages/Settings').then((module) => module.SettingsPage), { loading: Loading });
+const PracticePage = dynamic(() => import('./pages/Practice').then((module) => module.PracticePage), { loading: Loading });
+const WorkspaceGraphPage = dynamic(() => import('./ConnectionGraph').then((module) => module.WorkspaceGraphPage), { loading: Loading });
+const GettingStarted = dynamic(() => import('./GettingStarted').then((module) => module.GettingStarted));
+const MarkdownEditor = dynamic(() => import('./MarkdownEditor').then((module) => module.MarkdownEditor), { loading: Loading });
 
 const navigation = destinations.filter(({ path }) => path !== 'settings');
 const sidebarPreference = 'prism.sidebar.pinned';
 const layoutPreference = 'prism.tabs.layout';
+const sidebarOpenDelay = 250;
+const sidebarCloseDelay = 200;
 
 function chapterBound(value: string | null) {
   return value && /^[1-9]\d{0,5}$/.test(value) ? Number(value) : undefined;
@@ -39,6 +50,7 @@ export default function Workspace() {
   const [mobileNav, setMobileNav] = useState(false);
   const [sidebarPinned, setSidebarPinned] = useState(true);
   const [sidebarPeek, setSidebarPeek] = useState(false);
+  const sidebarTimer = useRef<number>(undefined);
   const [capture, setCapture] = useState(false);
   const [search, setSearch] = useState(false);
   const [dashboardRevision, setDashboardRevision] = useState(0);
@@ -46,6 +58,19 @@ export default function Workspace() {
   const [searchKeys, setSearchKeys] = useState('⌘ K');
   const me = useResource<User>('/me');
   const tabState = useWorkspaceTabs(query ? `${pathname}?${query}` : pathname, me.data?.id);
+  const [opened, setOpened] = useState<Set<number>>(() => new Set());
+  const selectedTab = tabState.tabs.find((tab) => tab.id === tabState.selected);
+  const restoringTabs = !tabState.restored;
+  const selectedId = restoringTabs ? undefined : selectedTab?.id;
+  useLayoutEffect(() => {
+    if (selectedId === undefined) return;
+    setOpened((previous) => {
+      const ids = new Set(tabState.tabs.map(({ id }) => id));
+      const next = new Set([...previous].filter((id) => ids.has(id)));
+      next.add(selectedId);
+      return next.size === previous.size && [...next].every((id) => previous.has(id)) ? previous : next;
+    });
+  }, [selectedId, tabState.tabs]);
   const focusTimer = useFocusTimer(me.data?.id);
   useEffect(() => {
     const openFocus = () => {
@@ -58,7 +83,7 @@ export default function Workspace() {
     window.addEventListener('prism:open-focus', openFocus);
     return () => window.removeEventListener('prism:open-focus', openFocus);
   }, [router]);
-  const guide = useGettingStarted(me.data?.id, pathname === '/today');
+  const guide = useGettingStarted(me.data?.id, !restoringTabs && tabPath(selectedTab?.href ?? pathname) === 'today');
   function openInterests() {
     guide.update({ ...guide.progress, status: 'welcome' });
   }
@@ -69,9 +94,37 @@ export default function Workspace() {
   }
   const projects = useResource<Page<Project>>('/research/projects?limit=5');
   const active = tabDestination(pathname)?.path;
+  const cancelSidebarTimer = useCallback(() => {
+    window.clearTimeout(sidebarTimer.current);
+    sidebarTimer.current = undefined;
+  }, []);
+  const hideSidebarPeek = useCallback(() => {
+    cancelSidebarTimer();
+    setSidebarPeek(false);
+  }, [cancelSidebarTimer]);
+  function delaySidebarPeek(open: boolean) {
+    cancelSidebarTimer();
+    if (sidebarPinned || sidebarPeek === open) return;
+    sidebarTimer.current = window.setTimeout(() => {
+      sidebarTimer.current = undefined;
+      setSidebarPeek(open);
+    }, open ? sidebarOpenDelay : sidebarCloseDelay);
+  }
+
+  useEffect(() => {
+    const desktop = window.matchMedia('(min-width: 801px)');
+    desktop.addEventListener('change', hideSidebarPeek);
+    window.addEventListener('blur', hideSidebarPeek);
+    return () => {
+      cancelSidebarTimer();
+      desktop.removeEventListener('change', hideSidebarPeek);
+      window.removeEventListener('blur', hideSidebarPeek);
+    };
+  }, [cancelSidebarTimer, hideSidebarPeek]);
+
   function openTabPicker() {
     setMobileNav(false);
-    setSidebarPeek(false);
+    hideSidebarPeek();
     setNewTab(true);
     setSearch(true);
   }
@@ -87,13 +140,14 @@ export default function Workspace() {
   }
 
   function openLinkInTab(event: MouseEvent) {
-    if (!(event.metaKey || event.ctrlKey || event.button === 1) || event.shiftKey || event.altKey) return;
+    if (event.shiftKey || event.altKey) return;
     const link = event.target instanceof Element ? event.target.closest('a[href]') : null;
     if (!(link instanceof HTMLAnchorElement) || link.target || link.download || link.origin !== location.origin) return;
+    if (!(link.dataset.workspaceTab || event.metaKey || event.ctrlKey || event.button === 1)) return;
     if (!tabDestination(link.pathname) || link.pathname === '/knowledge/export') return;
     event.preventDefault();
-    tabState.open(link.pathname + link.search + link.hash);
-    setSidebarPeek(false);
+    tabState.open(link.pathname + link.search + link.hash, link.dataset.workspaceTab);
+    hideSidebarPeek();
     setMobileNav(false);
     setSearch(false);
   }
@@ -118,25 +172,25 @@ export default function Workspace() {
   const toggleSidebar = useCallback(() => {
     const pinned = !sidebarPinned;
     setSidebarPinned(pinned);
-    setSidebarPeek(false);
+    hideSidebarPeek();
     try {
       window.localStorage.setItem(sidebarPreference, String(pinned));
     } catch {
       // Keep the choice for this view even if it cannot be persisted.
     }
-  }, [sidebarPinned]);
+  }, [sidebarPinned, hideSidebarPeek]);
   useEffect(() => {
     const openSettings = () => {
       if (document.querySelector('dialog[open]')) return;
       setMobileNav(false);
-      setSidebarPeek(false);
+      hideSidebarPeek();
       router.push('/settings');
     };
     const handleKey = (event: KeyboardEvent) => {
       const action = workspaceShortcutFor(event);
       if (!action) return;
       if (action === 'escape') {
-        setSidebarPeek(false);
+        hideSidebarPeek();
         setMobileNav(false);
         return; // Native dialog cancellation handles Escape.
       }
@@ -165,7 +219,7 @@ export default function Workspace() {
       window.removeEventListener('keydown', handleKey);
       window.removeEventListener('prism:open-settings', openSettings);
     };
-  }, [router, toggleSidebar]);
+  }, [router, toggleSidebar, hideSidebarPeek]);
   return (
     <div
       className={`app-shell workspace-with-tabs ${sidebarPinned ? '' : 'sidebar-collapsed'}`}
@@ -174,22 +228,33 @@ export default function Workspace() {
       onAuxClickCapture={(event) => { if (event.button === 1) openLinkInTab(event); }}
     >
       {mobileNav && (
-        <button className="nav-backdrop" aria-label="Close navigation" onClick={() => setMobileNav(false)} />
+        <button className="nav-backdrop" aria-label="Close navigation" data-tooltip="off" onClick={() => setMobileNav(false)} />
       )}
       <div
         className={`sidebar-region ${sidebarPeek ? 'is-peeking' : ''}`}
         onPointerEnter={(event) => {
-          if (!sidebarPinned && event.pointerType === 'mouse' && event.currentTarget.clientWidth)
-            setSidebarPeek(true);
+          if (event.pointerType !== 'touch' && event.currentTarget.clientWidth) delaySidebarPeek(true);
         }}
-        onPointerLeave={() => setSidebarPeek(false)}
+        onPointerLeave={(event) => {
+          if (event.pointerType === 'touch') return;
+          if (sidebarPeek && event.currentTarget.querySelector(':focus-visible')) return;
+          delaySidebarPeek(false);
+        }}
+        onFocus={(event) => {
+          if (!sidebarPinned && event.currentTarget.clientWidth && event.target.matches(':focus-visible')) {
+            cancelSidebarTimer();
+            setSidebarPeek(true);
+          }
+        }}
+        onBlur={(event) => {
+          if (!event.currentTarget.contains(event.relatedTarget) && !event.currentTarget.matches(':hover')) delaySidebarPeek(false);
+        }}
       >
         <aside
           id="workspace-sidebar"
           className={`sidebar ${mobileNav ? 'is-open' : ''}`}
           onClick={(event) => {
             if (event.target instanceof Element && event.target.closest('a')) {
-              setSidebarPeek(false);
               setMobileNav(false);
             }
           }}
@@ -203,12 +268,13 @@ export default function Workspace() {
             </span>
           </Link>
           {vertical && <WorkspaceTabList state={tabState} onOpen={openTabPicker} />}
-          <div className="sidebar-caption">WORKSPACE</div>
           <nav aria-label="Main navigation">
             {navigation.map((item) => (
               <Link
                 key={item.path}
                 href={`/${item.path}`}
+                aria-label={item.label}
+                aria-current={active === item.path ? 'page' : undefined}
                 className={`nav-link ${active === item.path ? 'active' : ''}`}
               >
                 <Icon name={item.icon} />
@@ -241,6 +307,8 @@ export default function Workspace() {
           <div className="sidebar-bottom">
             <Link
               href="/settings"
+              aria-label="Settings"
+              aria-current={active === 'settings' ? 'page' : undefined}
               className={`nav-link settings-link ${active === 'settings' ? 'active' : ''}`}
             >
               <Icon name="settings" />
@@ -317,7 +385,14 @@ export default function Workspace() {
             Mobile supports offline entry.
           </div>
         )}
-        {tabState.tabs.map((tab) => {
+        {restoringTabs && (
+          <main className="main-content">
+            {me.error ? <ErrorState error={me.error} retry={me.reload} /> : <Loading />}
+          </main>
+        )}
+        {!restoringTabs && tabState.tabs.map((tab) => {
+          const selected = tab.id === selectedId;
+          if (!selected && !opened.has(tab.id)) return null;
           const route = tabPath(tab.href);
           const section = tabDestination(tab.href);
           const active = section?.path;
@@ -333,17 +408,21 @@ export default function Workspace() {
           };
           const reviewCardId = entityId(params.get('card'));
           const researchObjectId = entityId(params.get('object'));
+          const routeParts = route.split('/');
+          const researchQuestionId = routeParts[2] === 'questions' && routeParts.length === 4
+            ? entityId(routeParts[3]) : undefined;
+          const libraryReferenceId = entityId(params.get('reference'));
           const discoverView = params.get('view') === 'for-you' ? 'for-you' : undefined;
           const discoverRefresh = discoverView ? entityId(params.get('refresh')) : undefined;
-          const selected = tab.id === tabState.selected;
           return (
             <Activity key={tab.id} mode={selected ? 'visible' : 'hidden'}>
               <main
-                className={`main-content${route === 'graph' ? ' workspace-graph-content' : ''}`}
+                className={`main-content${route === 'graph' ? ' workspace-graph-content' : ''}${active === 'research/library' && params.get('view') !== 'reader' ? ' workspace-library-content' : ''}`}
                 hidden={!selected}
                 key={route}
                 ref={(element) => {
-                  if (!element || !selected || !/^(knowledge|research)\/[^/]+$/.test(route)) return;
+                  if (!element || !selected || active === 'research/library' ||
+                    (!researchQuestionId && !/^(knowledge|research)\/[^/]+$/.test(route))) return;
                   const syncTitle = () => {
                     const title = element.querySelector('.page-heading h1')?.textContent?.trim();
                     if (title) tabState.name(tab.id, route, title);
@@ -394,10 +473,25 @@ export default function Workspace() {
                 )}
                 {active === 'research' && (
                   <ResearchPage
-                    id={route.split('/')[1]}
+                    id={routeParts[1]}
                     selectedObjectId={researchObjectId}
+                    questionId={researchQuestionId}
+                    source={readResearchQuestionSource(params)}
+                    startQuestion={params.get('newQuestion') === '1'}
                     guideUserId={me.data?.id}
                     guideLanguage={guide.language}
+                  />
+                )}
+                {active === 'research/library' && (
+                  <LiteratureLibrary
+                    referenceId={libraryReferenceId}
+                    pdfId={entityId(params.get('pdf'))}
+                    pdfPage={chapterBound(params.get('page'))}
+                    annotationId={entityId(params.get('annotation'))}
+                    readerTab={params.get('view') === 'reader'}
+                    onCloseReaderTab={tabState.tabs.length > 1 ? () => tabState.close(tab.id) : undefined}
+                    teamLibrariesEnabled={me.data?.team_libraries_enabled}
+                    userId={me.data?.id}
                   />
                 )}
                 {active === 'discover' && (
@@ -451,6 +545,7 @@ export default function Workspace() {
         })}
       </div>
       <FocusCompletionNotice timer={focusTimer} />
+      {me.data && <LiteratureAutoIndexer key={me.data.id} userId={me.data.id} />}
       {capture && (
         <QuickCapture
           onClose={() => setCapture(false)}
@@ -544,19 +639,14 @@ function QuickCapture({ onClose, onSaved }: { onClose: () => void; onSaved: () =
             </select>
           </Field>
         )}
-        <Field
-          label={kind === 'task' ? 'Task description' : 'Content'}
+        <MarkdownEditor label={kind === 'task' ? 'Task description' : 'Content'}
           hint="Supports $inline$ and $$display$$ LaTeX."
-        >
-          <textarea
             required
             rows={6}
-            autoFocus
             value={content}
-            onChange={(e) => setContent(e.target.value)}
+            onChange={setContent}
             placeholder="A definition, a thought, or your next step…"
-          />
-        </Field>
+           />
         {kind === 'task' && (
           <Field label="Estimated time (min)">
             <input

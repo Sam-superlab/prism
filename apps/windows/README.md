@@ -16,6 +16,16 @@ PRISM_WINDOWS_RELEASE_VERSION=0.2.6 node scripts/package-windows.mjs PUBLIC_MAC_
 
 The packager derives the public update key from the verified Mac archive. The optional Windows version override supports Windows-only releases. It downloads checksum-verified Windows Electron and Node releases, materializes dependency links, and adds the Windows esbuild native executable. It copies the shared runtime, frontend, and licenses from the clean public package. It never copies the development workspace or local database.
 
+To package a local-only preview from a verified Mac Literature Preview archive:
+
+```sh
+node scripts/package-windows.mjs --local-preview MAC_PREVIEW_ZIP OUTPUT_DIRECTORY
+```
+
+This produces `PRISM-Literature-Preview-Windows-x64.zip`. It uses its own browser
+profile and database under `%APPDATA%\PRISM Literature Preview`, with separate
+local services and no updater. The public package keeps its normal update channel.
+
 Run the native startup and persistence check on Windows:
 
 ```powershell

@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from './ui';
+import { useRouter } from 'next/navigation';
 
 type Tab = { id: number; href: string; title?: string };
 export const destinations = [
@@ -9,6 +10,7 @@ export const destinations = [
   { path: 'knowledge', label: 'Knowledge', icon: 'knowledge' },
   { path: 'practice', label: 'Practice', icon: 'check' },
   { path: 'research', label: 'Research', icon: 'research' },
+  { path: 'research/library', label: 'Library', icon: 'library' },
   { path: 'discover', label: 'Discover', icon: 'discover' },
   { path: 'graph', label: 'Workspace Graph', icon: 'graph' },
   { path: 'settings', label: 'Settings', icon: 'settings' },
@@ -20,7 +22,8 @@ export function tabPath(href: string) {
 
 export function tabDestination(href: string) {
   const path = tabPath(href);
-  return destinations.find((item) => item.path === (path === 'review/session' ? 'knowledge' : path.split('/')[0]));
+  const destination = path === 'research/library' ? path : path === 'review/session' ? 'knowledge' : path.split('/')[0];
+  return destinations.find((item) => item.path === destination);
 }
 
 function restoreTabs(key: string): { tabs: Tab[]; selected: number } | undefined {
@@ -42,10 +45,12 @@ function restoreTabs(key: string): { tabs: Tab[]; selected: number } | undefined
 }
 
 export function useWorkspaceTabs(href: string, userId?: string) {
+  const router = useRouter();
   const [tabs, setTabs] = useState<Tab[]>([{ id: 1, href }]);
   const [selected, setSelected] = useState(1);
   const key = userId && `prism.tabs.v1.${userId}`;
   const [loadedKey, setLoadedKey] = useState<string>();
+  const restoredKey = useRef<string>(undefined);
   const currentHref = useRef(href);
   currentHref.current = href;
   const nextId = useRef(2);
@@ -68,7 +73,8 @@ export function useWorkspaceTabs(href: string, userId?: string) {
   }, [href, selected]);
 
   useEffect(() => {
-    if (!key) return;
+    if (!key || restoredKey.current === key) return;
+    restoredKey.current = key;
     const current = currentHref.current;
     const startup = current === '/today?restoreTabs=1';
     const saved = restoreTabs(key);
@@ -84,13 +90,14 @@ export function useWorkspaceTabs(href: string, userId?: string) {
       setTabs(restored.some((tab) => tab.id === target.id) ? restored : [...restored, target]);
       setSelected(target.id);
       pendingHref.current = target.href;
-      if (target.href !== current + location.hash) {
-        switchingHref.current = target.href.split('#')[0];
-        window.history.replaceState(null, '', target.href);
+      const nextHref = target.href === '/today?restoreTabs=1' ? '/today' : target.href;
+      if (nextHref !== current + location.hash) {
+        switchingHref.current = nextHref.split('#')[0];
+        router.replace(nextHref, { scroll: false });
       }
-    } else if (startup) window.history.replaceState(null, '', '/today');
+    } else if (startup) router.replace('/today', { scroll: false });
     setLoadedKey(key);
-  }, [key]);
+  }, [key, router]);
 
   useEffect(() => {
     if (!key || loadedKey !== key) return;
@@ -146,7 +153,7 @@ export function useWorkspaceTabs(href: string, userId?: string) {
     });
   }
 
-  return { tabs, selected, activate, open, close, name };
+  return { tabs, selected, restored: Boolean(key && loadedKey === key), activate, open, close, name };
 }
 
 export function WorkspaceTabList({
@@ -161,7 +168,9 @@ export function WorkspaceTabList({
       <div className="workspace-tab-list">
         {state.tabs.map((tab) => {
           const destination = tabDestination(tab.href);
-          const title = tab.title ?? (tabPath(tab.href) === 'review/session' ? 'Review session' : destination?.label ?? 'Page');
+          const savedTitle = destination?.path === 'research/library' && tab.title === 'Literature Library' &&
+            !/[?&]view=reader(?:[&#]|$)/.test(tab.href) ? undefined : tab.title;
+          const title = savedTitle ?? (tabPath(tab.href) === 'review/session' ? 'Review session' : destination?.label ?? 'Page');
           return (
             <div key={tab.id} className="workspace-tab" data-selected={tab.id === state.selected}>
               <button

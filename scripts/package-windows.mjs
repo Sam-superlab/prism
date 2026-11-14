@@ -17,10 +17,13 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repo = fileURLToPath(new URL('../', import.meta.url));
-const sourceArchive = resolve(process.argv[2] ?? '');
-if (!process.argv[2] || !existsSync(sourceArchive))
-  throw new Error('Usage: node scripts/package-windows.mjs VERIFIED_MAC_PUBLIC_ZIP [OUTPUT_DIRECTORY]');
-const output = resolve(process.argv[3] ?? 'output/windows');
+const args = process.argv.slice(2);
+const localPreview = args[0] === '--local-preview';
+if (localPreview) args.shift();
+const sourceArchive = resolve(args[0] ?? '');
+if (!args[0] || !existsSync(sourceArchive))
+  throw new Error('Usage: node scripts/package-windows.mjs [--local-preview] VERIFIED_MAC_ZIP [OUTPUT_DIRECTORY]');
+const output = resolve(args[1] ?? (localPreview ? 'output/windows/local-preview' : 'output/windows'));
 const temp = mkdtempSync(join(tmpdir(), 'prism-windows-'));
 const app = join(temp, 'PRISM');
 const resources = join(app, 'resources');
@@ -82,24 +85,27 @@ try {
   nativeDownloads.catch(() => {});
   const mac = join(temp, 'mac');
   run('ditto', ['-x', '-k', sourceArchive, mac]);
-  const source = join(mac, 'PRISM.app/Contents/Resources');
+  const bundle = join(mac, localPreview ? 'PRISM Literature Preview.app' : 'PRISM.app');
+  run('codesign', ['--verify', '--deep', '--strict', bundle]);
+  const source = join(bundle, 'Contents/Resources');
   const plist = execFileSync(
     'plutil',
-    ['-convert', 'json', '-o', '-', join(mac, 'PRISM.app/Contents/Info.plist')],
+    ['-convert', 'json', '-o', '-', join(bundle, 'Contents/Info.plist')],
     { encoding: 'utf8' },
   );
   const manifest = JSON.parse(plist);
   if (
     !manifest.PRISMPackaged ||
     manifest.PRISMProjectRoot ||
+    Boolean(manifest.PRISMUpdateTestWorkspace) !== localPreview ||
     !/^\d+\.\d+\.\d+$/.test(manifest.CFBundleVersion)
   )
-    throw new Error('Windows packaging requires a clean public Mac distribution.');
+    throw new Error('Windows packaging requires a matching clean Mac package.');
   const version = process.env.PRISM_WINDOWS_RELEASE_VERSION ?? manifest.CFBundleVersion;
   if (!/^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/.test(version))
     throw new Error('Use a numeric Windows release version such as 0.2.6.');
   const updatePublicKey = Buffer.from(manifest.SUPublicEDKey ?? '', 'base64');
-  if (updatePublicKey.length !== 32 || updatePublicKey.toString('base64') !== manifest.SUPublicEDKey)
+  if (!localPreview && (updatePublicKey.length !== 32 || updatePublicKey.toString('base64') !== manifest.SUPublicEDKey))
     throw new Error('The public Mac package must include its canonical Ed25519 update key.');
   await nativeDownloads;
   renameSync(join(app, 'electron.exe'), join(app, 'PRISM.exe'));
@@ -202,7 +208,7 @@ try {
   ])
     copy(join(repo, 'apps/windows', name), join(shell, name));
   copy(join(repo, 'apps/desktop/loading.html'), join(shell, 'loading.html'));
-  writeFileSync(
+  if (!localPreview) writeFileSync(
     join(shell, 'update-config.json'),
     JSON.stringify(
       {
@@ -217,10 +223,11 @@ try {
   copy(join(repo, 'apps/web/public/app-icon.png'), join(shell, 'app-icon.png'));
   const shellManifest = JSON.parse(readFileSync(join(shell, 'package.json'), 'utf8'));
   shellManifest.version = version;
+  if (localPreview) shellManifest.prismLocalPreview = true;
   writeFileSync(join(shell, 'package.json'), JSON.stringify(shellManifest, null, 2) + '\n');
   writeFileSync(
     join(app, 'README.txt'),
-    `PRISM ${version} for Windows x64\r\n\r\nExtract the entire ZIP, then open PRISM.exe. Keep the files beside PRISM.exe together.\r\nRequires Windows 10 or Windows 11 (64-bit x64).\r\nYour notes, settings, and logs are in %APPDATA%\\PRISM Desktop. Keep that folder when updating the app.\r\nChoose File > Check for Updates to download and install signed updates. PRISM will close and reopen during installation.\r\nThis preview is unsigned. Windows may show a first-launch security prompt.\r\n`,
+    `PRISM ${version} for Windows x64\r\n\r\nExtract the entire ZIP, then open PRISM.exe. Keep the files beside PRISM.exe together.\r\nRequires Windows 10 or Windows 11 (64-bit x64).\r\n${localPreview ? 'This local preview uses %APPDATA%\\PRISM Literature Preview and has no updater.' : 'Your notes, settings, and logs are in %APPDATA%\\PRISM Desktop. Keep that folder when updating the app.\r\nChoose File > Check for Updates to download and install signed updates. PRISM will close and reopen during installation.'}\r\nThis preview is unsigned. Windows may show a first-launch security prompt.\r\n`,
   );
   const forbidden = readdirSync(app, { recursive: true, withFileTypes: true }).filter((entry) =>
     ['.git', '.data', '.env', '.env.local', 'PG_VERSION', 'postmaster.pid'].includes(entry.name),
@@ -253,7 +260,7 @@ try {
     ) + '\n',
   );
   mkdirSync(output, { recursive: true });
-  const archive = join(output, 'PRISM-Windows-x64.zip');
+  const archive = join(output, localPreview ? 'PRISM-Literature-Preview-Windows-x64.zip' : 'PRISM-Windows-x64.zip');
   run('ditto', ['-c', '-k', '--norsrc', '--keepParent', app, archive]);
   console.log(`Packaged PRISM ${version}: ${archive}`);
   console.log(`SHA-256 ${createHash('sha256').update(readFileSync(archive)).digest('hex')}`);

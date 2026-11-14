@@ -46,6 +46,16 @@ test('searches within a saved paper subfolder and links the selected paper', asy
   });
 
   await page.goto(`/research/${projectId}`);
+  const materials = page.getByRole('button', { name: 'Project materials', exact: true });
+  const references = page.getByRole('button', { name: 'References', exact: true });
+  await expect(materials).toHaveAttribute('aria-expanded', 'false');
+  await expect(references).toHaveAttribute('aria-expanded', 'false');
+  await materials.focus();
+  await materials.press('Space');
+  await expect(page.getByRole('button', { name: 'Add material', exact: true })).toBeVisible();
+  await materials.press('Enter');
+  await expect(page.getByRole('button', { name: 'Add material', exact: true })).toBeHidden();
+  await references.click();
   await page
     .getByRole('region', { name: 'References', exact: true })
     .getByRole('button', { name: 'Choose paper', exact: true })

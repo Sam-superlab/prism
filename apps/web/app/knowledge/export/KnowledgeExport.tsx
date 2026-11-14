@@ -255,7 +255,21 @@ function ExportSelection({ items, initialItemId }: { items: Knowledge[]; initial
     try {
       await Promise.all([
         document.fonts.ready,
-        ...Array.from(preview.querySelectorAll('img'), (image) => {
+        ...Array.from(preview.querySelectorAll<HTMLImageElement>('img'), async (image) => {
+          if (image.dataset.prismPdfFigure === 'loading') await new Promise<void>((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              observer.disconnect();
+              reject(new Error('A PDF figure is still loading.'));
+            }, 40_000);
+            const observer = new MutationObserver(() => {
+              if (image.dataset.prismPdfFigure === 'loading') return;
+              observer.disconnect();
+              clearTimeout(timeout);
+              resolve();
+            });
+            observer.observe(image, { attributes: true, attributeFilter: ['data-prism-pdf-figure'] });
+          });
+          if (image.dataset.prismPdfFigure === 'unavailable') return;
           image.loading = 'eager';
           return image.decode();
         }),

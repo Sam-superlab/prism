@@ -1,7 +1,9 @@
 'use client';
 
+import { MarkdownEditor } from '../MarkdownEditor';
+
 import Link from 'next/link';
-import { memo, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { api, datetime, useAction, useResource, uuid } from '../../lib/api';
 import type { GuideLanguage } from '../../lib/getting-started-copy';
 import type { Card, Knowledge, Page, ReviewEvent } from '../../lib/types';
@@ -29,7 +31,7 @@ import {
   type PracticeLibrary,
   type PracticePdf,
 } from '../../lib/textbook-practice';
-import { Empty, ErrorState, Field, Loading, MathContent, Modal, Notice } from '../ui';
+import { Empty, ErrorState, Field, Loading, KnowledgeMarkdown, Modal, Notice } from '../ui';
 import { ModuleGuide, ModuleGuideHint, useModuleGuide, type ModuleGuideState } from '../ModuleGuide';
 import { exampleExercisePdf } from '../../lib/practice-guide-sample';
 import styles from './Practice.module.css';
@@ -432,7 +434,7 @@ function PracticeDetail({
           Edit exercise
         </button>
       </div>
-      <MathContent content={exercise.statement} className={styles.statement} />
+      <KnowledgeMarkdown content={exercise.statement} className={styles.statement} />
       {!!exercise.topics.length && (
         <p>
           <strong>Topics</strong> {exercise.topics.join(', ')}
@@ -475,15 +477,12 @@ function PracticeDetail({
           )}
         </div>
       </details>
-      <Field label="Work for this attempt (optional)">
-        <textarea
-          className={styles.work}
+      <MarkdownEditor label="Work for this attempt (optional)"
           value={work}
-          onChange={(event) => setWork(event.target.value)}
+          onChange={setWork}
           rows={5}
           maxLength={50_000}
-        />
-      </Field>
+         />
       <div className={styles.actions} aria-label="Record attempt outcome">
         {(Object.keys(outcomes) as Outcome[]).map((outcome) => (
           <button
@@ -510,7 +509,7 @@ function PracticeDetail({
               <li key={attempt.id}>
                 <strong>{outcomes[attempt.outcome]}</strong>{' '}
                 <span className="muted">{datetime(attempt.at)}</span>
-                {attempt.notes && <p>{attempt.notes}</p>}
+                {attempt.notes && <KnowledgeMarkdown content={attempt.notes} />}
               </li>
             ))}
           </ol>
@@ -541,19 +540,6 @@ function topicList(value: string) {
     ),
   ];
 }
-
-const ExerciseStatementPreview = memo(function ExerciseStatementPreview({
-  statement,
-}: {
-  statement: string;
-}) {
-  return (
-    <section className={styles.mathPreview} aria-label="Rendered preview">
-      <strong>Rendered preview</strong>
-      <MathContent content={statement} className={styles.statement} />
-    </section>
-  );
-});
 
 function EditExercise({
   userId,
@@ -592,16 +578,13 @@ function EditExercise({
           });
         }}
       >
-        <Field label="Exercise statement" hint="Use $…$ or $$…$$ for LaTeX.">
-          <textarea
-            className={styles.latexEditor}
+        <MarkdownEditor label="Exercise statement" hint="Use $…$ or $$…$$ for LaTeX." previewLabel="Rendered preview"
             value={statement}
-            onChange={(event) => setStatement(event.target.value)}
+            onChange={setStatement}
             rows={8}
             required
             maxLength={100_000}
-          />
-        </Field>
+           />
         {convertedStatement !== statement && (
           <button
             type="button"
@@ -612,7 +595,6 @@ function EditExercise({
             Convert symbols to LaTeX
           </button>
         )}
-        <ExerciseStatementPreview statement={statement} />
         <Field label="Topics (optional)" hint="Separate topics with commas.">
           <input value={topics} onChange={(event) => setTopics(event.target.value)} maxLength={500} />
         </Field>
@@ -968,18 +950,13 @@ function ImportExercises({
                           maxLength={40}
                         />
                       </Field>
-                      <Field
-                        label={`Exercise ${candidate.number} statement`}
-                        hint="Use $…$ or $$…$$ for LaTeX."
-                      >
-                        <textarea
-                          className={styles.latexEditor}
+                      <MarkdownEditor label={`Exercise ${candidate.number} statement`}
+                        hint="Use $…$ or $$…$$ for LaTeX." previewLabel="Rendered preview"
                           rows={5}
                           value={candidate.text}
-                          onChange={(event) => changeCandidate(index, { text: event.target.value })}
+                          onChange={(text) => changeCandidate(index, { text })}
                           maxLength={100_000}
-                        />
-                      </Field>
+                         />
                     </div>
                   </div>
                   {!!candidate.mathWarnings?.length && (
@@ -994,7 +971,6 @@ function ImportExercises({
                       </ul>
                     </section>
                   )}
-                  <ExerciseStatementPreview statement={candidate.text} />
                 </section>
               ))}
             </div>

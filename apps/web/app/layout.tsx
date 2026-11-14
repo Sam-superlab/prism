@@ -3,7 +3,11 @@ import 'katex/dist/katex.min.css';
 import './globals.css';
 import './appearance.css';
 import './workspace-tabs.css';
+import './button-tooltips.css';
+// Keep Library styles loaded while workspace tabs mount and unmount their views.
+import '../components/ResearchReferences.module.css';
 import { APPEARANCE_BOOTSTRAP } from '../lib/appearance';
+import { ButtonTooltips } from '../components/ButtonTooltips';
 
 export const metadata: Metadata = {
   title: 'PRISM · Personal Research',
@@ -17,7 +21,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script id="prism-appearance" dangerouslySetInnerHTML={{ __html: APPEARANCE_BOOTSTRAP }} />
       </head>
-      <body>{children}</body>
+      <body>{children}<ButtonTooltips /></body>
     </html>
   );
 }

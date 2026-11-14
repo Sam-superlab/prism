@@ -52,6 +52,13 @@ describe('arXiv metadata ingestion', () => {
     expect(
       arxivQuery([{ subscription_type: 'category', subscription_value: 'math.AC', enabled: true }]),
     ).toBe('cat:math.AC');
+    expect(
+      arxivQuery([
+        { subscription_type: 'category', subscription_value: 'math??AG', enabled: true },
+        { subscription_type: 'category', subscription_value: ' math,ca ', enabled: true },
+        { subscription_type: 'category', subscription_value: 'math.AG', enabled: true },
+      ]),
+    ).toBe('cat:math.CA OR cat:math.AG');
   });
   it('fetches through a rate-limit coordinator and deduplicates canonical versions', async () => {
     let coordinated = 0;

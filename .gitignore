@@ -13,8 +13,11 @@ coverage/
 *.tsbuildinfo
 output/playwright/
 output/macos/
+output/windows/
+output/ios/
 .playwright-cli/
 apps/web/next-env.d.ts
 .DS_Store
 *.ipa
 *.xcarchive
+output/linux/

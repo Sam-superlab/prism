@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { apiBase, FLOW_COOKIE, oauthClient, setCookie } from '../../../lib/server-auth';
+import { authReturnPath } from '../../../lib/auth-return-path';
 export const runtime = 'nodejs';
 export async function GET(request: NextRequest) {
   try {
@@ -43,6 +44,7 @@ export async function GET(request: NextRequest) {
         issuer: config.issuer,
         redirectUri,
         tokenEndpoint: config.token_endpoint,
+        returnTo: authReturnPath(request.nextUrl.searchParams.get('returnTo')),
         createdAt: Date.now(),
       },
       600,
