@@ -195,13 +195,13 @@ try {
     'main.cjs',
     'launch.mjs',
     'service.mjs',
-    'loading.html',
     'updater.cjs',
     'update-helper.cjs',
     'focus-preload.cjs',
     'focus-desktop.cjs',
   ])
     copy(join(repo, 'apps/windows', name), join(shell, name));
+  copy(join(repo, 'apps/desktop/loading.html'), join(shell, 'loading.html'));
   writeFileSync(
     join(shell, 'update-config.json'),
     JSON.stringify(

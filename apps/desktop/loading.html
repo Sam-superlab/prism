@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-iUmRfA9fRqaQ2Hr6xkoOqr0yQVtvSQyuzslGMmA26AU='">
+  <title>PRISM</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      font: 16px -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      --canvas: #f4f6fb;
+      --wash: #e1eafa;
+      --ink: #202738;
+      --muted: #58647b;
+      --edge: #526bcb;
+      --accent: #2869cc;
+      --blue: #397ff6;
+      --violet: #8d58ed;
+      --cyan: #008fbb;
+      --blue-glow: rgb(57 127 246 / .16);
+      --violet-glow: rgb(141 88 237 / .13);
+      --edge-glow: rgb(86 122 244 / .32);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --canvas: #171a24;
+        --wash: #242d47;
+        --ink: #f1f3fa;
+        --muted: #aeb8d1;
+        --edge: #9ba6ff;
+        --accent: #75bcfa;
+        --blue: #468aff;
+        --violet: #b179ff;
+        --cyan: #4de3fa;
+        --blue-glow: rgb(68 119 244 / .24);
+        --violet-glow: rgb(163 86 248 / .19);
+        --edge-glow: rgb(121 170 255 / .52);
+      }
+    }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(ellipse at 50% 43%, var(--wash), var(--canvas) 66%);
+      color: var(--ink);
+    }
+    main { text-align: center; padding: 24px; }
+    .mark { position: relative; isolation: isolate; }
+    .mark::before {
+      content: '';
+      position: absolute;
+      z-index: -1;
+      inset: -25% -48%;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 43% 48%, var(--blue-glow), transparent 54%),
+        radial-gradient(ellipse at 58% 53%, var(--violet-glow), transparent 55%);
+    }
+    svg { display: block; width: clamp(110px, 22vmin, 156px); margin-inline: auto; overflow: visible; }
+    .edges { filter: drop-shadow(0 0 2.6px var(--edge-glow)); }
+    .edges path {
+      fill: none;
+      stroke: var(--edge);
+      stroke-width: 1.6;
+      stroke-linecap: round;
+      vector-effect: non-scaling-stroke;
+    }
+    .edges .accent { stroke: var(--accent); }
+    .face-blue { fill: url(#blue); opacity: .54; --dim: .32; --lit: .72; --phase: -3s; }
+    .face-back { --phase: -7s; }
+    .face-violet { fill: url(#violet); opacity: .48; --dim: .28; --lit: .7; --phase: -1s; }
+    .face-cyan { fill: url(#cyan); opacity: .47; --dim: .26; --lit: .66; --phase: -5s; }
+    .stop-blue { stop-color: var(--blue); }
+    .stop-violet { stop-color: var(--violet); }
+    .stop-cyan { stop-color: var(--cyan); }
+    h1 { margin: 19px 0 10px; font-size: 19px; font-weight: 620; letter-spacing: .28em; }
+    p { margin: 0; font-size: 13px; color: var(--muted); }
+    @media (prefers-reduced-motion: no-preference) {
+      .edges path {
+        stroke-dasharray: 1;
+        animation: draw-edge 660ms cubic-bezier(.32, .68, .25, 1) calc(var(--edge-order) * 90ms) both;
+      }
+      .faces { animation: reveal-faces 620ms ease-out 420ms both; }
+      .faces polygon { animation: face-light 10s ease-in-out var(--phase) infinite; }
+      @keyframes draw-edge { from { stroke-dashoffset: 1; opacity: 0; } }
+      @keyframes reveal-faces { from { opacity: 0; } }
+      @keyframes face-light {
+        0%, 100% { opacity: var(--dim); }
+        50% { opacity: var(--lit); }
+      }
+      .leaving svg { animation: lamp-out .55s linear both; }
+      .leaving main { animation: splash-out .22s ease-in .33s both; }
+      @keyframes lamp-out {
+        0% { opacity: 1; }
+        14% { opacity: .28; }
+        25% { opacity: .92; }
+        42% { opacity: .35; }
+        53%, 62% { opacity: .82; }
+        100% { opacity: 0; }
+      }
+      @keyframes splash-out { to { opacity: 0; } }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="mark">
+      <svg viewBox="0 0 128 128" aria-hidden="true">
+        <defs>
+          <linearGradient id="blue" x1="0" y1="1" x2=".85" y2="0">
+            <stop class="stop-blue"/>
+            <stop offset="1" class="stop-cyan" stop-opacity=".22"/>
+          </linearGradient>
+          <linearGradient id="violet" x1="1" y1=".1" x2=".15" y2="1">
+            <stop class="stop-violet"/>
+            <stop offset="1" class="stop-blue" stop-opacity=".28"/>
+          </linearGradient>
+          <linearGradient id="cyan" x1=".25" y1=".95" x2=".8" y2=".15">
+            <stop class="stop-cyan"/>
+            <stop offset="1" class="stop-blue" stop-opacity=".28"/>
+          </linearGradient>
+        </defs>
+        <g class="faces">
+          <g data-face="0 2 1" opacity="0"><polygon class="face-blue face-back" points="64,21 110,102 18,102"/></g>
+          <g data-face="0 1 3"><polygon class="face-blue" points="64,21 18,102 64,71"/></g>
+          <g data-face="0 3 2"><polygon class="face-violet" points="64,21 64,71 110,102"/></g>
+          <g data-face="1 2 3"><polygon class="face-cyan" points="18,102 110,102 64,71"/></g>
+        </g>
+        <g class="edges">
+          <path data-edge="0 1" d="M64 21L18 102" pathLength="1" style="--edge-order:0"/>
+          <path data-edge="1 2" d="M18 102L110 102" pathLength="1" style="--edge-order:1"/>
+          <path data-edge="2 0" d="M110 102L64 21" pathLength="1" style="--edge-order:2"/>
+          <path class="accent" data-edge="0 3" d="M64 21L64 71" pathLength="1" style="--edge-order:3"/>
+          <path class="accent" data-edge="3 1" d="M64 71L18 102" pathLength="1" style="--edge-order:4"/>
+          <path class="accent" data-edge="3 2" d="M64 71L110 102" pathLength="1" style="--edge-order:5"/>
+        </g>
+      </svg>
+    </div>
+    <h1>PRISM</h1>
+    <p role="status">Starting your workspace…</p>
+  </main>
+  <script>
+    const vertices = [[0, -48, 0], [-46, 33, -20], [46, 33, -20], [0, 33, 53]];
+    const edges = Array.from(document.querySelectorAll('[data-edge]'), path => ({
+      path, corners: path.dataset.edge.split(' ').map(Number),
+    }));
+    const faces = Array.from(document.querySelectorAll('[data-face]'), group => ({
+      group, polygon: group.firstElementChild, corners: group.dataset.face.split(' ').map(Number),
+    }));
+    const motion = matchMedia('(prefers-reduced-motion: reduce)');
+    const tilt = Math.PI / 7;
+    const tiltCos = Math.cos(tilt);
+    const tiltSin = Math.sin(tilt);
+    let frame;
+    let start;
+    let leaving;
+
+    function draw(angle) {
+      const cos = Math.cos(angle);
+      const sin = Math.sin(angle);
+      const points = vertices.map(([x, y, z]) => {
+        const depth = z * cos - x * sin;
+        return [64 + x * cos + z * sin, 64 + y * tiltCos - depth * tiltSin];
+      });
+      const coordinate = point => point.map(value => value.toFixed(2)).join(',');
+
+      for (const { group, polygon, corners } of faces) {
+        const [a, b, c] = corners.map(index => points[index]);
+        const area = (b[1] - a[1]) * (c[0] - a[0]) - (b[0] - a[0]) * (c[1] - a[1]);
+        // Fade faces as they turn edge-on. Each face's light follows its own CSS animation.
+        group.setAttribute('opacity', Math.max(0, Math.min(1, area / 1500)).toFixed(3));
+        polygon.setAttribute('points', [a, b, c].map(coordinate).join(' '));
+      }
+      for (const { path, corners: [from, to] } of edges) {
+        path.setAttribute('d', `M${coordinate(points[from])}L${coordinate(points[to])}`);
+      }
+    }
+
+    function spin(time) {
+      start ??= time;
+      const elapsed = Math.max(0, time - start - 1110);
+      const ramp = 450;
+      const rotationTime = elapsed < ramp ? elapsed ** 2 / (2 * ramp) : elapsed - ramp / 2;
+      draw(rotationTime / 7600 * 2 * Math.PI);
+      frame = requestAnimationFrame(spin);
+    }
+
+    function syncMotion() {
+      cancelAnimationFrame(frame);
+      start = undefined;
+      draw(0);
+      if (!motion.matches && !leaving) frame = requestAnimationFrame(spin);
+    }
+
+    motion.addEventListener('change', syncMotion);
+    syncMotion();
+
+    window.finishPrismStartup = () => {
+      if (motion.matches || document.hidden) return Promise.resolve();
+      return leaving ??= new Promise(resolve => {
+        const splash = document.querySelector('main');
+        let timer;
+        function finish() {
+          clearTimeout(timer);
+          splash.removeEventListener('animationend', animationEnded);
+          motion.removeEventListener('change', finish);
+          cancelAnimationFrame(frame);
+          resolve();
+        }
+        function animationEnded(event) {
+          if (event.target === splash && event.animationName === 'splash-out') finish();
+        }
+        splash.addEventListener('animationend', animationEnded);
+        motion.addEventListener('change', finish);
+        timer = setTimeout(finish, 650);
+        document.body.classList.add('leaving');
+      });
+    };
+  </script>
+</body>
+</html>

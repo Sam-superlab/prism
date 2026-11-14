@@ -121,7 +121,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
         window.center(); window.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
-        web.loadHTMLString("<html lang='en'><body style='background:#faf8f5;color:#715d92;font:18px -apple-system;padding:70px'><h1>PRISM</h1><p>Starting your personal workspace…</p><p style='font-size:13px'>First launch may take a moment.</p></body></html>", baseURL: nil)
+        let splash = Bundle.main.url(forResource: "loading", withExtension: "html")
+            .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+        web.loadHTMLString(splash ?? "<p role='status'>Starting your workspace…</p>", baseURL: nil)
         startServices()
         #if PRISM_SPARKLE
         if packaged { updaterController?.startUpdater() }
@@ -229,9 +231,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 .domain: "127.0.0.1", .path: "/", .discard: "TRUE", .sameSitePolicy: "Strict",
                 HTTPCookiePropertyKey("HttpOnly"): "TRUE"]) else { fail("Unable to open a private session."); return }
             web.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { [weak self] in
-                self?.web.load(request)
+                self?.finishStartup(andLoad: request)
             }
-        } else { web.load(request) }
+        } else { finishStartup(andLoad: request) }
+    }
+    private func finishStartup(andLoad request: URLRequest) {
+        web.callAsyncJavaScript("await window.finishPrismStartup?.()", arguments: [:], in: nil, in: .page) { [weak self] _ in
+            guard let self = self, !self.failed else { return }
+            self.web.load(request)
+        }
     }
     func fail(_ message: String) {
         failed = true

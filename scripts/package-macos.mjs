@@ -255,6 +255,7 @@ try {
     copy(join(repo, 'database', file), resolve(databaseModule, '../../database', file));
   copy(join(repo, 'apps/macos/launch.mjs'), join(runtime, 'launch.mjs'));
   copy(join(repo, 'apps/macos/Assets/AppIcon.icns'), join(resources, 'AppIcon.icns'));
+  copy(join(repo, 'apps/desktop/loading.html'), join(resources, 'loading.html'));
   await Promise.all([nodeDownload, sparkle]);
   run(process.execPath, [join(repo, 'scripts/collect-macos-notices.mjs'), bundle, staging]);
 

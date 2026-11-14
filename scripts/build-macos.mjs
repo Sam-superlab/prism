@@ -150,6 +150,7 @@ try {
   mkdirSync(binaries, { recursive: true });
   mkdirSync(resources, { recursive: true });
   copyFileSync(join(root, 'apps/macos/Assets/AppIcon.icns'), join(resources, 'AppIcon.icns'));
+  copyFileSync(join(root, 'apps/desktop/loading.html'), join(resources, 'loading.html'));
   let tools;
   let updaterInfo = '';
   if (withUpdater) {
