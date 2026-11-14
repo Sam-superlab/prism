@@ -184,7 +184,7 @@ try {
   const fingerprint = async (db: InstanceType<typeof Pool>) => {
     const result: Record<string, { count: number; sha256: string }> = {};
     for (const name of tables) {
-      const rows = (await db.query(`SELECT to_jsonb(t) value FROM prism.${name} t ORDER BY id`)).rows.map(
+      const rows = (await db.query(`SELECT to_jsonb(t) value FROM prism.${name} t ORDER BY value`)).rows.map(
         (r: { value: unknown }) => r.value,
       );
       result[name] = {
