@@ -158,6 +158,16 @@ try {
   $otherId = [guid]::NewGuid().ToString()
   $null = Write-Api 'Post' '/knowledge-items' @{ id=$otherId; title='Linked Windows test note'; type='definition'; content='Synthetic linked note.' } ''
   $null = Write-Api 'Post' '/knowledge-relations' @{ id=[guid]::NewGuid().ToString(); source_item_id=$noteId; target_item_id=$otherId; relation_type='depends_on' } ''
+  $referenceId = [guid]::NewGuid().ToString()
+  $attachmentId = [guid]::NewGuid().ToString()
+  $pdf = [Text.Encoding]::UTF8.GetBytes("%PDF-1.7`nSynthetic in-app update fixture.`n")
+  $pdfHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($pdf)).ToLowerInvariant()
+  $null = Write-Api 'Post' '/research/references' @{ id=$referenceId; title='Synthetic update reference' } ''
+  $null = Write-Api 'Post' "/research/references/$referenceId/attachments" @{
+    id=$attachmentId; format='pdf'; file_name='Synthetic fixture.pdf'; size_bytes=$pdf.Length; sha256=$pdfHash
+  } ''
+  $null = Write-Api 'Put' "/research/attachments/$attachmentId/chunk" @{ offset=0; data=[Convert]::ToBase64String($pdf) } ''
+  $null = Write-Api 'Post' "/research/attachments/$attachmentId/complete" @{} ''
   $prefs = Read-Api '/me/preferences'
   $savedPrefs = Write-Api 'Patch' '/me/preferences' @{ daily_review_limit=37 } $prefs.version
   New-Item -ItemType File -Path (Join-Path $PrismProfile 'appearance-dark') | Out-Null
@@ -213,6 +223,11 @@ try {
   $updated = Wait-Ready $TargetVersion $oldPid
   Visit-Companion
   if (Test-Path -LiteralPath $RouteCache) { throw 'The updated companion wrote a cache into the installation.' }
+  $restoredPdf = Join-Path $WorkspaceRoot 'restored-fixture.pdf'
+  Invoke-WebRequest -Uri "$script:Origin/api/v1/research/attachments/$attachmentId/download" -WebSession $script:Session -OutFile $restoredPdf
+  if ((Get-FileHash -LiteralPath $restoredPdf -Algorithm SHA256).Hash.ToLowerInvariant() -ne $pdfHash) {
+    throw 'The original PDF bytes changed during installation.'
+  }
   $restored = Read-Api "/knowledge-items/$noteId"
   $restoredPrefs = Read-Api '/me/preferences'
   $appearance = $updated.appearance | ConvertFrom-Json
@@ -229,7 +244,7 @@ try {
   Trigger-Update
   $currentState = Wait-UpdateState 'current'
   Stop-Prism
-  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, knowledge link, review setting, Dark appearance, and font size preserved. The next check reported current."
+  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, knowledge link, PDF attachment, review setting, Dark appearance, and font size preserved. The next check reported current."
 } finally {
   $env:PRISM_WINDOWS_SMOKE_DIR = $PreviousSmokeDir
   $env:PRISM_WINDOWS_UPDATE_TEST_FEED = $PreviousFeed
