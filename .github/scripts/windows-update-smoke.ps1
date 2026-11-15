@@ -160,6 +160,7 @@ try {
   $null = Write-Api 'Post' '/knowledge-relations' @{ id=[guid]::NewGuid().ToString(); source_item_id=$noteId; target_item_id=$otherId; relation_type='depends_on' } ''
   $referenceId = [guid]::NewGuid().ToString()
   $attachmentId = [guid]::NewGuid().ToString()
+  $annotationId = [guid]::NewGuid().ToString()
   $pdf = [Text.Encoding]::UTF8.GetBytes("%PDF-1.7`nSynthetic in-app update fixture.`n")
   $pdfHash = [Convert]::ToHexString([Security.Cryptography.SHA256]::HashData($pdf)).ToLowerInvariant()
   $null = Write-Api 'Post' '/research/references' @{ id=$referenceId; title='Synthetic update reference' } ''
@@ -168,6 +169,11 @@ try {
   } ''
   $null = Write-Api 'Put' "/research/attachments/$attachmentId/chunk" @{ offset=0; data=[Convert]::ToBase64String($pdf) } ''
   $null = Write-Api 'Post' "/research/attachments/$attachmentId/complete" @{} ''
+  $null = Write-Api 'Post' "/research/reference-pdfs/$attachmentId/annotations" @{
+    id=$annotationId; kind='highlight'; color='yellow'; page=1; text='Synthetic update excerpt'
+    comment="Synthetic backlink [[/knowledge/${otherId}|Linked Windows test note]]"
+    rects=@(@{ x=0.1; y=0.2; width=0.3; height=0.04 }); tags=@('upgrade fixture')
+  } ''
   $prefs = Read-Api '/me/preferences'
   $savedPrefs = Write-Api 'Patch' '/me/preferences' @{ daily_review_limit=37 } $prefs.version
   New-Item -ItemType File -Path (Join-Path $PrismProfile 'appearance-dark') | Out-Null
@@ -229,6 +235,15 @@ try {
     throw 'The original PDF bytes changed during installation.'
   }
   $restored = Read-Api "/knowledge-items/$noteId"
+  $marks = Read-Api "/research/reference-pdfs/$attachmentId/annotations"
+  if (-not ($marks.items | Where-Object { $_.id -eq $annotationId -and $_.text -eq 'Synthetic update excerpt' -and $_.tags -contains 'upgrade fixture' })) {
+    throw 'The PDF annotation was missing after installation.'
+  }
+  $target = [Uri]::EscapeDataString("/knowledge/$otherId")
+  $backlinks = Read-Api "/workspace-backlinks?href=$target"
+  if (-not ($backlinks.items | Where-Object { $_.href.EndsWith("annotation=$annotationId") })) {
+    throw 'The PDF annotation backlink was missing after installation.'
+  }
   $restoredPrefs = Read-Api '/me/preferences'
   $appearance = $updated.appearance | ConvertFrom-Json
   if ($restored.content -ne $note.content) { throw 'The note changed during installation.' }
@@ -244,7 +259,7 @@ try {
   Trigger-Update
   $currentState = Wait-UpdateState 'current'
   Stop-Prism
-  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, knowledge link, PDF attachment, review setting, Dark appearance, and font size preserved. The next check reported current."
+  Write-Output "Windows in-app update $($initial.version) -> $TargetVersion passed. Invalid signatures and corrupted downloads were rejected. The native app relaunched with its synthetic note, knowledge link, PDF attachment, annotation, backlink, review setting, Dark appearance, and font size preserved. The next check reported current."
 } finally {
   $env:PRISM_WINDOWS_SMOKE_DIR = $PreviousSmokeDir
   $env:PRISM_WINDOWS_UPDATE_TEST_FEED = $PreviousFeed
