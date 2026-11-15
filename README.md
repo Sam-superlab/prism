@@ -2,7 +2,7 @@
 
 PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
 
-[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.2.43/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.2.43/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.2.43/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.2.43) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.3.0/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.3.0/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.3.0/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.3.0) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
@@ -58,6 +58,14 @@ The Dashboard checklist walks through creating a note, making a review card, and
 ## Library
 
 Open **Library** from the sidebar to organize collections, browse references, and view details and attachments side by side. Click **Title**, **Authors**, or **Year** to sort. Drag the dividers to resize the panes, or use the toolbar button to hide details. PRISM remembers these choices on this computer.
+
+## PDF Reader and backlinks
+
+Open **PDF Reader** from the sidebar to resume a saved arXiv paper. Discover → Saved also opens papers in the reader. Papers are cached on demand, and **Settings → Saved paper PDFs** lets you adjust or clear the cache or manage offline copies.
+
+Select a saved highlight or page note and choose **Create Knowledge note**. The new note links to the exact paper version, page, and annotation. Saved arXiv annotations are stored on the device that created them. Another device can still open the linked paper version and page.
+
+Type `[[` or click the link icon in a Markdown editor to choose a Knowledge note, Research record, PDF page, or annotation. Open **Backlinks** on a target to see where it is referenced.
 
 ## Updates and local data
 
