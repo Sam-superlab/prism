@@ -27,7 +27,14 @@ test('Today creates one plan, records completion, and shows a saved next step to
   const budget = overview.getByRole('region', { name: 'Time budget' });
   await expect(progress).toContainText(`${before.completed_count} of ${before.planned_count} completed`);
   await expect(budget).toContainText(`${before.estimated_remaining_minutes} min remaining`);
-  await expect(overview.getByRole('list', { name: 'Review ratings by day' }).getByRole('listitem')).toHaveCount(7);
+  const review = overview.getByRole('region', { name: 'Review', exact: true });
+  const reviewDays = review.getByRole('list', { name: 'Review ratings by day' }).getByRole('button');
+  await expect(reviewDays).toHaveCount(7);
+  await expect(reviewDays.last()).toHaveAttribute('aria-pressed', 'true');
+  await reviewDays.first().click();
+  await expect(reviewDays.first()).toHaveAttribute('aria-pressed', 'true');
+  await expect(review.getByRole('status')).toContainText('Nov 3');
+  await expect(page.getByText('How much time do you have?', { exact: true })).toHaveCount(0);
   const generate = () =>
     request.post('/api/v1/daily-plans/generate', {
       headers: { Origin: baseURL!, 'Idempotency-Key': randomUUID() },
@@ -61,6 +68,43 @@ test('Today creates one plan, records completion, and shows a saved next step to
   await page.reload();
   await expect(page.getByRole('region', { name: 'Yesterday’s next step' })).toContainText(note);
   await expect(page.getByRole('button', { name: 'Replan', exact: true })).toBeVisible();
+});
+
+test('continues a partially rated review from the Dashboard overview', async ({ page, request, baseURL }) => {
+  const subject = `Review overview fixture-${randomUUID()}`;
+  const noteId = randomUUID();
+  const headers = () => ({ Origin: baseURL!, 'Idempotency-Key': randomUUID() });
+  const note = await request.post('/api/v1/knowledge-items', {
+    headers: headers(),
+    data: { id: noteId, title: 'Review overview fixture', subject, type: 'definition', content: 'Fixture definition.' },
+  });
+  expect(note.status()).toBe(201);
+  for (const number of [1, 2]) {
+    const card = await request.post(`/api/v1/knowledge-items/${noteId}/cards`, {
+      headers: headers(),
+      data: { id: randomUUID(), card_type: 'statement', prompt: `Overview card ${number}`, answer: `Answer ${number}` },
+    });
+    expect(card.status()).toBe(201);
+  }
+  const sessionHref = '/review/session?' + new URLSearchParams({ subject });
+  await page.goto(sessionHref);
+  const prompt = page.locator('main:not([hidden]) .recall-prompt');
+  await expect(prompt).toContainText(/Overview card [12]/);
+  const nextPrompt = (await prompt.textContent())?.includes('Overview card 1') ? 'Overview card 2' : 'Overview card 1';
+  await page.getByRole('button', { name: 'Reveal answer' }).click();
+  await page.getByRole('button', { name: /^Good/ }).click();
+  await expect(prompt).toContainText(nextPrompt);
+  await page.getByRole('link', { name: 'Pause review', exact: true }).click();
+  const overview = page.getByRole('region', { name: 'Today at a glance' });
+  const review = overview.getByRole('region', { name: 'Review', exact: true });
+  const continuation = review.getByRole('link', { name: 'Continue review', exact: true });
+  await expect(review).toContainText('1 of 2 reviewed');
+  await expect(continuation).toHaveAttribute('href', sessionHref);
+  await page.reload();
+  await expect(review).toContainText('1 of 2 reviewed');
+  await continuation.click();
+  await expect(prompt).toContainText(nextPrompt);
+  await expect(page.getByText('1 / 2 reviewed', { exact: true })).toBeVisible();
 });
 
 test('collapsed desktop sidebar waits for intentional hover and remembers the pinned state', async ({ page }) => {

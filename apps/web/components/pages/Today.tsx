@@ -13,6 +13,7 @@ import {
   uuid,
 } from '../../lib/api';
 import type { InboxEntry, Page, PlanItem, Task, Today, User } from '../../lib/types';
+import { useReviewProgress } from '../../lib/review-session';
 import { MarkdownEditor } from '../MarkdownEditor';
 import { ResearchActivity } from '../ResearchActivity';
 import { Badge, Empty, ErrorState, Field, Icon, KnowledgeMarkdown, Loading, Modal, Notice, label } from '../ui';
@@ -72,6 +73,8 @@ export function TodayPage({
   focusTimer: FocusTimerController;
 }) {
   const me = useResource<User>('/me');
+  const reviewProgress = useReviewProgress(me.data?.id);
+  const reviewHref = reviewProgress?.href ?? '/review/session';
   const timezone = me.data?.timezone;
   const [date, setDate] = useState('');
   const today = useResource<Today>(date ? `/today?date=${date}` : null);
@@ -79,7 +82,6 @@ export function TodayPage({
   const inbox = useResource<Page<InboxEntry>>('/inbox?limit=100');
   const [editingTask, setEditingTask] = useState<Task | undefined>();
   const [poolFilter, setPoolFilter] = useState('pending');
-  const [capacityDraft, setCapacityDraft] = useState<string | null>(null);
   const [tab, setTab] = useState('pending');
   const [addTask, setAddTask] = useState(false);
   const [savedTask, setSavedTask] = useState<Task | null>(null);
@@ -111,9 +113,6 @@ export function TodayPage({
   };
   const action = useAction(refresh);
   const d = today.data?.date === date ? today.data : null;
-  const capacity = capacityDraft === null ? (d?.capacity_minutes ?? 180) : Number(capacityDraft);
-  const capacityValid =
-    capacityDraft !== '' && Number.isInteger(capacity) && capacity >= 0 && capacity <= 1440;
   const draftDate =
     process.env.NEXT_PUBLIC_PRISM_AI_REVIEW_DRAFTS === 'true' && d ? previousDate(d.date) : null;
   const reloadToday = today.reload;
@@ -124,7 +123,11 @@ export function TodayPage({
       reloadTasks();
     }
     window.addEventListener('prism:tasks-changed', refreshTasks);
-    return () => window.removeEventListener('prism:tasks-changed', refreshTasks);
+    window.addEventListener('prism:review-changed', reloadToday);
+    return () => {
+      window.removeEventListener('prism:tasks-changed', refreshTasks);
+      window.removeEventListener('prism:review-changed', reloadToday);
+    };
   }, [reloadToday, reloadTasks]);
   useEffect(() => {
     if (!d || today.loading || autoPlanning || action.busy || (d.plan && (tasks.loading || !tasks.data)))
@@ -186,16 +189,15 @@ export function TodayPage({
   );
   const workspaceTasks = tasks.data?.items.filter((t) => t.source_type !== 'workout') ?? [];
   const taskById = new Map(workspaceTasks.map((t) => [t.id, t]));
-  async function generate() {
-    if (!capacityValid) return;
+  async function generate(capacityMinutes = d?.capacity_minutes ?? 180) {
     setAutoError('');
-    await action.run(() =>
+    return action.run(() =>
       api('/daily-plans/generate', {
         method: 'POST',
         body: {
           plan_date: date,
           timezone: me.data?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
-          capacity_minutes: capacity,
+          capacity_minutes: capacityMinutes,
           override_manual: false,
         },
       }),
@@ -290,51 +292,11 @@ export function TodayPage({
               <KnowledgeMarkdown content={d.continuation_note} />
             </section>
           )}
-          <div className="summary-grid">
-            <Link href="/review/session" className="summary-card purple">
-              <div className="summary-icon">
-                <Icon name="knowledge" />
-              </div>
-              <div>
-                <span className="card-label">Reviews due</span>
-                <strong>
-                  {d.reviews_due_now}
-                  <small>cards</small>
-                </strong>
-                <span className="card-footnote">Due today: {d.reviews_due_by_end_of_day} cards</span>
-              </div>
-              <Icon name="arrow" className="summary-arrow" size={17} />
-            </Link>
-            <Link href="/research" className="summary-card blue">
-              <div className="summary-icon">
-                <Icon name="research" />
-              </div>
-              <div>
-                <span className="card-label">Research tasks</span>
-                <strong>
-                  {d.research_tasks_due}
-                  <small>due</small>
-                </strong>
-              </div>
-              <Icon name="arrow" className="summary-arrow" size={17} />
-            </Link>
-            <Link href="/discover" className="summary-card green">
-              <div className="summary-icon">
-                <Icon name="discover" />
-              </div>
-              <div>
-                <span className="card-label">Paper updates</span>
-                <strong>
-                  {d.unread_papers}
-                  <small>unread</small>
-                </strong>
-                <span className="card-footnote">Saved: {d.saved_papers} papers</span>
-              </div>
-              <Icon name="arrow" className="summary-arrow" size={17} />
-            </Link>
-          </div>
           <TodayOverview
             today={d}
+            reviewProgress={reviewProgress}
+            onReplan={async (minutes) => Boolean(await generate(minutes))}
+            replanning={action.busy || autoPlanning}
             onShowPlan={(filter) => {
               setTab(filter);
               planPanel.current?.focus({ preventScroll: true });
@@ -429,14 +391,14 @@ export function TodayPage({
                     <button
                       className="button primary"
                       onClick={() => void generate()}
-                      disabled={action.busy || !capacityValid}
+                      disabled={action.busy}
                     >
                       Plan today
                       <Icon name="arrow" size={16} />
                     </button>
                   }
                 >
-                  Set your available time to bring reviews, research, and personal tasks together.
+                  Generate a plan from your reviews and ready tasks.
                 </Empty>
               ) : active.length === 0 ? (
                 <Empty icon="check" title={tab === 'pending' ? 'All clear here' : 'Nothing here yet'}>
@@ -513,8 +475,8 @@ export function TodayPage({
                           )}
                           {item.status === 'planned' &&
                             (item.item_type === 'review' ? (
-                              <Link className="button small soft" href="/review/session">
-                                Start review
+                              <Link className="button small soft" href={reviewHref}>
+                                {reviewProgress ? 'Continue review' : 'Start review'}
                                 <Icon name="arrow" size={14} />
                               </Link>
                             ) : (
@@ -592,58 +554,6 @@ export function TodayPage({
               <div ref={focusPanel}>
                 <FocusTimer timer={focusTimer} />
               </div>
-              <section className="panel capacity-panel">
-                <div className="panel-heading">
-                  <h2>How much time do you have?</h2>
-                  <Icon name="clock" size={18} />
-                </div>
-                <p className="muted">Give your day a realistic limit.</p>
-                <div className="capacity-input">
-                  <input
-                    aria-label="Daily capacity in minutes"
-                    type="number"
-                    min="0"
-                    max="1440"
-                    value={capacityDraft ?? d.capacity_minutes}
-                    onChange={(e) => setCapacityDraft(e.target.value)}
-                  />
-                  <span>Minutes</span>
-                </div>
-                <div className="capacity-presets">
-                  {[60, 120, 180, 240].map((n) => (
-                    <button
-                      key={n}
-                      className={capacityValid && capacity === n ? 'selected' : ''}
-                      onClick={() => setCapacityDraft(String(n))}
-                    >
-                      {n / 60} h
-                    </button>
-                  ))}
-                </div>
-                {(plan?.overload_minutes || 0) > 0 ? (
-                  <Notice tone="warning">
-                    Pinned tasks and hard deadlines exceed capacity by {plan!.overload_minutes} min. Increase
-                    your capacity or adjust the plan.
-                  </Notice>
-                ) : (
-                  <div className="capacity-hint">
-                    <span className="status-dot" />
-                    {!capacityValid
-                      ? 'Enter a whole number from 0 to 1440 minutes'
-                      : d.estimated_remaining_minutes <= capacity
-                        ? 'Your workload fits the available time'
-                        : 'Generate a plan to see which tasks need more time'}
-                  </div>
-                )}
-                <button
-                  className="button primary full"
-                  onClick={() => void generate()}
-                  disabled={action.busy || autoPlanning || !capacityValid}
-                >
-                  {action.busy ? 'Planning…' : plan ? 'Replan' : 'Generate plan'}
-                  <Icon name="refresh" size={15} />
-                </button>
-              </section>
             </aside>
           </div>
         </>

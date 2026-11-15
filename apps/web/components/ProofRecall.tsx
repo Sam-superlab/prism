@@ -2,7 +2,6 @@
 
 import { MarkdownEditor } from './MarkdownEditor';
 
-import { useState } from 'react';
 import { useResource, uuid } from '../lib/api';
 import type { Page, ProofStep, ReviewEvent } from '../lib/types';
 import { Icon, KnowledgeMarkdown } from './ui';
@@ -65,6 +64,8 @@ export function ProofRecall({
   answerRevealed,
   stuck,
   onToggleStuck,
+  hintsUsed,
+  onRevealHint,
   locked,
 }: {
   cardId: string;
@@ -72,9 +73,11 @@ export function ProofRecall({
   answerRevealed: boolean;
   stuck: string[];
   onToggleStuck: (id: string) => void;
+  hintsUsed: number;
+  onRevealHint: () => void;
   locked: boolean;
 }) {
-  const [revealedCount, setRevealedCount] = useState(0);
+  const revealedCount = Math.min(hintsUsed, steps.length);
   const history = useResource<Page<ReviewEvent>>(`/review/history?card_id=${cardId}&limit=1`);
   const lastStuck = history.data?.items[0]?.proof_stuck_steps ?? [];
   const revisit = steps.flatMap((step, index) =>
@@ -118,7 +121,7 @@ export function ProofRecall({
         <button
           className="button small"
           disabled={locked}
-          onClick={() => setRevealedCount((count) => Math.min(count + 1, steps.length))}
+          onClick={onRevealHint}
         >
           {revealedCount ? 'Reveal next hint' : 'Reveal first hint'}
         </button>

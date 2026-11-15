@@ -461,11 +461,13 @@ export default function Workspace() {
                   />
                 )}
                 {route === 'review/session' && (
-                  <ReviewPage
-                    key={reviewCardId || scopedPath('/review/session', studyScope)}
+                  me.data ? <ReviewPage
+                    key={`${me.data.id}:${reviewCardId || scopedPath('/review/session', studyScope)}`}
                     scope={studyScope}
                     cardId={reviewCardId}
-                  />
+                    userId={me.data.id}
+                    active={selected}
+                  /> : me.error ? <ErrorState error={me.error} retry={me.reload} /> : <Loading />
                 )}
                 {active === 'practice' && (
                   me.data ? <PracticePage key={me.data.id} userId={me.data.id} guideLanguage={guide.language} /> :

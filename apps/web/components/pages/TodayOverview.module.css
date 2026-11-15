@@ -5,6 +5,11 @@
 }
 
 .heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: space-between;
+  gap: 10px 16px;
   margin-bottom: 16px;
 }
 
@@ -13,6 +18,19 @@
   font-size: 1.22rem;
   font-weight: 600;
   letter-spacing: -0.02em;
+}
+
+.shortcuts,
+.budgetActions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: start;
+  gap: 6px;
+}
+
+.shortcuts span {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
 }
 
 .grid {
@@ -108,6 +126,9 @@
   text-align: start;
   border-radius: 4px;
   cursor: pointer;
+  transition:
+    color 0.2s var(--motion-out),
+    background-color 0.2s var(--motion-out);
 }
 
 .legend button:hover {
@@ -180,6 +201,51 @@
   row-gap: 3px;
 }
 
+.budgetActions {
+  margin-top: 10px;
+}
+
+.capacityDisclosure summary {
+  display: inline-flex;
+  list-style: none;
+}
+
+.capacityDisclosure summary::-webkit-details-marker {
+  display: none;
+}
+
+.capacityDisclosure summary svg {
+  transition: transform 0.2s var(--motion-out);
+}
+
+.capacityDisclosure[open] summary svg {
+  transform: rotate(90deg);
+}
+
+.capacityForm {
+  display: grid;
+  justify-items: start;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.capacityForm label {
+  display: grid;
+  gap: 3px;
+  color: var(--muted);
+  font-size: 0.75rem;
+}
+
+.capacityField {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.capacityField input {
+  width: 5.5em;
+}
+
 .over {
   color: var(--warm);
 }
@@ -188,25 +254,77 @@
   background: var(--warm);
 }
 
+.reviewAction {
+  margin-top: 8px;
+}
+
+.reviewProgress,
+.reviewHistory {
+  margin-top: 10px;
+}
+
+.reviewProgress label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.reviewProgress progress {
+  width: 100%;
+  height: 6px;
+  accent-color: var(--accent);
+}
+
+.historyTotal,
+.dayDetail {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dayDetail {
+  min-height: 1.25em;
+  margin-top: 5px;
+}
+
 .reviewChart {
   display: grid;
   grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: 4px;
-  margin: 10px 0 0;
+  margin: 4px 0 0;
   padding: 0;
   list-style: none;
 }
 
-.reviewChart li {
+.reviewChart button {
   display: grid;
   justify-items: center;
+  width: 100%;
   gap: 3px;
+  padding: 4px 1px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
   font-size: 0.62rem;
   color: var(--muted);
+  cursor: pointer;
+  transition:
+    border-color 0.2s var(--motion-out),
+    color 0.2s var(--motion-out),
+    background-color 0.2s var(--motion-out);
 }
 
-.dayCount {
-  font-variant-numeric: tabular-nums;
+.reviewChart button:hover,
+.reviewChart button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--surface-secondary);
+}
+
+.reviewChart button[aria-pressed='true'] {
+  border-color: var(--line);
 }
 
 .barTrack {
@@ -235,15 +353,6 @@
   background: var(--accent);
 }
 
-.srOnly {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  white-space: nowrap;
-  clip-path: inset(50%);
-}
-
 @container (min-width: 37rem) {
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -268,7 +377,10 @@
   .ringFill,
   .budgetChart > span,
   .budgetChart > .budgetLimit,
-  .barFill {
+  .barFill,
+  .legend button,
+  .reviewChart button,
+  .capacityDisclosure summary svg {
     transition: none;
   }
 }

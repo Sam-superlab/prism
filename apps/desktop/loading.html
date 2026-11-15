@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-iUmRfA9fRqaQ2Hr6xkoOqr0yQVtvSQyuzslGMmA26AU='">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-zhKgCJdx+g14PB/WCtsJqAHrpsTFIzMUG6BwQ/DiNRM='">
   <title>PRISM</title>
   <style>
     :root {
@@ -92,6 +92,8 @@
       }
       .leaving svg { animation: lamp-out .55s linear both; }
       .leaving main { animation: splash-out .22s ease-in .33s both; }
+      .leaving.quick svg { animation-duration: 240ms; }
+      .leaving.quick main { animation-duration: 85ms; animation-delay: 155ms; }
       @keyframes lamp-out {
         0% { opacity: 1; }
         14% { opacity: .28; }
@@ -180,7 +182,7 @@
 
     function spin(time) {
       start ??= time;
-      const elapsed = Math.max(0, time - start - 1110);
+      const elapsed = Math.max(0, time - start);
       const ramp = 450;
       const rotationTime = elapsed < ramp ? elapsed ** 2 / (2 * ramp) : elapsed - ramp / 2;
       draw(rotationTime / 7600 * 2 * Math.PI);
@@ -197,7 +199,7 @@
     motion.addEventListener('change', syncMotion);
     syncMotion();
 
-    window.finishPrismStartup = () => {
+    window.finishPrismStartup = (quick = false) => {
       if (motion.matches || document.hidden) return Promise.resolve();
       return leaving ??= new Promise(resolve => {
         const splash = document.querySelector('main');
@@ -214,7 +216,8 @@
         }
         splash.addEventListener('animationend', animationEnded);
         motion.addEventListener('change', finish);
-        timer = setTimeout(finish, 650);
+        timer = setTimeout(finish, quick ? 300 : 650);
+        if (quick) document.body.classList.add('quick');
         document.body.classList.add('leaving');
       });
     };

@@ -6,9 +6,10 @@ import WebKit
 import Sparkle
 #endif
 
-final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, WKScriptMessageHandler, UNUserNotificationCenterDelegate {
     var window: NSWindow!
     var web: WKWebView!
+    private var startupView: WKWebView?
     var launcher: Process?
     var logHandle: FileHandle?
     var timer: Timer?
@@ -100,6 +101,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         appMenu.addItem(withTitle: "Quit PRISM", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q")
         let fileItem = NSMenuItem(); menu.addItem(fileItem)
         let file = NSMenu(title: "File"); fileItem.submenu = file
+        file.addItem(withTitle: "Close Window", action: #selector(NSWindow.performClose(_:)), keyEquivalent: "w")
         if packaged {
             file.addItem(withTitle: "Create Workspace Backup…", action: #selector(createWorkspaceBackup), keyEquivalent: "")
             file.addItem(withTitle: "Validate Workspace Backup…", action: #selector(validateWorkspaceBackup), keyEquivalent: "")
@@ -146,6 +148,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         window.titlebarSeparatorStyle = .none
         window.backgroundColor = .windowBackgroundColor
         window.minSize = NSSize(width: 800, height: 600)
+        window.delegate = self
         window.contentView = web
         NSWorkspace.shared.notificationCenter.addObserver(self, selector: #selector(displayOptionsChanged(_:)),
             name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil)
@@ -153,7 +156,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         NSApp.activate(ignoringOtherApps: true)
         let splash = Bundle.main.url(forResource: "loading", withExtension: "html")
             .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
-        web.loadHTMLString(splash ?? "<p role='status'>Starting your workspace…</p>", baseURL: nil)
+        let splashView = WKWebView(frame: web.bounds)
+        splashView.autoresizingMask = [.width, .height]
+        web.addSubview(splashView)
+        startupView = splashView
+        splashView.loadHTMLString(splash ?? "<p role='status'>Starting your workspace…</p>", baseURL: nil)
         startServices()
         #if PRISM_SPARKLE
         if packaged { updaterController?.startUpdater() }
@@ -274,19 +281,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
                 .domain: "127.0.0.1", .path: "/", .discard: "TRUE", .sameSitePolicy: "Strict",
                 HTTPCookiePropertyKey("HttpOnly"): "TRUE"]) else { fail("Unable to open a private session."); return }
             web.configuration.websiteDataStore.httpCookieStore.setCookie(cookie) { [weak self] in
-                self?.finishStartup(andLoad: request)
+                self?.loadWorkspace(request)
             }
-        } else { finishStartup(andLoad: request) }
+        } else { loadWorkspace(request) }
     }
-    private func finishStartup(andLoad request: URLRequest) {
-        web.callAsyncJavaScript("await window.finishPrismStartup?.()", arguments: [:], in: nil, in: .page) { [weak self] _ in
-            guard let self = self, !self.failed else { return }
-            self.web.load(request)
-        }
+    private func loadWorkspace(_ request: URLRequest) {
+        guard !failed else { return }
+        web.load(request)
     }
     func fail(_ message: String) {
+        guard !failed else { return }
         failed = true
         timer?.invalidate(); timer = nil
+        startupView?.removeFromSuperview()
+        startupView = nil
         let alert = NSAlert(); alert.messageText = "PRISM could not start"; alert.informativeText = message
         alert.addButton(withTitle: "OK"); alert.runModal()
     }
@@ -915,8 +923,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         alert.beginSheetModal(for: window)
     }
 
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool { window.makeKeyAndOrderFront(nil); return true }
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { true }
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        guard sender === window else { return true }
+        sender.orderOut(nil)
+        return false
+    }
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows: Bool) -> Bool {
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        return true
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         archiveUpload?.cancel()
         attachmentTransfer?.cancel()
@@ -958,11 +975,29 @@ final class AppDelegate: NSObject, NSApplicationDelegate, WKNavigationDelegate, 
         }
     }
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        if webView === web, let splash = startupView {
+            startupView = nil
+            if window.isVisible && !window.isMiniaturized {
+                let dismiss = { [weak splash] in splash?.removeFromSuperview() }
+                splash.callAsyncJavaScript("await window.finishPrismStartup?.(true)", arguments: [:], in: nil, in: .page) { _ in
+                    dismiss()
+                }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { dismiss() }
+            } else {
+                splash.removeFromSuperview()
+            }
+        }
         guard webView === focusPetWeb else { return }
         focusPetLoaded = true
         guard focusPetState?.pet == true, !focusPetHidden else { return }
         focusPetPanel?.orderFrontRegardless()
         publishFocusPetState()
+    }
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        if webView === web, startupView != nil { fail("Unable to open the workspace: \(error.localizedDescription)") }
+    }
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        if webView === web, startupView != nil { fail("Unable to open the workspace: \(error.localizedDescription)") }
     }
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         if webView === web { pdfOcrBridge.cancelActive() }

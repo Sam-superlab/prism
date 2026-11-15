@@ -13,10 +13,15 @@ test('button names float above the workspace and modal controls and respond to k
   await expect(page.locator('.button-tooltip')).toHaveCount(0);
 
   const search = page.getByRole('button', { name: 'Search', exact: true });
+  await search.evaluate((button) => button.setAttribute('title', 'Search'));
+  await page.clock.install();
   await search.hover();
-  await expect(tip).toHaveText('Search');
+  await expect(search).toHaveAttribute('title', '');
+  await page.clock.runFor(400);
+  await expect(tip).toHaveCount(0);
+  await page.clock.resume();
   await page.keyboard.press('Escape');
-  await expect(page.locator('.button-tooltip')).toHaveCount(0);
+  await expect(search).toHaveAttribute('title', 'Search');
 
   const add = tools.getByRole('button', { name: 'Add reference' });
   await add.click();

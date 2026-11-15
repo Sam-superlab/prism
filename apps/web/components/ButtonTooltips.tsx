@@ -21,6 +21,22 @@ function buttonName(button: HTMLElement) {
     .map((value) => value?.replace(/\s+/g, ' ').trim()).find(Boolean);
 }
 
+function hasVisibleText(button: HTMLElement) {
+  if (button instanceof HTMLInputElement) return button.type !== 'image';
+  const walker = document.createTreeWalker(button, NodeFilter.SHOW_TEXT);
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const parent = node.parentElement;
+    if (!node.textContent?.trim() || !parent || parent.closest('svg, [aria-hidden="true"]')) continue;
+    if (parent.checkVisibility?.({ opacityProperty: true, visibilityProperty: true }) === false &&
+        getComputedStyle(parent).display !== 'contents') continue;
+    if (parent !== button && parent.clientWidth === 1 && parent.clientHeight === 1) continue;
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    if ([...range.getClientRects()].some((rect) => rect.width > 0 && rect.height > 0)) return true;
+  }
+  return false;
+}
+
 export function ButtonTooltips() {
   useEffect(() => {
     const bubble = document.createElement('div');
@@ -94,14 +110,16 @@ export function ButtonTooltips() {
       }
       hide();
       const label = buttonName(button);
-      if (!label) return;
+      if (!label && !button.hasAttribute('title')) return;
       anchor = button;
       observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'open'] });
       source = origin;
       nativeTitle = button.getAttribute('title');
       if (nativeTitle) button.setAttribute('title', '');
+      if (!label || hasVisibleText(button)) return;
       showTimer = window.setTimeout(() => {
         if (anchor !== button || !button.isConnected || !button.getClientRects().length) return hide();
+        if (hasVisibleText(button)) return;
         window.clearTimeout(removeTimer);
         const host = (popover ? button.closest('dialog:modal') : button.closest('dialog[open]')) ??
           document.fullscreenElement ?? document.body;

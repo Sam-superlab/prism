@@ -92,7 +92,9 @@ export function useWorkspaceTabs(href: string, userId?: string) {
       pendingHref.current = target.href;
       const nextHref = target.href === '/today?restoreTabs=1' ? '/today' : target.href;
       if (nextHref !== current + location.hash) {
-        switchingHref.current = nextHref.split('#')[0];
+        // Fragment-only restores don't change the route from usePathname/useSearchParams.
+        const nextRoute = nextHref.split('#')[0];
+        switchingHref.current = nextRoute === current ? null : nextRoute;
         router.replace(nextHref, { scroll: false });
       }
     } else if (startup) router.replace('/today', { scroll: false });

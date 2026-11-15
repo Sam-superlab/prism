@@ -15,6 +15,12 @@ import {
 } from '../../lib/knowledge-scope';
 import type { Card, Entity, Knowledge, Page, ProofStep, ReviewEvent } from '../../lib/types';
 import { reviewCardTypes } from '../../lib/review-card-markdown';
+import {
+  updateReviewSession,
+  useReviewSession,
+  type PendingReview,
+  type ReviewSession,
+} from '../../lib/review-session';
 import type { GuideLanguage } from '../../lib/getting-started-copy';
 import { KnowledgeMarkdownActions } from '../KnowledgeMarkdownActions';
 import { ConnectionGraph } from '../ConnectionGraph';
@@ -1148,135 +1154,227 @@ function RelationModal({
   );
 }
 
-export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: string }) {
+const emptyDraft = { text: '', revealed: false, stuck: [] as string[], hintsUsed: 0 };
+const ratingLabels = [
+  ['again', 'Again', 'Needs relearning'],
+  ['hard', 'Hard', 'Recalled with difficulty'],
+  ['good', 'Good', 'Recalled correctly'],
+  ['easy', 'Easy', 'Effortless and complete'],
+] as const;
+
+function newSession(items: Card[], cursor: string | null = null): ReviewSession {
+  return {
+    id: uuid(),
+    updatedAt: Date.now(),
+    cards: items.map((card) => ({ id: card.id, lastReviewedAt: card.last_reviewed_at })),
+    cursor,
+    position: 0,
+    reviewed: [],
+  };
+}
+
+type ReviewCardLookup = { id: string; card: Card | null };
+async function lookupReviewCard(path: string, signal: AbortSignal): Promise<ReviewCardLookup> {
+  const id = path.split('/').at(-1)!;
+  try {
+    return { id, card: await api<Card>(path, { signal }) };
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return { id, card: null };
+    throw error;
+  }
+}
+
+export function ReviewPage({
+  scope, cardId, userId, active,
+}: {
+  scope: StudyScope;
+  cardId?: string;
+  userId: string;
+  active: boolean;
+}) {
   const router = useRouter();
   const { subject, chapters } = scope;
+  const href = cardId ? `/review/session?card=${cardId}` : scopedPath('/review/session', scope);
   const [switchingScope, switchScope] = useTransition();
   const subjects = useResource<SubjectList>(cardId ? null : '/knowledge-subjects');
   const queuePath = scopedPath('/review/queue', scope, { limit: '100' });
-  const queue = useResource<Page<Card>>(cardId ? null : queuePath);
-  const selectedCard = useResource<Card>(cardId ? `/review/cards/${cardId}` : null);
+  const saved = useReviewSession(userId, href);
+  const initialized = useRef(false);
+  const [ready, setReady] = useState(false);
+  const resumeSaved = !!saved && saved.position < saved.cards.length;
+  const queue = useResource<Page<Card>>(!cardId && !initialized.current && !resumeSaved ? queuePath : null);
+  const entry = ready ? saved?.cards[saved.position] : undefined;
+  const lookupId = entry?.id ?? (!ready && !resumeSaved ? cardId : undefined);
+  const lookup = useResource<ReviewCardLookup>(lookupId ? `/review/cards/${lookupId}` : null, lookupReviewCard);
+  const current = lookup.data?.id === lookupId ? lookup.data : null;
+  const candidate = entry?.id === current?.id ? current?.card : undefined;
+  const isEligible = Boolean(candidate && entry && !candidate.suspended &&
+    candidate.last_reviewed_at === entry.lastReviewedAt &&
+    (!candidate.last_reviewed_at || Date.parse(candidate.due_at) <= Date.now()));
   const batch = useAction();
   const [device, setDevice] = useState('');
-  const [index, setIndex] = useState(0);
-  const [revealed, setRevealed] = useState(false);
-  const [answer, setAnswer] = useState<{ cardId: string; text: string }>();
-  const [stuckSteps, setStuckSteps] = useState<string[]>([]);
+  const [deviceError, setDeviceError] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const [conflict, setConflict] = useState(false);
-  const [ratings, setRatings] = useState<Record<string, number>>({ again: 0, hard: 0, good: 0, easy: 0 });
-  const [reviewed, setReviewed] = useState<{ title: string; due: string }[]>([]);
   const started = useRef(0);
-  const sessionStart = useRef(0);
-  const pendingReview = useRef<{
-    cardId: string;
-    rating: string;
-    key: string;
-    reviewedAt: string;
-    durationMs: number;
-    stuckSteps: string[];
-  } | null>(null);
   const requestInFlight = useRef(false);
-  const [pendingRating, setPendingRating] = useState<string | null>(null);
+  const session = ready ? saved : undefined;
+  const draft = session?.draft ?? emptyDraft;
+  const pending = session?.pending;
+  const card = pending || isEligible ? candidate : undefined;
+  const conflict = session?.conflict;
+  const done = Boolean(session && !entry);
+  const totalDone = session?.reviewed.length ?? 0;
+  const totalCards = session?.cards.length ?? 0;
+  const reviewedMinutes = Math.max(1, Math.round(
+    (session?.reviewed.reduce((total, item) => total + item.durationMs, 0) ?? 0) / 60_000,
+  ));
+  const proofSteps =
+    card?.card_type === 'proof' && card.proof_steps?.length ? card.proof_steps : undefined;
+
   useEffect(() => {
-    started.current = performance.now();
-    sessionStart.current = performance.now();
+    if (!active || initialized.current) return;
+    if (!resumeSaved && (cardId ? current?.id !== cardId : !queue.data)) return;
+    const items = cardId
+      ? current?.card && !current.card.suspended &&
+          (!current.card.last_reviewed_at || Date.parse(current.card.due_at) <= Date.now())
+        ? [current.card]
+        : []
+      : queue.data?.items ?? [];
+    initialized.current = true;
+    updateReviewSession(userId, href, (previous) => previous && previous.position < previous.cards.length
+      ? previous
+      : newSession(items, queue.data?.next_cursor));
+    setReady(true);
+  }, [active, resumeSaved, cardId, current, queue.data, userId, href]);
+
+  useEffect(() => {
+    if (!active) return;
+    updateReviewSession(userId, href, (previous) => previous && previous.position < previous.cards.length
+      ? { ...previous }
+      : previous);
+  }, [active, userId, href]);
+
+  useEffect(() => {
+    if (!active) return;
     let cancelled = false;
     void (async () => {
-      const saved = localStorage.getItem('prism-web-device');
+      let prior: string | null = null;
+      try { prior = localStorage.getItem('prism-web-device'); } catch {}
       const devices = await api<Page<Entity & { platform: string }>>('/devices');
       const existing =
-        devices.items.find((d) => d.id === saved && d.platform === 'web') ||
+        devices.items.find((d) => d.id === prior && d.platform === 'web') ||
         devices.items.find((d) => d.platform === 'web');
       const id = existing?.id || uuid();
       if (!existing)
         await api('/devices', { method: 'POST', body: { id, name: 'PRISM Web', platform: 'web' } });
-      localStorage.setItem('prism-web-device', id);
-      if (!cancelled) setDevice(id);
-    })().catch((e) => setError(e.message));
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-  const focused = selectedCard.data;
-  const cards = cardId
-    ? focused && !focused.suspended && (!focused.last_reviewed_at || Date.parse(focused.due_at) <= Date.now())
-      ? [focused]
-      : []
-    : queue.data?.items || [];
-  const card = cards[index];
-  const proofSteps =
-    card?.card_type === 'proof' && card.proof_steps?.length ? card.proof_steps : undefined;
-  const done = Boolean((cardId ? focused : queue.data) && !card);
-  const totalDone = Object.values(ratings).reduce((a, b) => a + b, 0);
-  function next() {
-    pendingReview.current = null;
-    setPendingRating(null);
-    setIndex((i) => i + 1);
-    setRevealed(false);
-    setAnswer(undefined);
-    setStuckSteps([]);
-    setConflict(false);
-    setError('');
-    started.current = performance.now();
+      try { localStorage.setItem('prism-web-device', id); } catch {}
+      if (!cancelled) {
+        setDevice(id);
+        setDeviceError('');
+      }
+    })().catch((e) => { if (!cancelled) setDeviceError(e.message); });
+    return () => { cancelled = true; };
+  }, [active, userId]);
+  useEffect(() => {
+    if (active && entry?.id) {
+      started.current = performance.now();
+      setError('');
+    }
+  }, [active, entry?.id]);
+
+  function changeCard(change: (previous: ReviewSession) => ReviewSession) {
+    return updateReviewSession(userId, href, (previous) =>
+      previous && session?.id === previous.id && session.position === previous.position
+        ? change(previous)
+        : previous);
   }
-  async function rate(rating: string) {
-    if (!card || !device || switchingScope || requestInFlight.current) return;
-    if (pendingReview.current && pendingReview.current.rating !== rating) {
+  function updateDraft(change: (previous: typeof emptyDraft) => typeof emptyDraft) {
+    changeCard((previous) => previous.pending || previous.conflict
+      ? previous
+      : { ...previous, draft: change(previous.draft ?? emptyDraft) });
+  }
+  function advance(previous: ReviewSession) {
+    return {
+      ...previous,
+      position: previous.position + 1,
+      draft: undefined,
+      pending: undefined,
+      conflict: undefined,
+    };
+  }
+
+  // Refresh the selected card instead of indexing into a due queue that may have changed.
+  useEffect(() => {
+    if (!active || !entry || current?.id !== entry.id || pending || conflict || isEligible) return;
+    updateReviewSession(userId, href, (previous) =>
+      previous && previous.id === session?.id && previous.position === session.position &&
+        !previous.pending && !previous.conflict ? advance(previous) : previous);
+  }, [active, entry, current, pending, conflict, isEligible, userId, href, session]);
+
+  async function rate(rating: PendingReview['rating']) {
+    if ((!card && !pending) || (!device && !pending) || switchingScope || requestInFlight.current) return;
+    const updated = changeCard((previous) => {
+      if (previous.pending || previous.conflict || !card) return previous;
+      return {
+        ...previous,
+        pending: { title: card.prompt.slice(0, 60), command: {
+          card_id: card.id,
+          device_id: device,
+          rating,
+          idempotency_key: uuid(),
+          reviewed_at: new Date().toISOString(),
+          duration_ms: Math.round(performance.now() - started.current),
+          base_version: card.version,
+          ...((previous.draft?.stuck.length ?? 0) > 0 ? { proof_stuck_step_ids: previous.draft!.stuck } : {}),
+        } },
+      };
+    });
+    const operation = updated?.pending;
+    if (!operation || updated.id !== session?.id || updated.position !== session.position) return;
+    const command = operation.command;
+    if (command.rating !== rating) {
       setError('Your previous rating is still unconfirmed. Retry the same rating.');
       return;
     }
     requestInFlight.current = true;
     setBusy(true);
     setError('');
-    const pending = (pendingReview.current ||= {
-      cardId: card.id,
-      rating,
-      key: uuid(),
-      reviewedAt: new Date().toISOString(),
-      durationMs: Math.round(performance.now() - started.current),
-      stuckSteps,
-    });
-    setPendingRating(rating);
+    const finish = (change: (previous: ReviewSession) => ReviewSession) =>
+      changeCard((previous) => previous.pending?.command.idempotency_key === command.idempotency_key
+        ? change(previous) : previous);
     try {
       const result = await api<{ card: Card }>('/review/events', {
-        method: 'POST',
-        key: pending.key,
-        body: {
-          card_id: pending.cardId,
-          device_id: device,
-          rating: pending.rating,
-          reviewed_at: pending.reviewedAt,
-          duration_ms: pending.durationMs,
-          base_version: card.version,
-          idempotency_key: pending.key,
-          ...(pending.stuckSteps.length ? { proof_stuck_step_ids: pending.stuckSteps } : {}),
-        },
+        method: 'POST', key: command.idempotency_key, body: command,
       });
-      setRatings((x) => ({ ...x, [rating]: x[rating] + 1 }));
-      setReviewed((x) => [...x, { title: card.prompt, due: result.card.due_at }]);
-      next();
+      finish((previous) => ({
+        ...advance(previous),
+        reviewed: [...previous.reviewed, {
+          title: operation.title,
+          due: result.card.due_at,
+          rating,
+          durationMs: command.duration_ms,
+        }],
+      }));
     } catch (e) {
-      if (e instanceof ApiError && e.status >= 400 && e.status < 500) {
-        pendingReview.current = null;
-        setPendingRating(null);
+      if (e instanceof ApiError && e.status === 409 && e.code === 'REVIEW_CONFLICT') {
+        finish((previous) => ({
+          ...previous,
+          pending: undefined,
+          conflict: 'Your rating is saved, but a card conflict prevented a schedule update. Continue reviewing and resolve it in Settings.',
+        }));
+      } else {
+        const rejected = e instanceof ApiError && [400, 404, 422].includes(e.status);
+        if (rejected) finish((previous) => ({ ...previous, pending: undefined }));
+        setError(e instanceof Error ? e.message : 'Submission failed');
       }
-      if (e instanceof ApiError && e.status === 409) {
-        setConflict(true);
-        setError(
-          'Your rating is saved, but a card conflict prevented a schedule update. Continue reviewing and resolve it in Settings.',
-        );
-      } else
-        setError(
-          `${e instanceof Error ? e.message : 'Submission failed'}${pendingReview.current ? ` Retry ${rating.toUpperCase()}; the same operation will be reused to prevent duplicate ratings.` : ''}`,
-        );
     } finally {
       requestInFlight.current = false;
       setBusy(false);
     }
   }
-  const reviewLocked = switchingScope || busy || Boolean(pendingRating) || conflict;
+
+  const reviewLocked = switchingScope || busy || Boolean(pending) || Boolean(conflict);
   const filtersLocked = reviewLocked || batch.busy;
   return (
     <>
@@ -1288,9 +1386,16 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
           <div className="eyebrow">ACTIVE RECALL · FSRS</div>
           <h1>Review session</h1>
         </div>
-        <Badge tone="purple">
-          {totalDone} / {cards.length} reviewed
-        </Badge>
+        <div className="inline-actions">
+          <Badge tone="purple">
+            {totalDone} / {totalCards} reviewed
+          </Badge>
+          {entry && (
+            <Link href="/today#daily-overview" className="button small">
+              Pause review
+            </Link>
+          )}
+        </div>
       </div>
       {!cardId && (
         <div className={`collection-toolbar ${scopeStyles.toolbar}`}>
@@ -1319,22 +1424,23 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
         </div>
       )}
       <ErrorState
-        error={selectedCard.error || queue.error || subjects.error}
-        retry={cardId ? selectedCard.reload : queue.error ? queue.reload : subjects.reload}
+        error={lookup.error || queue.error || subjects.error}
+        retry={lookup.error ? lookup.reload : queue.error ? queue.reload : subjects.reload}
       />
-      {(cardId ? selectedCard.loading && !focused : queue.loading && !queue.data) && <Loading />}
-      {cardId && selectedCard.error && (
+      {((!ready && !entry) || (entry && !current)) &&
+        !lookup.error && !queue.error && !pending && !conflict && <Loading />}
+      {cardId && (lookup.error || current?.card === null) && (
         <Link href="/today" className="button">
           Back to Dashboard
         </Link>
       )}
       {batch.error && <Notice tone="error">{batch.error}</Notice>}
-      {error && (
+      {(error || conflict || (deviceError && !pending)) && (
         <Notice tone={conflict ? 'warning' : 'error'}>
-          {error}
+          {conflict || error || deviceError}
           {conflict && (
             <div className="inline-actions">
-              <button className="button small" onClick={next}>
+              <button className="button small" onClick={() => changeCard(advance)}>
                 Next card
               </button>
               <Link href="/settings" className="text-link">
@@ -1344,15 +1450,27 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
           )}
         </Notice>
       )}
+      {pending && !busy && (
+        <Notice tone="warning">
+          Your previous rating is unconfirmed. Retry {pending.command.rating.toUpperCase()}; the same operation will be reused to prevent duplicate ratings.
+          {!card && (
+            <div className="inline-actions">
+              <button className="button small" onClick={() => void rate(pending.command.rating)}>
+                Retry {pending.command.rating.toUpperCase()}
+              </button>
+            </div>
+          )}
+        </Notice>
+      )}
       {done && (
         <section className="panel session-summary">
           <span className="summary-check">
             <Icon name="check" size={32} />
           </span>
-          <h2>{cards.length ? 'Review complete' : 'No cards due right now'}</h2>
+          <h2>{totalCards ? 'Review complete' : 'No cards due right now'}</h2>
           <p className="muted">
-            {cards.length
-              ? `Reviewed ${totalDone} cards · ${Math.max(1, Math.round((performance.now() - sessionStart.current) / 60000))} min`
+            {totalCards
+              ? `Reviewed ${totalDone} cards${totalDone ? ` · ${reviewedMinutes} min` : ''}`
               : chapters
                 ? 'No cards in this chapter range are due yet. Choose another chapter or return later.'
                 : subject !== undefined
@@ -1361,18 +1479,21 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
                     ? 'Return to Dashboard to continue with your checklist.'
                     : 'Add more knowledge, or return when your next cards are due.'}
           </p>
+          {totalCards > totalDone && (
+            <p className="muted">Other cards in this session are no longer available to review.</p>
+          )}
           <div className="rating-summary">
-            {Object.entries(ratings).map(([r, n]) => (
-              <div key={r}>
-                <strong>{n}</strong>
-                <span>{r.toUpperCase()}</span>
+            {ratingLabels.map(([rating, title]) => (
+              <div key={rating}>
+                <strong>{session?.reviewed.filter((item) => item.rating === rating).length ?? 0}</strong>
+                <span>{title.toUpperCase()}</span>
               </div>
             ))}
           </div>
-          {reviewed.length > 0 && (
+          {!!session?.reviewed.length && (
             <div className="next-reviews">
               <h3>{cardId ? 'Next review' : 'Coming up next'}</h3>
-              {reviewed.map((r, i) => (
+              {session.reviewed.map((r, i) => (
                 <div key={i}>
                   <span>{r.title.slice(0, 60)}</span>
                   <span>{datetime(r.due)}</span>
@@ -1388,19 +1509,20 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
             <Link href={scopedPath('/knowledge', scope)} className="button">
               Browse knowledge
             </Link>
-            {queue.data?.next_cursor && (
+            {session?.cursor && (
               <button
                 className="button"
                 disabled={batch.busy || switchingScope}
                 onClick={() =>
                   void batch.run(async () => {
-                    const cursor = queue.data?.next_cursor;
+                    const cursor = session?.cursor;
                     if (!cursor) return;
                     const nextPage = await api<Page<Card>>(
                       `${queuePath}&cursor=${encodeURIComponent(cursor)}`,
                     );
-                    queue.setData(nextPage);
-                    setIndex(0);
+                    updateReviewSession(userId, href, (previous) => previous?.id === session?.id
+                      ? newSession(nextPage.items, nextPage.next_cursor)
+                      : previous);
                   })
                 }
               >
@@ -1412,8 +1534,9 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
       )}
       {card && (
         <section className="review-session">
-          <div className="review-progress">
-            <span style={{ width: `${(index / Math.max(1, cards.length)) * 100}%` }} />
+          <div className="review-progress" role="progressbar" aria-label="Review cards processed"
+            aria-valuemin={0} aria-valuemax={totalCards} aria-valuenow={session?.position ?? 0}>
+            <span style={{ width: `${((session?.position ?? 0) / Math.max(1, totalCards)) * 100}%` }} />
           </div>
           <article className="panel recall-card">
             <div className="recall-header">
@@ -1437,25 +1560,30 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
                   ? 'Try recalling the main argument before opening a hint…'
                   : 'Write what you remember…'
               }
-              value={answer?.cardId === card.id ? answer.text : ''}
-              onChange={(text) => setAnswer({ cardId: card.id, text })}
+              value={draft.text}
+              onChange={(text) => updateDraft((previous) => ({ ...previous, text }))}
             />
             {proofSteps && (
               <ProofRecall
                 key={`proof:${card.id}`}
                 cardId={card.id}
                 steps={proofSteps}
-                answerRevealed={revealed}
-                stuck={stuckSteps}
+                answerRevealed={draft.revealed}
+                stuck={draft.stuck}
+                hintsUsed={draft.hintsUsed}
                 locked={reviewLocked}
-                onToggleStuck={(id) =>
-                  setStuckSteps((ids) =>
-                    ids.includes(id) ? ids.filter((item) => item !== id) : [...ids, id],
-                  )
-                }
+                onRevealHint={() => updateDraft((previous) => ({
+                  ...previous, hintsUsed: Math.min(previous.hintsUsed + 1, proofSteps.length),
+                }))}
+                onToggleStuck={(id) => updateDraft((previous) => ({
+                  ...previous,
+                  stuck: previous.stuck.includes(id)
+                    ? previous.stuck.filter((item) => item !== id)
+                    : [...previous.stuck, id],
+                }))}
               />
             )}
-            {revealed ? (
+            {draft.revealed ? (
               <div className="recall-answer">
                 <span className="eyebrow">REFERENCE ANSWER</span>
                 {card.answer.trim() === card.prompt.trim() ? (
@@ -1469,7 +1597,7 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
                 <button
                   className="button primary"
                   disabled={switchingScope}
-                  onClick={() => setRevealed(true)}
+                  onClick={() => updateDraft((previous) => ({ ...previous, revealed: true }))}
                 >
                   Reveal answer
                   <Icon name="arrow" size={16} />
@@ -1477,19 +1605,14 @@ export function ReviewPage({ scope, cardId }: { scope: StudyScope; cardId?: stri
               </div>
             )}
           </article>
-          {revealed && !conflict && (
+          {draft.revealed && !conflict && (
             <div className="rating-actions">
-              {[
-                ['again', 'Again', 'Needs relearning'],
-                ['hard', 'Hard', 'Recalled with difficulty'],
-                ['good', 'Good', 'Recalled correctly'],
-                ['easy', 'Easy', 'Effortless and complete'],
-              ].map(([v, title, hint]) => (
+              {ratingLabels.map(([v, title, hint]) => (
                 <button
                   key={v}
                   className={`rating-button ${v}`}
                   disabled={
-                    switchingScope || busy || !device || (pendingRating !== null && pendingRating !== v)
+                    switchingScope || busy || (!device && !pending) || (pending && pending.command.rating !== v)
                   }
                   onClick={() => void rate(v)}
                 >

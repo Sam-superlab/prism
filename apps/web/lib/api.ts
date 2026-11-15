@@ -112,6 +112,8 @@ export async function api<T>(
     /^\/(?:research\/(?:projects|objects|question-links)(?:\/|$)|tasks\/[^/]+\/complete$)/.test(path)
   )
     window.dispatchEvent(new Event('prism:research-history-changed'));
+  if (method === 'POST' && path === '/review/events' && typeof window !== 'undefined')
+    window.dispatchEvent(new Event('prism:review-changed'));
   if (response.status === 204) return undefined as T;
   const payload = await response.json();
   if (path === '/me' && payload?.timezone) selectedTimezone = payload.timezone;

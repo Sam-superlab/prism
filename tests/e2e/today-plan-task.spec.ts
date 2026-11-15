@@ -3,6 +3,7 @@ import { expect, test } from '@playwright/test';
 
 test('lets a numeric draft stay empty while replacing its value', async ({ page }) => {
   await page.goto('/today');
+  await page.getByText('Adjust time', { exact: true }).click();
   const capacity = page.getByRole('spinbutton', { name: 'Daily capacity in minutes' });
   await capacity.fill('');
   await expect(capacity).toHaveValue('');
