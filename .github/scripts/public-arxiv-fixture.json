@@ -1,0 +1,73 @@
+{
+  "sourceFixtureSha256": "cd3c38c553f34a27fa6eb8341ca3ab28dbd451a18c2a85e0bbb9b1791e725e8e",
+  "query": "Which methods certify existence, isolation or correct homotopy tracking of zeros of complex polynomial systems from numerical approximations, using Smale alpha theory, interval Krawczyk tests, certified steps or deflation for singular zeros?",
+  "papers": [
+    {
+      "id": "2402.07053",
+      "url": "https://arxiv.org/abs/2402.07053",
+      "title": "Certified homotopy tracking using the Krawczyk method",
+      "abstract": "Applies interval Krawczyk operators with a continuation parameter to validate a numerically traced solution path.",
+      "categories": [
+        "math.NA",
+        "cs.SC",
+        "math.AG"
+      ]
+    },
+    {
+      "id": "2512.01355",
+      "url": "https://arxiv.org/abs/2512.01355",
+      "title": "A priori bounds for certified Krawczyk homotopy tracking",
+      "abstract": "Analyzes step sizes and iteration bounds for homotopy tracking certified by Krawczyk tests.",
+      "categories": [
+        "math.AG",
+        "cs.SC"
+      ]
+    },
+    {
+      "id": "2401.17973",
+      "url": "https://arxiv.org/abs/2401.17973",
+      "title": "Validated numerics for algebraic path tracking",
+      "abstract": "Uses interval arithmetic and Taylor models to certify a predictor-corrector method for algebraic solution paths.",
+      "categories": [
+        "math.NA",
+        "cs.SC"
+      ]
+    },
+    {
+      "id": "1105.5992",
+      "url": "https://arxiv.org/abs/1105.5992",
+      "title": "Robust certified numerical homotopy tracking",
+      "abstract": "Provides a rigorous homotopy-following algorithm that uses rational computations to validate approximate polynomial zeros.",
+      "categories": [
+        "math.AG"
+      ]
+    },
+    {
+      "id": "1101.3140",
+      "url": "https://arxiv.org/abs/1101.3140",
+      "title": "Deflation and Certified Isolation of Singular Zeros of Polynomial Systems",
+      "abstract": "Combines local algebra and numerical validation to certify isolated singular polynomial roots using deflation.",
+      "categories": [
+        "cs.SC"
+      ]
+    },
+    {
+      "id": "1601.00611",
+      "url": "https://arxiv.org/abs/1601.00611",
+      "title": "On deflation and multiplicity structure",
+      "abstract": "Develops a Jacobian-based differential construction for deflation and investigates the multiplicities of isolated singular roots.",
+      "categories": [
+        "math.AG"
+      ]
+    }
+  ],
+  "expectedLogits": [
+    1.8960192203521729,
+    -2.5272161960601807,
+    -1.5990269184112549,
+    2.934229612350464,
+    4.59354305267334,
+    -6.409177780151367
+  ],
+  "passageProvenance": "Public arXiv titles with short original test summaries, offline fixture."
+}
