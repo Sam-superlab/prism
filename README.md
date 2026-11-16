@@ -1,6 +1,8 @@
 # PRISM
 
-PRISM is a local workspace for mathematical notes, spaced repetition, academic research, arXiv reading, and daily planning.
+PRISM is a local workspace for mathematics and academic research. Write Markdown and LaTeX notes, review them with spaced repetition, and read or annotate PDFs from arXiv and your own Library. Connect notes, source excerpts, proof attempts, and results to research questions, then bring next actions into Dashboard.
+
+New desktop updates are released for Apple silicon Macs. The most recent Intel Mac and Windows builds remain available below.
 
 [Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.3.6/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.3.6) · [Website](https://sam-superlab.github.io/prism/)
 
