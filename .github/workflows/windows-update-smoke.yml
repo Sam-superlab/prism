@@ -67,6 +67,17 @@ jobs:
           $script = Join-Path $work 'windows-update-smoke.ps1'
           [IO.File]::WriteAllBytes($script, [Convert]::FromBase64String(($content -join '')))
           & $script -BaseArchive (Join-Path $work 'PRISM-Windows-x64.zip') -UpdateArchive (Join-Path $work 'PRISM-Windows-update-test.zip') -Manifest (Join-Path $work 'windows-update-test.json') -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'prism-windows-update-smoke')
+      - name: Verify offline ranking with the updated native scorer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $work = Join-Path $env:RUNNER_TEMP 'prism-update-inputs'
+          foreach ($file in @('verify-after-windows-update.ps1', 'verify-windows-model.mjs', 'public-arxiv-fixture.json')) {
+            $content = gh api "repos/$env:GITHUB_REPOSITORY/contents/.github/scripts/${file}?ref=$env:GITHUB_SHA" --jq .content
+            if ($LASTEXITCODE -ne 0) { throw "Could not read $file" }
+            [IO.File]::WriteAllBytes((Join-Path $work $file), [Convert]::FromBase64String(($content -join '')))
+          }
+          & (Join-Path $work 'verify-after-windows-update.ps1') -WorkspaceRoot (Join-Path $env:RUNNER_TEMP 'prism-windows-update-smoke')
       - name: Show failure diagnostics
         if: failure()
         shell: pwsh
