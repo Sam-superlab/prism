@@ -4,7 +4,7 @@ PRISM is a local workspace for mathematics and academic research. Write Markdown
 
 New desktop updates are released for Apple silicon Macs. The most recent Intel Mac and Windows builds remain available below.
 
-[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.3.6/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.3.6) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.3.7/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.3.7) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
