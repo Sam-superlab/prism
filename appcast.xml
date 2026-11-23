@@ -7,10 +7,10 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
     <description>PRISM for macOS updates.</description>
     <language>en</language>
     <item>
-      <title>PRISM 0.3.7</title>
-      <pubDate>Sun, 22 Nov 2026 14:51:11 GMT</pubDate>
-      <sparkle:version>0.3.7</sparkle:version>
-      <sparkle:shortVersionString>0.3.7</sparkle:shortVersionString>
+      <title>PRISM 0.3.8</title>
+      <pubDate>Mon, 23 Nov 2026 09:17:24 GMT</pubDate>
+      <sparkle:version>0.3.8</sparkle:version>
+      <sparkle:shortVersionString>0.3.8</sparkle:shortVersionString>
       <sparkle:minimumSystemVersion>13.5.0</sparkle:minimumSystemVersion>
       <description><![CDATA[<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="color-scheme" content="light dark">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
@@ -18,16 +18,20 @@ IMPORTANT: This file was signed by Sparkle. Any modifications to this file requi
 :root{color-scheme:light dark}body{font:13px/1.6 -apple-system,BlinkMacSystemFont,sans-serif;color:#24242c;background:transparent;margin:18px 20px;overflow-wrap:anywhere}
 h1{font-size:17px;line-height:1.35;letter-spacing:-.3px;margin:0 0 14px}h2{font-size:13px;line-height:1.45;margin:19px 0 6px}p{margin:7px 0 12px}ul{margin:6px 0 14px;padding-left:20px}li{padding:3px 0}
 @media(prefers-color-scheme:dark){body{color:#f0eef7}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
-</style></head><body><h1>Version 0.3.7</h1><p>What&#39;s new in PRISM</p>
-<h2>PDF Reader &amp; Knowledge</h2>
-<ul><li>Organize course PDFs and connected notes by chapter in a single folder.</li><li>Open chapter notes, jump to the original PDF page, or start a chapter review directly from the folder.</li><li>Expand the chapter you need while keeping the rest compact.</li></ul>
-<h2>Updates, at your pace</h2>
-<ul><li>Read what&#39;s changed before installing an update.</li><li>Skip this version or ask PRISM to remind you later.</li><li>Choose whether future updates can download and install automatically. This is off until you enable it.</li></ul>
-<p>Your notes, PDF attachments, annotations, links, review progress, and settings stay in your workspace when PRISM updates.</p></body></html>]]></description>
-      <enclosure url="https://github.com/Sam-superlab/prism/releases/download/v0.3.7/PRISM-macOS-arm64.zip" sparkle:edSignature="/IY+ayORtdpbxGl1hKnzf4X/gatw/AQqmdK3OHMfSen/vpI0/gI1XvYai3H/MIcCMYhSw0gGwznzNtr5ed9mCg==" length="78846271" type="application/octet-stream"></enclosure>
+</style></head><body><h1>Version 0.3.8</h1><p>What&#39;s new in PRISM</p>
+<h2>Connected local study</h2>
+<ul><li>Turn a PDF highlight or page note into editable Knowledge with a link back to its exact page and annotation.</li><li>Create linked practice questions and manual review cards from a note, then start a focused review of its due cards.</li></ul>
+<h2>An exam plan that adapts</h2>
+<ul><li>Plan multiple review rounds before your exam using your existing FSRS schedule, chapter scope and daily time budget.</li><li>Refresh the plan after real review ratings or practice attempts, while preserving fixed items and completed work.</li><li>See today&#39;s exam work on the Dashboard. Future rounds are estimates assuming Good; they do not create review records.</li></ul>
+<h2>Your week in research</h2>
+<ul><li>Save a local research recap on Friday evening, or catch up the next time you open PRISM.</li><li>See new recaps on the Dashboard, revisit saved weeks and open their original research records.</li><li>Confirm a suggested next step before it becomes a task.</li></ul>
+<h2>Faster formulas</h2>
+<ul><li>Type $ to insert a matching pair with the cursor inside. Wrap selected text, skip an existing closing delimiter, or remove an empty pair with Backspace.</li></ul>
+<p>Your notes, PDF attachments, annotations, links, review progress and settings stay in your workspace. Automatic installation remains off unless you enable it. This release does not enable cloud sync, hosted accounts, payments or cloud AI.</p></body></html>]]></description>
+      <enclosure url="https://github.com/Sam-superlab/prism/releases/download/v0.3.8/PRISM-macOS-arm64.zip" sparkle:edSignature="dg4nkpemzbwydY6ExdJDb5VoGsTWC9H5lXcXAzmW6keUcRsHJPTaizEgDbo4qP0YbEPHqA6thQfnRb9OvGnCAw==" length="78957849" type="application/octet-stream"></enclosure>
     </item>
   </channel>
 </rss><!-- sparkle-signatures:
-edSignature: zSwLwqOyt6HvMHF33pBoAjR3LtIZWnLmDIpXYmleliXEjlwehP1ZC1QB9evni/7HJAgEIMW0VN9cgyWq5GtuCg==
-length: 2749
+edSignature: C8ckl1y6quxLU4AYLTJ+TCIcRxa+TEmvPMxEYVtE6zYNYG75VoYjhUi5SmzfKi4/J45+GfbF/gL/D8Gv/LWJAA==
+length: 3492
 -->

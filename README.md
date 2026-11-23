@@ -4,7 +4,7 @@ PRISM is a local workspace for mathematics and academic research. Write Markdown
 
 New desktop updates are released for Apple silicon Macs. The most recent Intel Mac and Windows builds remain available below.
 
-[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.3.7/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.3.7) · [Website](https://sam-superlab.github.io/prism/)
+[Download for Apple silicon](https://github.com/Sam-superlab/prism/releases/download/v0.3.8/PRISM-macOS-arm64.zip) · [Download for Intel Mac](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-macOS-x64.zip) · [Download for Windows](https://github.com/Sam-superlab/prism/releases/download/v0.3.5/PRISM-Windows-x64.zip) · [Release notes](https://github.com/Sam-superlab/prism/releases/tag/v0.3.8) · [Website](https://sam-superlab.github.io/prism/)
 
 ## Install
 
@@ -50,6 +50,10 @@ The Dashboard checklist walks through creating a note, making a review card, and
 
 - Write Markdown and LaTeX notes and organize them by subject and chapter.
 - Add review cards for definitions, statements, hypotheses, or proofs.
+- Open **Dashboard → Exam review plan** to schedule multiple FSRS review rounds before an exam, with daily budgets, fixed dates and completed work preserved. Real ratings refresh the plan; future rounds are estimates, not review records.
+- Open **Weekly research review** on Dashboard or Research for local Friday recaps, source links and suggested next steps that you confirm before creating tasks.
+- From a Knowledge note, create linked practice, add a manual card or review its due cards. PDF source pages and annotations stay linked.
+- In Markdown editors, `$` pairs automatically with the cursor inside; selected text can be wrapped.
 - For Proof Recall, select **Proof** when editing a card and add ordered hints. Mark difficult steps during review to retain them in your review history.
 - Dashboard shows your daily plan, time capacity, and seven days of review activity.
 - Use the plus button in the tab strip to open a page, or Command-click on Mac and Control-click on Windows. Switch between horizontal and vertical tabs in the toolbar. PRISM remembers your tabs and their order on this computer.
